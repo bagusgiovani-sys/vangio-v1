@@ -2,6 +2,7 @@
   "$schema": "https://opencode.ai/config.json",
   "provider": {},
   "permission": {},
+  "instructions": ["docs/fork/**/*.md"],
   "references": {
     "effect": {
       "repository": "github.com/Effect-TS/effect-smol",

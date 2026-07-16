@@ -1,3 +1,7 @@
+## Fork Notice
+
+This is the VanGio fork of opencode. Fork-specific product direction, roadmap, and any overrides to the conventions below live in `docs/fork/` (start at `docs/fork/README.md`) and take precedence over this file where they conflict. Everything below describes upstream opencode conventions and still applies unless overridden there.
+
 - To regenerate the legacy JavaScript SDK, run `./packages/sdk/js/script/build.ts`.
 - After changing the public Protocol or Server `HttpApi`, run `bun run generate` from `packages/client`. Do not edit `src/generated` or `src/generated-effect` directly.
 - Keep runtime dependencies directed from Schema to Core and Protocol, then from Core and Protocol to Server. Client runtime code may depend on Schema and Protocol but never Core or Server; `sdk-next` composes Client, Core, and Server.
