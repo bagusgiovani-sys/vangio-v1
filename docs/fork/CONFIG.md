@@ -15,6 +15,8 @@
 
 ## VanGio's v1 `opencode.json` (concrete config)
 > UPDATED 2026-07-16: default provider switched from GLM-4.7-Flash to DeepSeek V4 Flash Free via OpenCode Zen. GLM kept as configured fallback. **UNVERIFIED: whether Zen's gateway actually avoids the concurrency/retry-loop bug that broke GLM — confirm with a real multi-tool-call session before relying on this.**
+> DEPLOYED 2026-07-16: the live `~/.config/opencode/opencode.json` now matches this design, minus Qwen/Kimi/Ollama (add when needed), plus an `"agent"` block defining `king` (planner, edit-denied, `opencode/deepseek-v4-flash-free`, ~79 SWE-V) and `warrior` (implementer, `opencode/mimo-v2.5-free`, 78.6 SWE-V + best agentic scores of Zen's free set — selected by benchmark research, see build-progress.md). Do NOT put the warrior on GLM: its 1-concurrent-request retry-loop bug fires under agentic multi-tool-call load, which is the warrior's entire job. GLM remains a manual fallback profile only. Both agents verified working — currently even WITHOUT a Zen key (anonymous free tier; expect to need `/connect` eventually). Zen free-tier limits are unpublished but REAL (hard "Free usage exceeded" wall exists) — token discipline matters.
+> THEME NOTE: the active theme name goes in `~/.config/opencode/tui.json` (`"theme": "neon-matrix"`), NOT in opencode.json. Theme files live in `~/.config/opencode/themes/*.json` (or project `.opencode/themes/`). VanGio's theme: `neon-matrix` (neon green #39FF14 on near-black #050805).
 
 ```jsonc
 {

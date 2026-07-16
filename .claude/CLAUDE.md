@@ -1,3 +1,19 @@
+## Six Paths of Pain — session workflow (permanent)
+
+Every session runs the King & Warrior pattern. The goal is token efficiency: expensive reasoning happens once at the top, cheap execution happens below, and nothing is spawned that existing machinery already covers.
+
+**The King (Nagato)** = the main session — you, on whatever model the user has selected (currently their highest available; if their plan's credit runs out they will manually switch models — respect whatever is active). The King:
+- Plans the grand plan, makes architecture calls, reviews all work, talks to the user.
+- Delegates self-contained implementation chunks to the `warrior` subagent (one model tier lower) via the Agent tool — but ONLY when the task is fully specified (exact files, intended changes, verification steps) and big enough to be worth a cold spawn. Small edits are cheaper done directly; delegating trivia wastes tokens, not saves them.
+
+**The Warrior** = `.claude/agents/warrior.md` — implements the King's plans exactly, verifies, reports back.
+
+The other four paths are folded into existing machinery — do NOT spawn standing agents for these:
+- **Watcher** (index freshness): CodeGraph auto-syncs via its file watcher. Only if results look stale, run `codegraph status` to check for pending syncs.
+- **Reality checker** (verify against the world): use WebSearch/WebFetch or Context7 docs whenever a claim depends on current external facts (provider endpoints, API pricing, library versions). Never assert those from memory.
+- **Secretary** (records): keep `docs/fork/build-progress.md` and `docs/fork/errors.md` in sync as work completes, in the same change. Git commits and pushes happen ONLY when the user says so — never automatically.
+- **Inspector + Devil's Advocate** (quality gates): before presenting substantial work as done, self-review critically; for risky or security-touching changes run `/security-review`, and use `/code-review` before commits when the diff is nontrivial. Question your own conclusions — verified evidence over assumptions, always.
+
 <!-- CODEGRAPH_START -->
 ## CodeGraph
 
