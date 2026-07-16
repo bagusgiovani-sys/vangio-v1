@@ -25,14 +25,18 @@
 - [x] Cleaned up an accidental empty git repo created by a misplaced `git init` in the outer project folder (not the actual fork — that's safely nested in `vangio-v1`)
 - [x] `bun install` completed clean ("Checked 2412 installs across 2705 packages, no changes") after installing Visual Studio Build Tools (C++ workload) to fix a `node-gyp`/`tree-sitter-powershell` compile error
 - [~] **CAVEAT, not resolved with certainty:** the final install used 100% prebuilt native binaries — zero local `.node` compilation actually occurred. This means the VS Build Tools fix is UNCONFIRMED as the true root cause of the original error. Don't repeat this diagnosis as settled fact if the same error resurfaces.
-- [ ] `bun run --cwd packages/opencode fix-node-pty` — confirm this step was run
-- [ ] `bun dev` — confirm the TUI actually opens from source before editing anything
+- [x] `fix-node-pty` — RESOLVED AS STALE (2026-07-16): script moved upstream to `packages/core` and now runs automatically via the root `postinstall` hook, so it already ran during the clean `bun install`. The old `--cwd packages/opencode` path no longer exists.
+- [x] `bun dev` — CONFIRMED (2026-07-16): TUI opens from source, renders home screen (logo, prompt box, provider status bar, footer), no crashes. Verified via captured run in Claude Code.
 - **WORKFLOW NOTE:** actual code editing/searching in vangio-v1 now happens in **Claude Code** (local filesystem access), not this chat. This file + the other planning docs are the shared reference kept in sync across both.
 
 ## Phase 5 — Banner (Must-Have, NOW FIRST per reorder confirmed 2026-07-16)
-- [ ] Implement verified banner code in the forked source: owl face (▲ ears, ● eyes, ▼ beak) + `cfonts` "VANGIO" wordmark (block font, confirmed 6 lines/54 width via real sandbox test) + "by bagusgiovani" byline + ANSI blink cursor (`\x1b[5m`)
-- [ ] Locate OpenCode's actual startup banner code before editing — don't guess the file path
-- [ ] Confirm it renders correctly in a real terminal (Windows Terminal / Git Bash), not just the chat preview
+- [x] Locate OpenCode's actual startup banner code — FOUND (2026-07-16): glyph data at `packages/tui/src/logo.ts` (shared source of truth — re-exported to the CLI via `packages/opencode/src/cli/logo.ts`), rendered on the TUI home screen by `packages/tui/src/component/logo.tsx` (mounted in `routes/home.tsx`). Separate private copy in `packages/tui/src/util/presentation.ts` (session-end epilogue) and a plain-text `wordmark` in `packages/opencode/src/cli/ui.ts` — both left as "opencode" for now, they're Phase 8 rebranding scope.
+- [x] Implement banner (2026-07-16) — with two adaptations from the original spec, since the TUI is a component-rendered screen buffer, not a raw print stream:
+  - `cfonts` is NOT a runtime dependency: the verified block-font wordmark (exact 6-line/54-width output, regenerated deterministically via `bunx cfonts "VANGIO" -f block`) is embedded as static glyph data in `logo.ts`, split "VAN" (dim) + "GIO" (bright) matching upstream's two-tone "open|code" pattern.
+  - ANSI blink (`\x1b[5m`) doesn't apply inside the TUI's own render buffer — implemented instead as a signal-driven blinking block cursor (`█`, theme green, 500ms toggle via `setInterval` + solid signal, same idiom as upstream's `move.tsx` dots animation) rendered immediately after the "i" in the byline. Terminal-independent: it's a real re-render, not an SGR blink attribute.
+  - Owl face (▲ ears, ● eyes, ▼ beak) positioned LEFT of the wordmark (vertically centered, per user feedback 2026-07-16 — was initially on top) + "by bagusgiovani" byline below, using theme colors.
+- [x] Confirmed rendering via real runs: `bun dev` captured output (owl + all 6 wordmark rows + byline + intact prompt/status/footer) AND a ConPTY test using the repo's own `@lydell/node-pty` proving the cursor actually blinks (26 frame flushes at 500ms cadence, green `█` written after the byline). NOTE for future verification: piping `bun dev` to a file shows only ONE frame — opentui suspends repainting without a real TTY; use a node-pty harness to verify animations.
+- [ ] USER EYEBALL CHECK: run `bun dev` in a real terminal (Windows Terminal / Git Bash) and confirm owl placement/proportions/spacing/colors look right — branding is subjective, iterate if wanted. Phase not "done" until this passes.
 
 ## Phase 6 — Default Provider Switch (config-only, confirmed 2026-07-16)
 - [ ] Sign in at opencode.ai/auth, get a Zen API key
@@ -75,13 +79,14 @@ Since VanGio IS OpenCode, all awesome-opencode ecosystem plugins work for free. 
 |---------|------|-----------------|-------|
 | 1 | 2026-07-05 | Planning complete (BRD/PRD/CONFIG/SDD/CLAUDE) | Build not started yet |
 | 2 | 2026-07-07 to 2026-07-16 | Native Windows environment working, GLM connected, hit GLM concurrency wall, forked+cloned for source customization, bun install resolved, banner code verified, decided to switch default provider to DeepSeek V4 Flash Free, reordered remaining phases | Workflow split: this chat = planning/docs, Claude Code = actual source editing |
+| 3 | 2026-07-16 | (Claude Code) docs/fork instruction layer set up + committed/pushed; Windows symlink corruption fixed (see errors.md) unblocking pre-push typecheck; `bun dev` confirmed from source; CodeGraph indexed + wired into Claude Code; Phase 5 banner IMPLEMENTED (logo.ts + logo.tsx) and render-verified — awaiting user eyeball check | fix-node-pty found stale (moved to core postinstall); banner spec adapted to component architecture (see Phase 5 notes) |
 
 ---
 
 ## Current Status
-**Last completed:** Fork cloned and building from source (`vangio-v1`), `bun install` resolved (root cause of original error unconfirmed — see Phase 4 caveat), banner code fully verified and ready to implement, phase order and provider switch both confirmed by user (2026-07-16).
-**Key deviations from original plan:** (1) WSL2 abandoned — native Windows instead. (2) GLM hit an unfixable 1-concurrent-request wall in real use (OpenCode issue #8618) — switching default to DeepSeek V4 Flash Free via Zen, GLM kept as fallback. (3) Build order changed: banner is now Phase 1 of remaining work (was rate-limit handling). (4) Actual code editing has moved to Claude Code; this chat + docs remain the planning/continuity layer.
-**In progress:** Confirming `bun dev` actually opens the TUI from source, then implementing the banner (Phase 5 above).
-**Next action:** In Claude Code — run `bun run --cwd packages/opencode fix-node-pty` then `bun dev` to confirm the source build works, THEN implement the banner code.
-**Open/unverified items to resolve, not assume:** (a) whether DeepSeek/Zen actually fixes the concurrency bug or just moves it, (b) the true root cause of the original bun install error, (c) which "CodeGraph" tool (if any) is actually useful here.
+**Last completed (2026-07-16, Claude Code):** Phase 5 banner implemented and render-verified — `packages/tui/src/logo.ts` (VANGIO block wordmark, van|gio two-tone) + `packages/tui/src/component/logo.tsx` (owl face + byline). Typecheck clean. Also: `bun dev` confirmed from source, fork-docs layer live, CodeGraph indexed + connected (`@colbymchenry/codegraph` — the "which CodeGraph" question from the open items is now settled).
+**Key deviations from original plan:** (1) WSL2 abandoned — native Windows instead. (2) GLM hit an unfixable 1-concurrent-request wall in real use (OpenCode issue #8618) — switching default to DeepSeek V4 Flash Free via Zen, GLM kept as fallback. (3) Build order changed: banner first. (4) Code editing happens in Claude Code; docs remain the shared continuity layer. (5) Banner spec adapted to the TUI's component architecture — cfonts pre-rendered to static glyphs instead of a runtime dep, blink cursor inherited from the TUI's native DECSCUSR setup (see Phase 5 notes).
+**In progress:** Awaiting user eyeball check of the banner in a real terminal, then commit.
+**Next action:** User runs `bun dev`, confirms/tweaks the banner look. Once approved and committed → Phase 6 (default provider switch to DeepSeek via Zen — config-only, needs user to get a Zen key at opencode.ai/auth).
+**Open/unverified items to resolve, not assume:** (a) whether DeepSeek/Zen actually fixes the concurrency bug or just moves it, (b) the true root cause of the original bun install error.
 **Discipline reminder unchanged:** don't add plugins/features beyond the confirmed 4-phase build order until each phase is actually done and tested.
