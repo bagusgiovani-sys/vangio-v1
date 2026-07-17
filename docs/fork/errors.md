@@ -21,6 +21,7 @@
 - **GLM free vs paid endpoint mixup** — `/api/paas/v4` (free) vs `/api/coding/paas/v4` (paid Coding Plan) are NOT interchangeable
 - **Kimi** requires min $1 top-up before the API works at all — not truly free
 - **Local Ollama** on this hardware (16GB RAM, integrated graphics) will be slow — expected, not a bug
+- **Zen free-tier limits are unpublished but real** — users report hitting a hard "Free usage exceeded, add credits" wall after "two huge sessions for six hours" (opencode issue #28055). Cooldown/reset behavior is undocumented and unreliable. Some users resort to Cloudflare WARP proxies (oplire tool) to work around it. Pooled across all Zen free models or per-model: unknown. Treat as a finite trial, not unlimited free access.
 
 ## Log
 
