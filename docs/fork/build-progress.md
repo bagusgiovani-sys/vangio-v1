@@ -1,5 +1,5 @@
 # Build Progress — VanGio
-> Started: 2026-07-05 | Last updated: 2026-07-17
+> Started: 2026-07-05 | Last updated: 2026-07-18
 > Read this at the start of EVERY coding session before touching any file.
 > Status keys: [ ] Pending  [~] In Progress  [x] Done
 
@@ -58,13 +58,10 @@
 - [!] Privacy reminder: ALL Zen free models are feedback-collection tiers (data may be used for training) — same policy as before: personal/hobby use only, never client/confidential code.
 
 ## Phase 7 — Rate-Limit Handling (Must-Have, now AFTER provider switch)
-- [ ] Locate OpenCode's existing provider error-handling code (do NOT guess the file)
-- [ ] Add clear 429/overload message suggesting a provider switch
-- [ ] Confirm a failed request does not crash the session
-- [ ] Re-check whether this is still needed post-Phase-6, or if DeepSeek/Zen sidesteps it
+- [x] **CANCELLED 2026-07-18:** User decided not needed. DeepSeek V4 Flash Free via Zen doesn't have GLM's 1-concurrent-request retry-loop issue; Zen's free tier has unpublished limits but a future wall is a different problem from the retry-loop bug. If rate-limit issues surface in real use, revisit then.
 
 ## Phase 8 — Branding/Rebranding (Should-Have, now LAST)
-- [ ] Rename config folder/output refs OpenCode → VanGio (keep license/attribution notices intact)
+- [~] Rename config folder/output refs OpenCode → VanGio (keep license/attribution notices intact)
 
 ---
 
@@ -95,6 +92,7 @@ Since VanGio IS OpenCode, awesome-opencode ecosystem plugins work for free. Grap
 | 4 | 2026-07-16 | Banner committed+pushed (285c6e22f); Phase 6 provider switch DONE (DeepSeek default via Zen, verified with real completion — works keyless for now); neon-matrix theme created + activated; king/warrior agent workflow configured in global opencode.json, both agents verified responding; Six Paths (King & Warrior) workflow set up for Claude Code (.claude/CLAUDE.md + .claude/agents/warrior.md) | Theme name lives in tui.json not opencode.json; Zen keyless access is fragile — expect to need /connect eventually |
 | 5 | 2026-07-17 | (Claude Code) Six Paths workflow exported as portable kit (`six-paths-workflow/`, throwaway, for reuse in other projects); mobile session control idea brainstormed → reality-checked → spec approved (see Post-v1 entry); briefing copy exported to root (`mobile-session-control-summary.md`, throwaway) | Both root-level exports are disposable — user pastes them elsewhere then deletes; no commits made this session |
 | 6 | 2026-07-17 | (Claude Code) Phase 6.6 marquee PTY verification DONE (slide, wraparound, Tab cycle, rapid-Tab, resize all pass); repo verify skill created (`.claude/skills/verify/SKILL.md`); Tab-order docs corrected (actual: Build→Gryphon→Plan) | Harness gotchas logged in errors.md: run node-pty host under node not bun; must answer terminal capability queries or TUI dies under PTY. POLICY CHANGE (user, same session): commit+push at every checkpoint from now on, no longer wait to be asked — CLAUDE.md Secretary rule updated; Phase 6.6 work committed+pushed under the new policy |
+| 7 | 2026-07-18 | Phase 6.7 Gryphon upgrades (Graphify/opencode-mem/CodeGraph MCP/prompt sharpening/premium brain) done via Gryphon chat; Phase 7 cancelled per user; Phase 8 rebranding started; errors.md Zen limits added | Gryphon chat session (this environment) — all config changes done without switching tools. Phase 8 in progress. |
 
 ---
 
@@ -113,15 +111,17 @@ Since VanGio IS OpenCode, awesome-opencode ecosystem plugins work for free. Grap
 - NOTE: All upgrades were done directly from the Gryphon chat session (this environment), not from Claude Code — proving the upgrade loop works without switching tools.
 
 ## Current Status
-**Last completed (2026-07-17, Gryphon):** Phase 6.7 Gryphon upgrades — Graphify + opencode-mem plugins installed, Gryphon prompt sharpened with auto-delegation rules, premium-gryphon agent profile added (Anthropic Claude Sonnet 4, dormant), MCP servers deferred. All config changes done from this chat session without switching to Claude Code.
+**Last completed (2026-07-18, Gryphon):** Phase 7 cancelled (not needed). Phase 8 rebranding started. Zen free-tier limits documented in errors.md. Build-progress updated with session 7 entry and frequent-push policy.
 
 **Prior to that (2026-07-17, Claude Code):** Phase 6.6 marquee fully verified live in a ConPTY harness (slide, wraparound, Tab cycle Build→Gryphon→Plan, rapid-Tab stress, resize — all pass; clean exit). Repo verify skill created at `.claude/skills/verify/SKILL.md`. Before that (2026-07-16): Phase 5 banner implemented and render-verified — `packages/tui/src/logo.ts` (VANGIO block wordmark, van|gio two-tone) + `packages/tui/src/component/logo.tsx` (owl face + byline); `bun dev` confirmed from source; fork-docs layer live; CodeGraph indexed + connected (`@colbymchenry/codegraph`).
 
 **Key deviations from original plan:** (1) WSL2 abandoned — native Windows instead. (2) GLM hit an unfixable 1-concurrent-request wall in real use (OpenCode issue #8618) — switching default to DeepSeek V4 Flash Free via Zen, GLM kept as fallback. (3) Build order changed: banner first. (4) Code editing happens in Claude Code; docs remain the shared continuity layer. (5) Banner spec adapted to the TUI's component architecture — cfonts pre-rendered to static glyphs instead of a runtime dep, blink cursor inherited from the TUI's native DECSCUSR setup (see Phase 5 notes). (6) Gryphon upgrades (plugins, prompt, premium brain) were done directly from this chat, not Claude Code — proving the upgrade loop works both ways.
 
-**In progress:** Phase 6 essentially done (see Phase 6 notes — keyless Zen works today). Phase 6.7 Gryphon upgrades done. Remaining v1 work: Phase 7 (rate-limit handling — re-check if still needed now that DeepSeek is default) and Phase 8 (rebranding: session epilogue + CLI plain wordmark + config folder rename).
+**In progress:** Phase 8 rebranding — replacing remaining "opencode" user-facing text with "VanGio" across TUI components, CLI output, and config folder paths. Keep license/attribution notices intact.
 
-**Next action:** Run a real multi-tool-call session on DeepSeek to close the concurrency question, then decide if Phase 7 is still needed. Also verify Graphify and opencode-mem actually work in a live session.
+**Next action:** Search and replace all remaining user-facing "OpenCode" → "VanGio" references, then commit+push.
+
+**Policy: Commit and push more frequently.** Changes are now pushed to `origin/dev` after every logical checkpoint (not waiting to be asked). This avoids losing work and keeps the remote in sync.
 
 **Open/unverified items to resolve, not assume:** (a) whether DeepSeek/Zen actually avoids the concurrency bug in a real multi-tool-call session, (b) the true root cause of the original bun install error, (c) how long Zen's keyless access lasts, (d) whether Graphify and opencode-mem work correctly in practice (config-only, not tested live).
 
