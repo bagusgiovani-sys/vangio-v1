@@ -46,6 +46,13 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
           }}
         >
           <box flexShrink={0} gap={1} paddingRight={1}>
+            <text>
+              <span style={{ fg: theme.textMuted }}>Van</span>
+              <span style={{ fg: theme.text }}>Gio</span>
+              {"  "}
+              <span style={{ fg: theme.textMuted }}>v{InstallationVersion}</span>
+            </text>
+            <box paddingTop={1} />
             <pluginRuntime.Slot
               name="sidebar_title"
               mode="single_winner"
@@ -88,12 +95,10 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
 
         <box flexShrink={0} gap={1} paddingTop={1}>
           <pluginRuntime.Slot name="sidebar_footer" mode="single_winner" session_id={props.sessionID}>
-            <text fg={theme.textMuted}>
-              <span style={{ fg: theme.success }}>•</span> <b>Open</b>
-              <span style={{ fg: theme.text }}>
-                <b>Code</b>
-              </span>{" "}
-              <span>{InstallationVersion}</span>
+            <text>
+              <span style={{ fg: theme.success }}>✦</span>{" "}
+              <span style={{ fg: theme.textMuted }}>Van</span>
+              <span style={{ fg: theme.text }}>Gio</span>
             </text>
           </pluginRuntime.Slot>
         </box>

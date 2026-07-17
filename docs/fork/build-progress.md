@@ -1,5 +1,5 @@
 # Build Progress — VanGio
-> Started: 2026-07-05 | Last updated: 2026-07-16
+> Started: 2026-07-05 | Last updated: 2026-07-17
 > Read this at the start of EVERY coding session before touching any file.
 > Status keys: [ ] Pending  [~] In Progress  [x] Done
 
@@ -44,6 +44,12 @@
 - [ ] Sign in at opencode.ai/auth + `/connect` — deferred until keyless access breaks (works without it today)
 - [ ] **Real test still needed:** run a multi-tool-call session (not just one message) to check whether this actually avoids the concurrency/retry-loop issue GLM hit, or whether that bug is OpenCode-client-side and follows to any provider
 
+## Phase 6.6 — Gryphon consolidation + description marquee (user-directed, 2026-07-17)
+- [x] Agent roster consolidated: Tab cycle was getting crowded (build/plan/king/warrior/scout), so king/warrior/scout merged into ONE primary agent `gryphon` (DeepSeek, orchestrator persona, full permissions) with `warrior` and `scout` demoted to `mode: "subagent"` — out of the Tab cycle, still invokable via `@warrior`/`@scout` and delegable by Gryphon. Tab now cycles Build → Gryphon → Plan (alphabetical — verified live 2026-07-17).
+- [x] FORK CODE: new `Marquee` component (`packages/tui/src/component/marquee.tsx`) — endless right-to-left sliding text (150ms tick, windowed slice, wraparound) — wired into the prompt status row (`component/prompt/index.tsx`) to scroll the current agent's `description`. Gryphon's description explains the three heads and their models. Typecheck clean.
+- [x] Restored `renderLine` body in `component/logo.tsx` (was left empty by an external edit, breaking compile + wordmark render).
+- [x] Live PTY verification of marquee slide + Tab cycle — DONE (2026-07-17, ConPTY harness with `@lydell/node-pty` run under **node**, NOT bun — see errors.md entry): marquee windows of the active agent's description advance ~1 char/150ms (offsets 0→51 traced), wraparound seam renders correctly (tail + 3-space gap + restart, second cycle observed), Tab switches the scrolled description Build→Gryphon→Plan with wrap back to Build, 6 rapid Tabs (2 full cycles) land back on Build, mid-scroll resize (140→100→140 cols) survives, clean Ctrl+C exit. Harness recipe persisted to `.claude/skills/verify/SKILL.md`. **CORRECTION:** actual Tab-cycle order is **Build → Gryphon → Plan** (alphabetical), not Build → Plan → Gryphon as written above. NOTE: at <~85 cols the status row wraps to a second line (marquee included) — acceptable, but part of the user eyeball check.
+
 ## Phase 6.5 — Theme + Agent Workflow (user-directed additions, 2026-07-16)
 - [x] "neon-matrix" theme created at `~/.config/opencode/themes/neon-matrix.json` (bright neon green #39FF14 text, matrix green #00FF41 primary, near-black green-tinted background #050805) and activated via `"theme": "neon-matrix"` in `~/.config/opencode/tui.json`. GOTCHA discovered: the active theme name lives in **tui.json**, NOT opencode.json — the TUI reads `useTuiConfig().theme`; theme files are discovered from `<config-dir>/themes/*.json` and project `.opencode/themes/`.
 - [x] King/Warrior agent workflow in global opencode.json `"agent"` block: `king` (mode primary, planner/advisor persona, `permission.edit: deny` so it can't write files) and `warrior` (mode primary, implementer persona). Both verified responding via `opencode run --agent <name>`. Tab in the TUI switches between primaries. Warrior was briefly on GLM-4.7-Flash (wrong — its 1-concurrent-request retry-loop bug fires under exactly the warrior's multi-tool-call load; user caught it), then briefly both-on-DeepSeek, now settled per research below.
@@ -64,19 +70,18 @@
 
 ## Post-v1 (do NOT start until v1 works and ships)
 - [ ] Pixel-art mascot logo (parked — use a real pixel-art tool)
+- [ ] Custom codebase indexing differentiator — CONFIRMED OpenCode does NOT have this natively (verified: relies on grep/ripgrep/LSP, not semantic search, unlike Cursor). **Graphify already installed** (provides knowledge graph). Remaining candidate: `opencode-codebase-index` (Helweg) — but overlaps with Graphify, so skip unless Graphify proves insufficient.
 - [ ] Rate-limit handling refinement / quota-aware suggestions
-- [ ] Custom codebase indexing differentiator — CONFIRMED OpenCode does NOT have this natively (verified: relies on grep/ripgrep/LSP, not semantic search, unlike Cursor). Candidate free plugins: Graphify, `opencode-codebase-index` (Helweg), or `colbymchenry/codegraph` — NOTE: two unrelated tools are both called "CodeGraph," confirm which one before installing. Pick ONE, they overlap in purpose — running multiple simultaneously is redundant (duplicate indexing overhead, duplicate background watchers, agent confusion over which search tool to use)
 - [ ] VanGio native side-panel VS Code/Cursor extension — docked, resizable, layout-persistent panel with status indicator + config UI (NOT a terminal wrapper; OpenCode only has the wrapper today). Optionally reuse/rebrand OpenCode's existing terminal-wrapper extension as an interim step
 - [ ] Native Windows support without WSL2 — ALREADY EFFECTIVELY DONE for personal use (native npm install works). Still validate/document a clean installer before any public release
+- [ ] **Mobile session control — SPEC APPROVED 2026-07-17** (`docs/superpowers/specs/2026-07-17-mobile-session-control-design.md`): watch/reply/approve VanGio sessions from Android over Tailscale, reusing `packages/app` as the phone client + ONE new component (notifier plugin → ntfy push). Reality-checked: Claude Code has first-party Remote Control, opencode has community clients (opencode-remote-android, MobileCode) — but none do the push-notification + approve-from-phone loop, which is exactly our build. IMPLEMENTATION PLAN WRITTEN 2026-07-17 (`docs/superpowers/plans/2026-07-17-mobile-session-control.md`) — spec §9 verify-first list fully resolved against source during planning (notable: plugin bus uses `permission.asked` with `permission`+`patterns` fields, NOT `permission.updated`/`title`; `session.status` busy/idle drives the duration threshold; global plugin dir `~/.config/opencode/plugins/` is the install target). Execution parked behind v1 Phases 7–8 per discipline rule
 
-## Post-v1 Enhancement Menu (researched free OpenCode plugins — install ONE only when a specific pain appears, not preemptively)
-Since VanGio IS OpenCode, all awesome-opencode ecosystem plugins work for free. Prioritized by relevance to GLM-4.7-Flash's known weakness (context/memory on long or multi-file tasks):
-- **Graphify** — on-device knowledge-graph codebase mapping, free, MIT, works with OpenCode. Best first pick for cross-file understanding. (Also a partial substitute for the custom-indexing differentiator.)
-- **opencode-mem** — persistent memory via LOCAL vector DB, web UI, can reuse existing GLM auth. Free.
-- **opencode-openmemory** — local-first, privacy-focused memory (good for freelance client confidentiality). Free.
-- **Dynamic context pruning / token-pruning plugins** — stretch the rate-limited free tier further on long sessions.
+## Post-v1 Enhancement Menu (researched free OpenCode plugins — install when a specific pain appears)
+Since VanGio IS OpenCode, awesome-opencode ecosystem plugins work for free. Graphify and opencode-mem are already installed. Remaining candidates for when a specific need arises:
+- **opencode-openmemory** — local-first, privacy-focused memory (alternative to opencode-mem, good for client confidentiality). Free.
+- **Dynamic context pruning / token-pruning plugins** — stretch the free tier further on long sessions.
 - **oh-my-opencode** — "battery-included" heavy pack (async subagents, curated agents, LSP/AST, Claude Code compat). Powerful but complex — a LATER tool, not a day-one add. `oh-my-opencode-slim` is the lighter variant.
-- NOTE: `opencode-supermemory` requires a PAID Supermemory Pro plan for hosted mode (only self-hosted is free) — prefer opencode-mem/openmemory for a truly-free path.
+- NOTE: `opencode-supermemory` requires a PAID Supermemory Pro plan for hosted mode (only self-hosted is free) — prefer opencode-mem/openmemory for the truly-free path.
 - Scope-creep traps (useful but NOT for v1): opencode-notify, Composio (team integrations, irrelevant to solo), worktree plugins, browser automation, antigravity-auth (free Gemini access).
 
 ---
@@ -88,13 +93,36 @@ Since VanGio IS OpenCode, all awesome-opencode ecosystem plugins work for free. 
 | 2 | 2026-07-07 to 2026-07-16 | Native Windows environment working, GLM connected, hit GLM concurrency wall, forked+cloned for source customization, bun install resolved, banner code verified, decided to switch default provider to DeepSeek V4 Flash Free, reordered remaining phases | Workflow split: this chat = planning/docs, Claude Code = actual source editing |
 | 3 | 2026-07-16 | (Claude Code) docs/fork instruction layer set up + committed/pushed; Windows symlink corruption fixed (see errors.md) unblocking pre-push typecheck; `bun dev` confirmed from source; CodeGraph indexed + wired into Claude Code; Phase 5 banner IMPLEMENTED (logo.ts + logo.tsx) and render-verified — awaiting user eyeball check | fix-node-pty found stale (moved to core postinstall); banner spec adapted to component architecture (see Phase 5 notes) |
 | 4 | 2026-07-16 | Banner committed+pushed (285c6e22f); Phase 6 provider switch DONE (DeepSeek default via Zen, verified with real completion — works keyless for now); neon-matrix theme created + activated; king/warrior agent workflow configured in global opencode.json, both agents verified responding; Six Paths (King & Warrior) workflow set up for Claude Code (.claude/CLAUDE.md + .claude/agents/warrior.md) | Theme name lives in tui.json not opencode.json; Zen keyless access is fragile — expect to need /connect eventually |
+| 5 | 2026-07-17 | (Claude Code) Six Paths workflow exported as portable kit (`six-paths-workflow/`, throwaway, for reuse in other projects); mobile session control idea brainstormed → reality-checked → spec approved (see Post-v1 entry); briefing copy exported to root (`mobile-session-control-summary.md`, throwaway) | Both root-level exports are disposable — user pastes them elsewhere then deletes; no commits made this session |
+| 6 | 2026-07-17 | (Claude Code) Phase 6.6 marquee PTY verification DONE (slide, wraparound, Tab cycle, rapid-Tab, resize all pass); repo verify skill created (`.claude/skills/verify/SKILL.md`); Tab-order docs corrected (actual: Build→Gryphon→Plan) | Harness gotchas logged in errors.md: run node-pty host under node not bun; must answer terminal capability queries or TUI dies under PTY. POLICY CHANGE (user, same session): commit+push at every checkpoint from now on, no longer wait to be asked — CLAUDE.md Secretary rule updated; Phase 6.6 work committed+pushed under the new policy |
 
 ---
 
+## Phase 6.7 — Gryphon Upgrades: Plugins + Sharper Prompt + Premium Brain (2026-07-17)
+- [x] Installed **@sentropic/graphify** — codebase knowledge graph plugin. Enables concept-based search across files, not just text matching. Registered via `opencode plugin @sentropic/graphify`, scoped to project (`.opencode/opencode.jsonc`).
+- [x] Installed **opencode-mem** — persistent memory plugin (local vector DB). Gryphon remembers project conventions, user preferences, and past decisions across sessions. Registered via `opencode plugin opencode-mem`, same scope.
+- [x] **Sharpened Gryphon prompt** — complete rewrite in global `~/.config/opencode/opencode.json`:
+  - Explicit routing rules: trivial lookup → self, moderate lookup → @scout, small edit → self, complex implementation → @warrior, ambiguous architecture → keep and think
+  - Token discipline guidelines: Scout <10% cost (use liberally), Warrior ~60-80% (use sparingly), self after 5+ turns without output → ask user
+  - Plugin awareness: Graphify and opencode-mem usage instructions baked into prompt
+  - Verification discipline: never claim success without confirming, flag unverified, match code style
+  - Escalation trigger: if task exceeds DeepSeek capability → suggest premium-gryphon
+- [x] Added **premium-gryphon** agent profile — same three-headed workflow but backed by Claude Sonnet 4 (paid, requires `ANTHROPIC_API_KEY` env var). Configured but dormant until key is set. Anthropic provider block added to global config.
+- [x] **CodeGraph wired as OpenCode MCP server** — `@colbymchenry/codegraph` was already installed globally (v1.4.1) and configured for Claude Code, but not for Gryphon/OpenCode. Ran `codegraph install --target opencode` and moved the generated config to the correct `.opencode/opencode.jsonc`. Index already built: 55,528 nodes, 191,032 edges across 3,138 files.
+- [x] **Routing rules added to Gryphon prompt** — clear logic for when to use CodeGraph (code-level: callers, callees, impact analysis) vs Graphify (concept-level: architecture, entity relationships) vs Grep (simple: symbol lookups) vs Git (recent changes).
+- NOTE: All upgrades were done directly from the Gryphon chat session (this environment), not from Claude Code — proving the upgrade loop works without switching tools.
+
 ## Current Status
-**Last completed (2026-07-16, Claude Code):** Phase 5 banner implemented and render-verified — `packages/tui/src/logo.ts` (VANGIO block wordmark, van|gio two-tone) + `packages/tui/src/component/logo.tsx` (owl face + byline). Typecheck clean. Also: `bun dev` confirmed from source, fork-docs layer live, CodeGraph indexed + connected (`@colbymchenry/codegraph` — the "which CodeGraph" question from the open items is now settled).
-**Key deviations from original plan:** (1) WSL2 abandoned — native Windows instead. (2) GLM hit an unfixable 1-concurrent-request wall in real use (OpenCode issue #8618) — switching default to DeepSeek V4 Flash Free via Zen, GLM kept as fallback. (3) Build order changed: banner first. (4) Code editing happens in Claude Code; docs remain the shared continuity layer. (5) Banner spec adapted to the TUI's component architecture — cfonts pre-rendered to static glyphs instead of a runtime dep, blink cursor inherited from the TUI's native DECSCUSR setup (see Phase 5 notes).
-**In progress:** Phase 6 essentially done (see Phase 6 notes — keyless Zen works today). Remaining v1 work: Phase 7 (rate-limit handling — re-check if still needed now that DeepSeek is default) and Phase 8 (rebranding: session epilogue + CLI plain wordmark + config folder rename).
-**Next action:** Run a real multi-tool-call session on DeepSeek to close the concurrency question, then decide if Phase 7 is still needed.
-**Open/unverified items to resolve, not assume:** (a) whether DeepSeek/Zen actually avoids the concurrency bug in a real multi-tool-call session, (b) the true root cause of the original bun install error, (c) how long Zen's keyless access lasts.
+**Last completed (2026-07-17, Gryphon):** Phase 6.7 Gryphon upgrades — Graphify + opencode-mem plugins installed, Gryphon prompt sharpened with auto-delegation rules, premium-gryphon agent profile added (Anthropic Claude Sonnet 4, dormant), MCP servers deferred. All config changes done from this chat session without switching to Claude Code.
+
+**Prior to that (2026-07-17, Claude Code):** Phase 6.6 marquee fully verified live in a ConPTY harness (slide, wraparound, Tab cycle Build→Gryphon→Plan, rapid-Tab stress, resize — all pass; clean exit). Repo verify skill created at `.claude/skills/verify/SKILL.md`. Before that (2026-07-16): Phase 5 banner implemented and render-verified — `packages/tui/src/logo.ts` (VANGIO block wordmark, van|gio two-tone) + `packages/tui/src/component/logo.tsx` (owl face + byline); `bun dev` confirmed from source; fork-docs layer live; CodeGraph indexed + connected (`@colbymchenry/codegraph`).
+
+**Key deviations from original plan:** (1) WSL2 abandoned — native Windows instead. (2) GLM hit an unfixable 1-concurrent-request wall in real use (OpenCode issue #8618) — switching default to DeepSeek V4 Flash Free via Zen, GLM kept as fallback. (3) Build order changed: banner first. (4) Code editing happens in Claude Code; docs remain the shared continuity layer. (5) Banner spec adapted to the TUI's component architecture — cfonts pre-rendered to static glyphs instead of a runtime dep, blink cursor inherited from the TUI's native DECSCUSR setup (see Phase 5 notes). (6) Gryphon upgrades (plugins, prompt, premium brain) were done directly from this chat, not Claude Code — proving the upgrade loop works both ways.
+
+**In progress:** Phase 6 essentially done (see Phase 6 notes — keyless Zen works today). Phase 6.7 Gryphon upgrades done. Remaining v1 work: Phase 7 (rate-limit handling — re-check if still needed now that DeepSeek is default) and Phase 8 (rebranding: session epilogue + CLI plain wordmark + config folder rename).
+
+**Next action:** Run a real multi-tool-call session on DeepSeek to close the concurrency question, then decide if Phase 7 is still needed. Also verify Graphify and opencode-mem actually work in a live session.
+
+**Open/unverified items to resolve, not assume:** (a) whether DeepSeek/Zen actually avoids the concurrency bug in a real multi-tool-call session, (b) the true root cause of the original bun install error, (c) how long Zen's keyless access lasts, (d) whether Graphify and opencode-mem work correctly in practice (config-only, not tested live).
+
 **Discipline reminder unchanged:** don't add plugins/features beyond the confirmed 4-phase build order until each phase is actually done and tested.

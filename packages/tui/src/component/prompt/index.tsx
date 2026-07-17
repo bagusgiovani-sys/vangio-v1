@@ -20,6 +20,7 @@ import { EmptyBorder, SplitBorder } from "../../ui/border"
 import { useTuiPaths, useTuiTerminalEnvironment } from "../../context/runtime"
 import { useClipboard } from "../../context/clipboard"
 import { Spinner } from "../spinner"
+import { Marquee } from "../marquee"
 import { useSDK } from "../../context/sdk"
 import { useRoute } from "../../context/route"
 import { useProject } from "../../context/project"
@@ -1466,6 +1467,18 @@ export function Prompt(props: PromptProps) {
                                 {local.model.variant.current()}
                               </span>
                             </text>
+                          </Show>
+                          <Show when={agent().description}>
+                            {(description) => (
+                              <box flexDirection="row" gap={1} flexShrink={1}>
+                                <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>·</text>
+                                <Marquee
+                                  text={description()}
+                                  width={28}
+                                  fg={fadeColor(theme.textMuted, modelMetaAlpha())}
+                                />
+                              </box>
+                            )}
                           </Show>
                         </box>
                       </Show>

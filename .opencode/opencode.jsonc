@@ -13,9 +13,19 @@
       "description": "Contains opencode logs and data",
     },
   },
-  "mcp": {},
+  "mcp": {
+    "codegraph": {
+      "type": "local",
+      "command": ["codegraph", "serve", "--mcp"],
+      "enabled": true
+    }
+  },
   "tools": {
     "github-triage": false,
     "github-pr-search": false,
   },
+  "plugin": [
+    "@sentropic/graphify",
+    "opencode-mem"
+  ],
 }

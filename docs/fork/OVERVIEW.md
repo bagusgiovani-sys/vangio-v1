@@ -66,6 +66,26 @@ vangio-v1/                 # forked repo, OpenCode structure preserved
 
 ---
 
+## 4.5 Gryphon Plugins & Upgrades (2026-07-17)
+
+Gryphon now has two plugins wired in:
+
+| Plugin | Purpose | How to use |
+|---|---|---|
+| **Graphify** (`@sentropic/graphify`) | General knowledge graph — entities, relations, ontology clusters. Best for big-picture architecture questions: "how does the plugin system relate to providers?" | Run `/graphify .` in TUI once to build index, then ask concept-level questions. Gryphon's prompt has routing rules for when to use this vs CodeGraph |
+| **opencode-mem** | Persistent memory via local vector DB — remembers project conventions, preferences, and decisions across sessions | Activated automatically on load. Consult at session start |
+| **CodeGraph** (`@colbymchenry/codegraph`) | Code-specific intelligence — symbols, callers, callees, call paths, impact analysis. 55K+ nodes already indexed. Best for debugging and refactoring: "who calls this function?", "what breaks if I change X?" | Wired as MCP server via `"mcp"` block in `.opencode/opencode.jsonc`. Tools fire automatically when Gryphon needs code intelligence |
+
+**Routing logic** (baked into Gryphon's prompt):
+- "Who calls X?" → **CodeGraph** (its specialty)
+- "How does area X relate to Y?" → **Graphify** (concept-level)
+- "What is this symbol?" → just **grep/read** (too simple for either graph tool)
+- "What changed recently?" → **git**
+
+**Premium brain profile** — `premium-gryphon` agent exists in global config but is dormant until you set `ANTHROPIC_API_KEY` env var. Uses Claude Sonnet 4 (paid) for complex architecture tasks that exceed DeepSeek's free-tier capability. Tab-cycle includes it once the key is present.
+
+---
+
 ## 5. Key Behaviors to Build (Must-Have, from PRD) — REORDERED 2026-07-16
 Build in THIS order, one phase fully done before starting the next:
 1. **Banner** — cfonts "VANGIO" wordmark + owl face + "by bagusgiovani" byline + ANSI blink cursor. Code already verified (6-line cfonts output confirmed by real sandbox run). Purely cosmetic, no functional risk — good first real edit to the forked source.
