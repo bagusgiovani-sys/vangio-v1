@@ -6,8 +6,10 @@ import { Context, Effect, Layer } from "effect"
 import { Flock } from "./util/flock"
 import { Flag } from "./flag/flag"
 import { makeGlobalNode } from "./effect/app-node"
+import { migrateLegacyDirs } from "./legacy-dirs"
 
 const app = "vangio"
+const legacyApp = "opencode"
 const data = path.join(xdgData!, app)
 const cache = path.join(xdgCache!, app)
 const config = path.join(xdgConfig!, app)
@@ -41,6 +43,24 @@ await Promise.all([
   fs.mkdir(Path.bin, { recursive: true }),
   fs.mkdir(Path.repos, { recursive: true }),
 ])
+
+await migrateLegacyDirs({
+  from: {
+    config: path.join(xdgConfig!, legacyApp),
+    data: path.join(xdgData!, legacyApp),
+    state: path.join(xdgState!, legacyApp),
+  },
+  to: { config, data, state },
+})
+  .then((result) => {
+    if (result.failed.length)
+      console.error(`${app}: could not migrate ${result.failed.length} legacy ${legacyApp} entries, will retry`, {
+        failed: result.failed,
+      })
+  })
+  .catch((error) => {
+    console.error(`${app}: legacy ${legacyApp} dir migration failed`, error)
+  })
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Global") {}
 

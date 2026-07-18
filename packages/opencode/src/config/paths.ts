@@ -24,15 +24,17 @@ export const directories = Effect.fn("ConfigPaths.directories")(function* (direc
   const afs = yield* FSUtil.Service
   return unique([
     Global.Path.config,
+    // legacy .opencode dirs stay readable so existing projects keep working;
+    // .vangio is listed after it at each level, so it merges later and wins
     ...(!Flag.OPENCODE_DISABLE_PROJECT_CONFIG
       ? yield* afs.up({
-          targets: [".vangio"],
+          targets: [".opencode", ".vangio"],
           start: directory,
           stop: worktree,
         })
       : []),
     ...(yield* afs.up({
-      targets: [".vangio"],
+      targets: [".opencode", ".vangio"],
       start: Global.Path.home,
       stop: Global.Path.home,
     })),
