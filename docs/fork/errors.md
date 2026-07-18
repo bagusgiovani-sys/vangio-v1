@@ -22,9 +22,19 @@
 - **Kimi** requires min $1 top-up before the API works at all — not truly free
 - **Local Ollama** on this hardware (16GB RAM, integrated graphics) will be slow — expected, not a bug
 - **Zen free-tier limits are unpublished but real** — users report hitting a hard "Free usage exceeded, add credits" wall after "two huge sessions for six hours" (opencode issue #28055). Cooldown/reset behavior is undocumented and unreliable. Some users resort to Cloudflare WARP proxies (oplire tool) to work around it. Pooled across all Zen free models or per-model: unknown. Treat as a finite trial, not unlimited free access.
+- **Project-plugin init can stall CLI commands in this repo** (added 2026-07-18) — `vangio models` run from source hung 3+ minutes with the repo's `.opencode` config loading (graphify, opencode-mem, codegraph MCP), but completed in under a minute with `OPENCODE_DISABLE_PROJECT_CONFIG=1`. Plugin loading was silently OFF between the `.vangio` path rename and the legacy-fallback fix, so this only became visible again on 2026-07-18. Matches the standing open item "Graphify and opencode-mem work correctly in practice: unverified." Investigate before trusting those plugins; workaround for quick CLI checks is the env var above.
 
 ## Log
 
+---
+## [2026-07-18 21:30] Path rebrand orphaned all user config — Gryphon vanished, model fell back to GLM 5
+#[migration] #[config] #[rebranding]
+**Context:** Phase 8 rebranding. A prior commit changed the XDG app dir constant from `opencode` to `vangio` (packages/core/src/global.ts), so VanGio started reading `~/.config/vangio/`, `~/.local/share/vangio/`, `~/.local/state/vangio/` — all freshly created and empty.
+**Error:** No error message at all — the failure was silent. The Gryphon/premium-gryphon/scout/warrior agents disappeared from the TUI, and the model silently changed to `zhipu/glm-5`.
+**Root cause:** The rename shipped without a data migration. The real config (agents, Zen provider, DeepSeek default), auth DB, and model history stayed in the old `opencode` dirs. With no config model, provider auto-detection found only the `ZHIPU_API_KEY` user env var and default-model selection took the top-ranked catalog model for the only available provider → GLM 5. Three more rename leftovers compounded it: config.ts still matched dirs ending `.opencode` (so `.vangio` project config never loaded), plugin install still wrote to `.opencode`, and one TUI permission string was missed.
+**Fix:** `feat(core): migrate legacy opencode dirs to vangio on first start` (7027e69a1) — one-time entry-by-entry copy of legacy config/data/state at bootstrap (never overwrites, skips old logs, marker file in state dir, partial failures retry next start; 5 bun tests + sandboxed XDG end-to-end). Project-level `.opencode` dirs stay readable as a fallback with `.vangio` winning. Leftover spots fixed in the same commit. Migration ran for real on this machine: config hash-identical, Gryphon back, `vangio models` lists the Zen models + anthropic from the migrated config.
+**Prevention:** Any rename of a storage path (config dir, data dir, DB file, marker file) MUST ship the migration in the same commit — never as a follow-up. Silent-fallback design means orphaned data produces no error, only wrong behavior, so grep for every consumer of the old path (here: config dir match, install target, docs/skill text) before calling a rename done.
+**Files affected:** packages/core/src/legacy-dirs.ts (new), packages/core/test/legacy-dirs.test.ts (new), packages/core/src/global.ts, packages/opencode/src/config/paths.ts, packages/opencode/src/config/config.ts, packages/opencode/src/plugin/install.ts
 ---
 ## [2026-07-17 22:10] ConPTY test harness: bun host breaks node-pty stdin; TUI dies without terminal query replies
 #[environment] #[windows] #[verification] #[tooling]
