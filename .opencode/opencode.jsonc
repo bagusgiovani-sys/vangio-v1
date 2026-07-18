@@ -24,8 +24,10 @@
     "github-triage": false,
     "github-pr-search": false,
   },
+  // @sentropic/graphify removed 2026-07-19: latest release (0.17.1, 2026-06-23) predates the
+  // current plugin API and fails to load ("Plugin export is not a function") — see errors.md.
+  // CodeGraph MCP above covers the codebase-graph need. Re-add if graphify ships a compatible release.
   "plugin": [
-    "@sentropic/graphify",
     "opencode-mem"
   ],
 }

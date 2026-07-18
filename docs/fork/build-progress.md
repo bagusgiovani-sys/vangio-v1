@@ -129,6 +129,6 @@ Since VanGio IS OpenCode, awesome-opencode ecosystem plugins work for free. Grap
 
 **Policy: Commit and push more frequently.** Changes are now pushed to `origin/dev` after every logical checkpoint (not waiting to be asked). This avoids losing work and keeps the remote in sync.
 
-**Open/unverified items to resolve, not assume:** (a) whether DeepSeek/Zen actually avoids the concurrency bug in a real multi-tool-call session, (b) the true root cause of the original bun install error, (c) how long Zen's keyless access lasts, (d) whether Graphify and opencode-mem work correctly in practice (config-only, not tested live), (e) why project-plugin init stalls `vangio models` in this repo for 3+ minutes (likely related to (d) — see errors.md watchlist).
+**Open/unverified items to resolve, not assume:** (a) whether DeepSeek/Zen actually avoids the concurrency bug in a real multi-tool-call session, (b) the true root cause of the original bun install error, (c) how long Zen's keyless access lasts, (d) whether opencode-mem works correctly in practice (loads without errors; live behavior unverified). RESOLVED 2026-07-19 (see errors.md): the plugin-init stall was a one-time cold npm install, not a bug; Graphify is incompatible with the current plugin API (no fixed release exists) and was removed from `.opencode/opencode.jsonc` — CodeGraph MCP covers that need.
 
 **Discipline reminder unchanged:** don't add plugins/features beyond the confirmed 4-phase build order until each phase is actually done and tested.

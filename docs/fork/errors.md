@@ -27,6 +27,15 @@
 ## Log
 
 ---
+## [2026-07-19 10:30] Plugin-init stall root-caused (one-time npm install) + graphify confirmed incompatible
+#[plugins] #[performance] #[verification]
+**Context:** Investigating the 2026-07-18 watchlist item: `vangio models` in this repo hung 3+ minutes with project config, fast without it.
+**Error:** No error — silent stall. Log for the hung run ends at `loading .opencode\opencode.jsonc`, nothing after. Separately, every full boot since logs `ERROR failed to load plugin path=@sentropic/graphify error="Plugin export is not a function"`.
+**Root cause:** Two independent things. (1) The stall was the ONE-TIME cold `npm install` of the plugin framework dep tree (`@opencode-ai/plugin` + effect + ai-sdk) into `.opencode/node_modules` — restored plugin loading (legacy-fallback fix) triggered it for the first time, network install took minutes, and killing the command left it to finish on the next boot. Both later boots with project config completed in seconds. Not a code bug. (2) graphify's latest release (0.17.1, 2026-06-23, verified via npm) predates the current plugin API: its module exports neither a function nor a `{server}` shape, so `getLegacyPlugins` throws. No compatible version exists to upgrade to.
+**Fix:** (1) None needed — documented behavior: first boot after adding plugins/config dirs does a silent network install and can take minutes; don't kill it, or run once with `OPENCODE_DISABLE_PROJECT_CONFIG=1` if in a hurry. (2) Removed `@sentropic/graphify` from `.opencode/opencode.jsonc` (comment in the file explains; CodeGraph MCP covers the need). `opencode-mem` kept — loads without errors, live behavior still unverified.
+**Prevention:** Before treating a "hang" as a bug, read `~/.local/share/vangio/log/opencode.log` first — the last line tells you which phase stalled. And never assume a config-only plugin install works: watch the boot log for `failed to load plugin` the first time it actually loads.
+**Files affected:** .opencode/opencode.jsonc
+---
 ## [2026-07-18 21:30] Path rebrand orphaned all user config — Gryphon vanished, model fell back to GLM 5
 #[migration] #[config] #[rebranding]
 **Context:** Phase 8 rebranding. A prior commit changed the XDG app dir constant from `opencode` to `vangio` (packages/core/src/global.ts), so VanGio started reading `~/.config/vangio/`, `~/.local/share/vangio/`, `~/.local/state/vangio/` — all freshly created and empty.
