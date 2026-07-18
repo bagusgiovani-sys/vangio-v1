@@ -11,7 +11,7 @@ Every session runs the King & Warrior pattern. The goal is token efficiency: exp
 The other four paths are folded into existing machinery — do NOT spawn standing agents for these:
 - **Watcher** (index freshness): CodeGraph auto-syncs via its file watcher. Only if results look stale, run `codegraph status` to check for pending syncs.
 - **Reality checker** (verify against the world): use WebSearch/WebFetch or Context7 docs whenever a claim depends on current external facts (provider endpoints, API pricing, library versions). Never assert those from memory.
-- **Secretary** (records): keep `docs/fork/build-progress.md` and `docs/fork/errors.md` in sync as work completes, in the same change. Git commits and pushes happen ONLY when the user says so — never automatically.
+- **Secretary** (records): keep `docs/fork/build-progress.md` and `docs/fork/errors.md` in sync as work completes, in the same change. Commit AND push to `origin/dev` at every natural checkpoint (verified feature/fix, doc sync, phase step) WITHOUT waiting to be asked — user policy since 2026-07-17. Keep commits scoped to one logical change; never commit half-done/unverified work. At session start, run `git status` first: if a prior session left coherent uncommitted changes or unpushed commits, commit+push them immediately before new work.
 - **Inspector + Devil's Advocate** (quality gates): before presenting substantial work as done, self-review critically; for risky or security-touching changes run `/security-review`, and use `/code-review` before commits when the diff is nontrivial. Question your own conclusions — verified evidence over assumptions, always.
 
 <!-- CODEGRAPH_START -->
