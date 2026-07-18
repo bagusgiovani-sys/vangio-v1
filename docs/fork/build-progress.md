@@ -126,7 +126,7 @@ Since VanGio IS OpenCode, awesome-opencode ecosystem plugins work for free. Grap
 
 **In progress:** Nothing — all v1 phases are complete or cancelled.
 
-**Next action:** DONE 2026-07-19 — TUI acceptance passed and the plugin stall resolved (session 11). Awaiting user decision: tag/ship v1 (e.g. `git tag v1.0.0` + optionally validate a clean-machine install) vs start a post-v1 item (mobile session control has an approved spec + written plan; VS Code panel; rate-limit refinement).
+**Next action:** 🏁 **v1.0.0 TAGGED AND PUSHED 2026-07-19** (annotated tag on 83ccb91fa, user decision same day) — v1 is shipped. Nothing in progress. When the user wants more: post-v1 menu above (mobile session control has an approved spec + written implementation plan and is the natural first pick; VS Code panel; rate-limit refinement; or just daily-drive VanGio and let real pain points choose).
 
 **Policy: Commit and push more frequently.** Changes are now pushed to `origin/dev` after every logical checkpoint (not waiting to be asked). This avoids losing work and keeps the remote in sync.
 
