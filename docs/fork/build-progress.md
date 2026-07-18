@@ -93,6 +93,7 @@ Since VanGio IS OpenCode, awesome-opencode ecosystem plugins work for free. Grap
 | 5 | 2026-07-17 | (Claude Code) Six Paths workflow exported as portable kit (`six-paths-workflow/`, throwaway, for reuse in other projects); mobile session control idea brainstormed → reality-checked → spec approved (see Post-v1 entry); briefing copy exported to root (`mobile-session-control-summary.md`, throwaway) | Both root-level exports are disposable — user pastes them elsewhere then deletes; no commits made this session |
 | 6 | 2026-07-17 | (Claude Code) Phase 6.6 marquee PTY verification DONE (slide, wraparound, Tab cycle, rapid-Tab, resize all pass); repo verify skill created (`.claude/skills/verify/SKILL.md`); Tab-order docs corrected (actual: Build→Gryphon→Plan) | Harness gotchas logged in errors.md: run node-pty host under node not bun; must answer terminal capability queries or TUI dies under PTY. POLICY CHANGE (user, same session): commit+push at every checkpoint from now on, no longer wait to be asked — CLAUDE.md Secretary rule updated; Phase 6.6 work committed+pushed under the new policy |
 | 7 | 2026-07-18 | Phase 6.7 Gryphon upgrades (Graphify/opencode-mem/CodeGraph MCP/prompt sharpening/premium brain) done via Gryphon chat; Phase 7 cancelled per user; Phase 8 rebranding started; errors.md Zen limits added | Gryphon chat session (this environment) — all config changes done without switching tools. Phase 8 in progress. |
+| 8 | 2026-07-18 | (Claude Code) Phase 8 continued: internal path rebranding committed+pushed — data/cache/config dirs `opencode` → `vangio`, project config dir `.opencode` → `.vangio`, skill cache marker `.opencode-version` → `.vangio-version`, plan-edit permission path, new `VANGIO_TEST_HOME` env (falls back to `OPENCODE_TEST_HOME`) | These 4 files were sitting uncommitted from a prior session — pushed at session start per frequent-push policy |
 
 ---
 
@@ -111,7 +112,7 @@ Since VanGio IS OpenCode, awesome-opencode ecosystem plugins work for free. Grap
 - NOTE: All upgrades were done directly from the Gryphon chat session (this environment), not from Claude Code — proving the upgrade loop works without switching tools.
 
 ## Current Status
-**Last completed (2026-07-18, Gryphon):** Phase 7 cancelled (not needed). Phase 8 rebranding started. Zen free-tier limits documented in errors.md. Build-progress updated with session 7 entry and frequent-push policy.
+**Last completed (2026-07-18, Claude Code):** Phase 8 internal path rebranding committed+pushed (data/config dirs `vangio`, project dir `.vangio`, `.vangio-version`, `VANGIO_TEST_HOME`). Before that (same day, Gryphon): Phase 7 cancelled (not needed), Phase 8 rebranding started, Zen free-tier limits documented in errors.md.
 
 **Prior to that (2026-07-17, Claude Code):** Phase 6.6 marquee fully verified live in a ConPTY harness (slide, wraparound, Tab cycle Build→Gryphon→Plan, rapid-Tab stress, resize — all pass; clean exit). Repo verify skill created at `.claude/skills/verify/SKILL.md`. Before that (2026-07-16): Phase 5 banner implemented and render-verified — `packages/tui/src/logo.ts` (VANGIO block wordmark, van|gio two-tone) + `packages/tui/src/component/logo.tsx` (owl face + byline); `bun dev` confirmed from source; fork-docs layer live; CodeGraph indexed + connected (`@colbymchenry/codegraph`).
 
