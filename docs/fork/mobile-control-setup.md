@@ -111,9 +111,12 @@ Proof: `Successfully installed` (v1.98.9).
 
 ### 7. Tailscale login (interactive)
 
+The `tailscale` CLI is not on PATH after a winget install — use the full path (or add
+`C:\Program Files\Tailscale` to PATH once):
+
 ```powershell
-tailscale up          # opens browser login; use your Tailscale account
-tailscale status      # note the machine's DNS name, e.g. mymachine.tail1234.ts.net
+& "C:\Program Files\Tailscale\tailscale.exe" up       # opens browser login; use your Tailscale account
+& "C:\Program Files\Tailscale\tailscale.exe" status   # note the DNS name, e.g. mymachine.tail1234.ts.net
 [System.Environment]::SetEnvironmentVariable("VANGIO_CLICK_BASE_URL", "https://<machine-dns-name>", "User")
 ```
 
@@ -130,7 +133,7 @@ bun run --cwd packages/opencode src/index.ts serve --port 4096
 127.0.0.1 — keep it), `--cors <origin>` (array; needed in step 9 if the browser console
 shows CORS errors). Expected: boot log free of `[vangio-notifier]` errors.
 
-### 9. Build + serve the web app
+### 9. Build + serve the web app — ✅ already verified 2026-07-19
 
 ```bash
 bun run --cwd packages/app build
@@ -138,15 +141,19 @@ bun run --cwd packages/app serve -- --host 127.0.0.1 --port 4173
 ```
 
 (`build`/`serve` = `vite build` / `vite preview`, verified in `packages/app/package.json`.)
-Check: `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4173` → `200`.
+Both were run on this machine: the build completed in 1m 30s (chunk-size warnings only, no
+errors) and `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4173` returned `200`.
+The `dist/` output is already on disk, so this step only needs re-running after code changes.
 
 ### 10. Publish both onto the tailnet over HTTPS
 
-Check syntax first with `tailscale serve --help`, then (typical):
+Syntax confirmed against the installed Tailscale 1.98.9 (`--bg` and `--https <port>` both
+exist; `--https` is the default mode). On Windows the CLI is not on PATH by default — use the
+full path or add it:
 
 ```bash
-tailscale serve --bg --https=443  http://127.0.0.1:4173   # web app
-tailscale serve --bg --https=8443 http://127.0.0.1:4096   # VanGio server API
+"/c/Program Files/Tailscale/tailscale.exe" serve --bg --https=443  http://127.0.0.1:4173   # web app
+"/c/Program Files/Tailscale/tailscale.exe" serve --bg --https=8443 http://127.0.0.1:4096   # VanGio API
 ```
 
 `tailscale serve status` should list both mounts. From the laptop's own browser,
