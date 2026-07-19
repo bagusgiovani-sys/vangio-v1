@@ -71,6 +71,26 @@ curl -X POST "http://127.0.0.1:4096/session/<id>/message?directory=..." \
 Proof: the topic received `{"title":"Done - vangio-v1","message":"Session finished after 8 s",`
 `"priority":3,"tags":["white_check_mark"]}` — matching the session's real 8 s busy→idle span.
 
+**The permission buzz — the notification the whole feature depends on — is also verified.**
+A session was set to ask for bash (`PATCH /session/:id` with a
+`[{"permission":"bash","pattern":"*","action":"ask"}]` ruleset), then prompted to run a shell
+command via `POST /session/:id/prompt_async`. The topic received:
+
+```json
+{"title":"Needs approval - vangio-v1","message":"bash: echo hello-from-vangio",
+ "priority":5,"tags":["warning"],
+ "click":"https://<base>/QzpcRXhvZHVzXFByb2plY3RzXFZhbkdpby1BSSBBZ2VudFx2YW5naW8tdjE/session/ses_08510d489ffeyex27ZVNzxnQWd"}
+```
+
+Priority 5 is ntfy's max (the level that can bypass Do Not Disturb), and the click URL's
+base64 segment decodes exactly to `C:\Exodus\Projects\VanGio-AI Agent\vangio-v1` — so the
+tap-through lands on the right project route once `VANGIO_CLICK_BASE_URL` is set to your real
+tailnet name in step 7.
+
+Note on payload: permission bodies include the command pattern (`bash: echo hello-from-vangio`)
+by design — spec §5 allows a short tool summary so the buzz is actionable. Everything else
+(code, diffs, prompts, error text) stays on the laptop.
+
 **Important: use `vangio serve`, not `vangio run`.** A short-lived `vangio run` exits before the
 ntfy POST completes (~4 s from this machine), so its notifications are silently lost. This is
 expected and documented in `docs/fork/errors.md` (2026-07-19) — mobile control runs against the
@@ -169,8 +189,10 @@ restart step 8's serve with `--cors https://<machine-dns-name>`, and record that
    step 3 curl — the phone buzzes within seconds.
 3. In Chrome on the web app: Add to Home Screen. Proof: opens full-screen from its own icon.
 4. Mobile UX pass (spec §9.4): open a session, read the feed, send a reply, trigger + answer
-   a permission via the permission dock. Anything unusable → `docs/fork/errors.md`
-   (approve/deny broken on mobile = blocking defect).
+   a permission via the permission dock. Anything unusable → `docs/fork/errors.md`.
+   **Status: the user confirmed 2026-07-19 that the mobile approve/deny UI is usable**, so
+   spec §9.2's blocking-defect risk is cleared and no web-app build item is needed. Treat the
+   rest of this pass as polish notes / v2 (VanGio Pocket) input rather than a gate.
 
 ### 12. THE ACCEPTANCE RITUAL (spec §10)
 
