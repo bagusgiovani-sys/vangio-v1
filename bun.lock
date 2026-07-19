@@ -556,11 +556,20 @@
         "@typescript/native-preview": "catalog:",
       },
     },
+    "packages/notifier": {
+      "name": "@vangio/notifier",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@opencode-ai/plugin": "workspace:*",
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/opencode": {
       "name": "opencode",
       "version": "1.18.2",
       "bin": {
-        "opencode": "./bin/opencode",
+        "vangio": "./bin/vangio",
       },
       "dependencies": {
         "@actions/core": "1.11.1",
@@ -2995,6 +3004,8 @@
     "@upstash/redis": ["@upstash/redis@1.38.0", "", { "dependencies": { "uncrypto": "^0.1.3" } }, "sha512-wu+dZBptlLy0+MCUEoHmzrY/TnmgDey3+c7EbIGwrLqAvkP8yi5MWZHYGIFtAygmL4Bkz2TdFu+eU0vFPncIcg=="],
 
     "@valibot/to-json-schema": ["@valibot/to-json-schema@1.6.0", "", { "peerDependencies": { "valibot": "^1.3.0" } }, "sha512-d6rYyK5KVa2XdqamWgZ4/Nr+cXhxjy7lmpe6Iajw15J/jmU+gyxl2IEd1Otg1d7Rl3gOQL5reulnSypzBtYy1A=="],
+
+    "@vangio/notifier": ["@vangio/notifier@workspace:packages/notifier"],
 
     "@vercel/oidc": ["@vercel/oidc@3.2.0", "", {}, "sha512-UycprH3T6n3jH0k44NHMa7pnFHGu/N05MjojYr+Mc6I7obkoLIJujSWwin1pCvdy/eOxrI/l3uDLQsmcrOb4ug=="],
 
