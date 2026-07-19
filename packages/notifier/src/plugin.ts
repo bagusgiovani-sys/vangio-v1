@@ -33,16 +33,27 @@ export function createNotifierPlugin(deps?: {
     const transport = deps?.transport ?? createNtfyTransport({ topic, server: env.VANGIO_NTFY_SERVER })
     const state = initialState()
     const now = deps?.now ?? Date.now
+    // The host fires event hooks without awaiting them, so a short-lived process (`vangio run`)
+    // can exit with a POST still in flight. dispose() IS awaited at teardown — drain there.
+    const pending = new Set<Promise<void>>()
 
     return {
       event: async ({ event }) => {
         try {
           const notification = decide(event as unknown as BusEvent, state, now(), config)
-          if (notification) await transport.send(notification) // send() never rejects (transport contract)
+          if (notification) {
+            const send = transport.send(notification) // send() never rejects (transport contract)
+            pending.add(send)
+            send.then(() => pending.delete(send))
+            await send
+          }
         } catch (error) {
           // A notifier bug must never disturb a session.
           console.error("[vangio-notifier] hook error:", error)
         }
+      },
+      dispose: async () => {
+        await Promise.all(pending)
       },
     }
   }

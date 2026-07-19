@@ -14,6 +14,16 @@
 **Files affected:** List of changed files
 ---
 
+## [2026-07-19 21:50] Notifier fired but no push arrived — short-lived `vangio run` kills in-flight sends
+#[plugins] #[async] #[verification] #[mobile-control]
+**Context:** Verifying the new `packages/notifier` plugin (v3 mobile session control) end-to-end for the first time. Unit tests were all green and the bundle sent correctly when driven in isolation, but a real `vangio run "say pong"` session produced no notification on the ntfy topic.
+**Error:** Silent. No error, no log line, no dropped-send warning — the notification simply never arrived. `curl` polls of the topic showed only the earlier manual test message.
+**Root cause:** Found by instrumenting the *installed bundle* (not the source) with file logging at each stage. The plugin loaded, `server()` was called with the topic visible, and `decide()` correctly returned `Done - vangio-v1` — then `FETCH START` logged and nothing more. The POST to ntfy.sh takes ~4 s from this machine, but `vangio run` is a short-lived CLI that exits as soon as the run completes, killing the in-flight request. Two contributing details: (1) the host dispatches event hooks fire-and-forget (`void hook.event(...)` in packages/opencode/src/plugin/index.ts) so nothing awaits the send; (2) `run` creates TWO plugin instances (one for `packages/opencode`, one for the repo root) with separate state — the dispose that ran belonged to the *other* instance and logged `pending=0`, while the instance holding the real in-flight send was never drained before exit.
+**Fix:** Added a `dispose` hook to the notifier that drains in-flight sends (`await Promise.all(pending)`), covered by a test that proves dispose blocks until a slow send resolves. This does NOT rescue the `run` CLI case (that instance's dispose isn't awaited before process exit) — but it is correct for the actual deployment, and verified there: under `vangio serve` (long-lived, the mode mobile control actually uses), a real session driven through `POST /session` + `POST /session/:id/message` logged `FETCH RESPONSE 200` and the phone topic received `Done - vangio-v1 / Session finished after 8 s`.
+**Prevention:** Never accept "unit tests pass + isolated script works" as end-to-end proof for a plugin — the host's process lifetime is part of the contract. When a fire-and-forget hook shows no error and no effect, instrument the INSTALLED artifact stage by stage (module evaluated → hook called → decision → request start → response) rather than guessing; that log pinned this in one run. Also remember multi-instance loading: per-directory plugin instances have independent state, so a clean-looking dispose may belong to a different instance than the one holding your work.
+**Files affected:** packages/notifier/src/plugin.ts, packages/notifier/test/plugin.test.ts, docs/fork/mobile-control-setup.md
+---
+
 ## Known-Risk Watchlist (from planning — not errors yet, but expect these)
 - **GLM phone verification** may reject your number at open.bigmodel.cn → fallback: z.ai international portal
 - **Provider baseURLs drift** — Qwen/Kimi endpoints change; a wrong URL = silent failure. Always verify at setup

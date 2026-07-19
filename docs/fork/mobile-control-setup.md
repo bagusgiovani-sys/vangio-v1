@@ -14,7 +14,7 @@ mkdir -p ~/.config/vangio/plugins
 bun build packages/notifier/src/plugin.ts --target bun --outfile ~/.config/vangio/plugins/vangio-notifier.js
 ```
 
-Proof: `Bundled 3 modules`, 5.40 KB output, `grep 'from "@opencode'` finds nothing (fully
+Proof: `Bundled 3 modules`, 5.63 KB output, `grep 'from "@opencode'` finds nothing (fully
 self-contained), tail shows `export { plugin_default as default, createNotifierPlugin }`.
 
 **Deviation from plan:** target dir is `~/.config/vangio/plugins/`, NOT the plan's
@@ -57,7 +57,29 @@ curl -d "hello from the laptop" https://ntfy.sh/$TOPIC
 Proof: HTTP 200 with JSON envelope (`"event":"message"`). Phone-side delivery is checked in
 the phone section below.
 
-### 4. Power settings — verified, nothing to change
+### 4. Notifier verified end-to-end against a live session ✅
+
+Driven through a real long-lived server, not a mock:
+
+```bash
+bun run --cwd packages/opencode src/index.ts serve --port 4096      # with VANGIO_NTFY_TOPIC set
+curl -X POST "http://127.0.0.1:4096/session?directory=<url-encoded-repo-path>" -d '{}'
+curl -X POST "http://127.0.0.1:4096/session/<id>/message?directory=..." \
+  -d '{"parts":[{"type":"text","text":"say pong"}]}'
+```
+
+Proof: the topic received `{"title":"Done - vangio-v1","message":"Session finished after 8 s",`
+`"priority":3,"tags":["white_check_mark"]}` — matching the session's real 8 s busy→idle span.
+
+**Important: use `vangio serve`, not `vangio run`.** A short-lived `vangio run` exits before the
+ntfy POST completes (~4 s from this machine), so its notifications are silently lost. This is
+expected and documented in `docs/fork/errors.md` (2026-07-19) — mobile control runs against the
+long-lived server anyway, which is the verified path.
+
+Note: ntfy.sh polls from this network are slow and intermittently time out (`curl` exit 28/35).
+Retry a poll two or three times before concluding a notification was not delivered.
+
+### 5. Power settings — verified, nothing to change
 
 - Lid close action: already `Do nothing` on both AC and DC. The setting is HIDDEN by default
   on this machine; it was unhidden to read it via
@@ -77,7 +99,7 @@ powercfg /change standby-timeout-ac 0
 Physical proof (lid closed one minute while `ping -t 8.8.8.8` runs, no gap on reopen) is
 pending — folded into the acceptance ritual.
 
-### 5. Tailscale installed (login pending — needs a human + browser)
+### 6. Tailscale installed (login pending — needs a human + browser)
 
 ```powershell
 winget install tailscale.tailscale --accept-package-agreements --accept-source-agreements --silent
@@ -87,7 +109,7 @@ Proof: `Successfully installed` (v1.98.9).
 
 ## Remaining steps (in order)
 
-### 6. Tailscale login (interactive)
+### 7. Tailscale login (interactive)
 
 ```powershell
 tailscale up          # opens browser login; use your Tailscale account
@@ -98,7 +120,7 @@ tailscale status      # note the machine's DNS name, e.g. mymachine.tail1234.ts.
 `VANGIO_CLICK_BASE_URL` makes each notification tap-through open the web app on the right
 session. Without it, buzzes still arrive — just without deep links.
 
-### 7. Start the VanGio server (verified flags, 2026-07-19)
+### 8. Start the VanGio server (verified flags, 2026-07-19)
 
 ```bash
 bun run --cwd packages/opencode src/index.ts serve --port 4096
@@ -108,7 +130,7 @@ bun run --cwd packages/opencode src/index.ts serve --port 4096
 127.0.0.1 — keep it), `--cors <origin>` (array; needed in step 9 if the browser console
 shows CORS errors). Expected: boot log free of `[vangio-notifier]` errors.
 
-### 8. Build + serve the web app
+### 9. Build + serve the web app
 
 ```bash
 bun run --cwd packages/app build
@@ -118,7 +140,7 @@ bun run --cwd packages/app serve -- --host 127.0.0.1 --port 4173
 (`build`/`serve` = `vite build` / `vite preview`, verified in `packages/app/package.json`.)
 Check: `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4173` → `200`.
 
-### 9. Publish both onto the tailnet over HTTPS
+### 10. Publish both onto the tailnet over HTTPS
 
 Check syntax first with `tailscale serve --help`, then (typical):
 
@@ -130,9 +152,9 @@ tailscale serve --bg --https=8443 http://127.0.0.1:4096   # VanGio server API
 `tailscale serve status` should list both mounts. From the laptop's own browser,
 `https://<machine-dns-name>` must load the web app. In the web app's server-selection
 dialog, add `https://<machine-dns-name>:8443`; if the browser console shows CORS errors,
-restart step 7's serve with `--cors https://<machine-dns-name>`, and record that here.
+restart step 8's serve with `--cors https://<machine-dns-name>`, and record that here.
 
-### 10. Phone setup
+### 11. Phone setup
 
 1. Install Tailscale on the phone (same account, toggle on). Proof: phone browser opens
    `https://<machine-dns-name>` and the web app renders.
@@ -143,7 +165,7 @@ restart step 7's serve with `--cors https://<machine-dns-name>`, and record that
    a permission via the permission dock. Anything unusable → `docs/fork/errors.md`
    (approve/deny broken on mobile = blocking defect).
 
-### 11. THE ACCEPTANCE RITUAL (spec §10)
+### 12. THE ACCEPTANCE RITUAL (spec §10)
 
 1. At the desk: start a session task that runs > 1 min and hits a permission ask.
 2. Close the lid (or walk away). Leave the room.

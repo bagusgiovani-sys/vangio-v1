@@ -71,6 +71,43 @@ describe("createNotifierPlugin", () => {
   })
 })
 
+describe("dispose drains in-flight sends", () => {
+  // The host dispatches events without awaiting the hook (void hook.event(...)), so a
+  // short-lived process (`vangio run`) can exit while the ntfy POST is still in flight.
+  // Instance teardown DOES await dispose — the plugin must drain pending sends there.
+  test("dispose resolves only after a slow send completes", async () => {
+    const sent: OutgoingNotification[] = []
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const slowTransport: Transport = {
+      async send(notification) {
+        await gate
+        sent.push(notification)
+      },
+    }
+    const hooks = await createNotifierPlugin({
+      transport: slowTransport,
+      env: { VANGIO_NTFY_TOPIC: "t" },
+      now: () => 1_000,
+    })(input)
+
+    // Fire without awaiting, like the host does.
+    void hooks.event!({ event: permissionEvent.event })
+    await Bun.sleep(0) // let the hook reach the transport
+    expect(sent).toHaveLength(0)
+
+    let disposed = false
+    const disposal = hooks.dispose!().then(() => (disposed = true))
+    await Bun.sleep(10)
+    expect(disposed).toBe(false) // still waiting on the in-flight send
+
+    release()
+    await disposal
+    expect(disposed).toBe(true)
+    expect(sent).toHaveLength(1)
+  })
+})
+
 describe("plugin module shape", () => {
   // File plugins load through readV1Plugin (packages/opencode/src/plugin/shared.ts): the default
   // export must be an object with an `id` and a `server` function, or the legacy fallback would
