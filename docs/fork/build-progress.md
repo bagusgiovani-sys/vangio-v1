@@ -1,5 +1,5 @@
 # Build Progress — VanGio
-> Started: 2026-07-05 | Last updated: 2026-07-18
+> Started: 2026-07-05 | Last updated: 2026-07-19
 > Read this at the start of EVERY coding session before touching any file.
 > Status keys: [ ] Pending  [~] In Progress  [x] Done
 
@@ -68,21 +68,60 @@
 
 ---
 
-## Post-v1 (do NOT start until v1 works and ships)
-- [ ] Pixel-art mascot logo (parked — use a real pixel-art tool)
-- [ ] Custom codebase indexing differentiator — CONFIRMED OpenCode does NOT have this natively (verified: relies on grep/ripgrep/LSP, not semantic search, unlike Cursor). **Graphify already installed** (provides knowledge graph). Remaining candidate: `opencode-codebase-index` (Helweg) — but overlaps with Graphify, so skip unless Graphify proves insufficient.
-- [ ] Rate-limit handling refinement / quota-aware suggestions
-- [ ] VanGio native side-panel VS Code/Cursor extension — docked, resizable, layout-persistent panel with status indicator + config UI (NOT a terminal wrapper; OpenCode only has the wrapper today). Optionally reuse/rebrand OpenCode's existing terminal-wrapper extension as an interim step
-- [ ] Native Windows support without WSL2 — ALREADY EFFECTIVELY DONE for personal use (native npm install works). Still validate/document a clean installer before any public release
-- [ ] **Mobile session control — SPEC APPROVED 2026-07-17** (`docs/superpowers/specs/2026-07-17-mobile-session-control-design.md`): watch/reply/approve VanGio sessions from Android over Tailscale, reusing `packages/app` as the phone client + ONE new component (notifier plugin → ntfy push). Reality-checked: Claude Code has first-party Remote Control, opencode has community clients (opencode-remote-android, MobileCode) — but none do the push-notification + approve-from-phone loop, which is exactly our build. IMPLEMENTATION PLAN WRITTEN 2026-07-17 (`docs/superpowers/plans/2026-07-17-mobile-session-control.md`) — spec §9 verify-first list fully resolved against source during planning (notable: plugin bus uses `permission.asked` with `permission`+`patterns` fields, NOT `permission.updated`/`title`; `session.status` busy/idle drives the duration threshold; global plugin dir `~/.config/opencode/plugins/` is the install target). Execution parked behind v1 Phases 7–8 per discipline rule
+## Post-v1 Roadmap
 
-## Post-v1 Enhancement Menu (researched free OpenCode plugins — install when a specific pain appears)
-Since VanGio IS OpenCode, awesome-opencode ecosystem plugins work for free. Graphify and opencode-mem are already installed. Remaining candidates for when a specific need arises:
-- **opencode-openmemory** — local-first, privacy-focused memory (alternative to opencode-mem, good for client confidentiality). Free.
-- **Dynamic context pruning / token-pruning plugins** — stretch the free tier further on long sessions.
-- **oh-my-opencode** — "battery-included" heavy pack (async subagents, curated agents, LSP/AST, Claude Code compat). Powerful but complex — a LATER tool, not a day-one add. `oh-my-opencode-slim` is the lighter variant.
-- NOTE: `opencode-supermemory` requires a PAID Supermemory Pro plan for hosted mode (only self-hosted is free) — prefer opencode-mem/openmemory for the truly-free path.
-- Scope-creep traps (useful but NOT for v1): opencode-notify, Composio (team integrations, irrelevant to solo), worktree plugins, browser automation, antigravity-auth (free Gemini access).
+VanGio v1 is shipped. This is the full product vision — each phase builds on the one before.
+
+### v2 — Desktop App (Visual UI)
+- [ ] **Tauri/Electron desktop app** wrapping the VanGio engine via HTTP API
+- Visual project browser, click-to-edit, diff viewer, status dashboard
+- Preset workflow gallery (guided mode for noobs)
+- Same engine underneath — terminal mode still works side by side
+- The "noob-friendly" surface — drag, click, see, never type an incantation
+
+### v3 — Mobile Remote Control
+- [ ] Watch/reply/approve VanGio sessions from Android over Tailscale
+- Engine HTTP API (`opencode serve`) as the bridge — works with terminal OR desktop
+- Push notifications via ntfy when a session asks for approval
+- SPEC APPROVED 2026-07-17 — implementation plan written
+- Architecture: Mobile does NOT wait for Desktop, Desktop does NOT block Mobile. Both talk to the same engine API.
+
+### v4 — Paradigm Presets
+- [ ] Hand-crafted multi-AI team configurations for common domains:
+  - `web-dev` — one frontend specialist, one backend, one reviewer
+  - `content-creator` — one strategist, one writer, one editor
+  - `data-analyst` — one SQL/code, one visualization, one explainer
+  - `tiktok-marketing` — one content strategist, one copywriter, one analytics
+  - (more added based on real use)
+- User picks from a gallery — each preset has hardcoded roles + recommended models
+- Building on the Gryphon 3-head architecture proven in v1
+- No AI generation yet — just good defaults
+
+### v5 — Paradigm Customizer
+- [ ] User can tweak a preset: change a role's model, adjust routing rules, rename a head
+- Visual config editor in desktop app (or config schema for terminal users)
+- Still manual — but the UI supports it
+- Power-user unlock: the bridge between "I use what you give me" and "I build my own"
+
+### v6 — AI-Assisted Paradigm Builder
+- [ ] User describes their goal → AI asks 3–5 clarifying questions → generates a paradigm config
+- "I want to make TikTok videos to sell bras" → VanGio figures out which 3-model team fits
+- User reviews and tweaks the generated config before activation
+- The AI acts as a smart wizard, not fully autonomous
+
+### v7 — Autonomous Paradigm Generation
+- [ ] Full vision: user says the goal → engine assembles the ideal 3-AI team
+- Goal decomposition → role mapping → model selection → routing rules → instantiation
+- Self-improves based on feedback ("this team produces weak video scripts")
+- **The differentiating feature:** no other coding tool ships a factory that builds perfect teams for your job
+
+### Smaller Enhancement Candidates (pick when specific pain appears)
+- [ ] Pixel-art mascot logo (use a real pixel-art tool, not hand-typed ASCII)
+- [ ] Custom codebase indexing differentiator (OpenCode doesn't have this natively)
+- [ ] Rate-limit handling refinement / quota-aware provider suggestions
+- [ ] VanGio native side-panel VS Code/Cursor extension
+- [ ] Native Windows clean-installer polish (pre-launch blocker before public release)
+- OpenCode ecosystem plugins: opencode-openmemory, dynamic context pruning, oh-my-opencode (later)
 
 ---
 
@@ -118,18 +157,17 @@ Since VanGio IS OpenCode, awesome-opencode ecosystem plugins work for free. Grap
 - NOTE: All upgrades were done directly from the Gryphon chat session (this environment), not from Claude Code — proving the upgrade loop works without switching tools.
 
 ## Current Status
-**Last completed (2026-07-18, Claude Code, session 9):** Phase 8 COMPLETE — legacy-dir migration shipped and verified (old `opencode` config/data/state auto-copy into `vangio` dirs on first start; already ran on this machine, so Gryphon + DeepSeek default are back), CLI name rebrand committed, remaining user-facing text swept. Earlier same day: internal path rebranding (data/config dirs `vangio`, project dir `.vangio`, `.vangio-version`, `VANGIO_TEST_HOME`); Phase 7 cancelled (not needed); Zen free-tier limits documented in errors.md.
+**v1 is shipped and tagged** (v1.0.0 on 83ccb91fa, 2026-07-19). All v1 phases complete:
+- Terminal mode with VanGio branding, DeepSeek V4 Flash Free default, Gryphon 3-head orchestration
+- Banner (owl + VANGIO wordmark + blink cursor), theme (neon-matrix), marquee description scroll
+- Provider switch (manual, mid-session), rebranding (paths, CLI name, legacy migration, text sweep)
+- Plugins: opencode-mem (memory), CodeGraph MCP (code intelligence)
+- Verification: v1 TUI acceptance passed live under ConPTY harness
 
-**Prior to that (2026-07-17, Claude Code):** Phase 6.6 marquee fully verified live in a ConPTY harness (slide, wraparound, Tab cycle Build→Gryphon→Plan, rapid-Tab stress, resize — all pass; clean exit). Repo verify skill created at `.claude/skills/verify/SKILL.md`. Before that (2026-07-16): Phase 5 banner implemented and render-verified — `packages/tui/src/logo.ts` (VANGIO block wordmark, van|gio two-tone) + `packages/tui/src/component/logo.tsx` (owl face + byline); `bun dev` confirmed from source; fork-docs layer live; CodeGraph indexed + connected (`@colbymchenry/codegraph`).
+**What's next:** The user drives the choice of v2 (Desktop App) vs v3 (Mobile Remote Control) vs v4 (Paradigm Presets) — or skip ahead to whatever calls loudest.
 
-**Key deviations from original plan:** (1) WSL2 abandoned — native Windows instead. (2) GLM hit an unfixable 1-concurrent-request wall in real use (OpenCode issue #8618) — switching default to DeepSeek V4 Flash Free via Zen, GLM kept as fallback. (3) Build order changed: banner first. (4) Code editing happens in Claude Code; docs remain the shared continuity layer. (5) Banner spec adapted to the TUI's component architecture — cfonts pre-rendered to static glyphs instead of a runtime dep, blink cursor inherited from the TUI's native DECSCUSR setup (see Phase 5 notes). (6) Gryphon upgrades (plugins, prompt, premium brain) were done directly from this chat, not Claude Code — proving the upgrade loop works both ways.
+**Key deviations from original plan:** (1) WSL2 abandoned — native Windows instead. (2) GLM → DeepSeek V4 Flash Free default. (3) Build order changed: banner first. (4) Code editing in Claude Code; docs remain shared continuity layer. (5) Banner adapted to TUI component architecture (cfonts pre-rendered to static glyphs, no runtime blink). (6) Gryphon upgrades done directly from this chat, not Claude Code.
 
-**In progress:** Nothing — all v1 phases are complete or cancelled.
+**Open/unverified items carried forward:** (a) whether DeepSeek/Zen avoids the concurrency bug in a real multi-tool-call session (untested), (b) how long Zen's keyless access lasts, (c) whether opencode-mem works correctly in practice (loads without errors; live behavior unverified).
 
-**Next action:** 🏁 **v1.0.0 TAGGED AND PUSHED 2026-07-19** (annotated tag on 83ccb91fa, user decision same day) — v1 is shipped. Nothing in progress. When the user wants more: post-v1 menu above (mobile session control has an approved spec + written implementation plan and is the natural first pick; VS Code panel; rate-limit refinement; or just daily-drive VanGio and let real pain points choose).
-
-**Policy: Commit and push more frequently.** Changes are now pushed to `origin/dev` after every logical checkpoint (not waiting to be asked). This avoids losing work and keeps the remote in sync.
-
-**Open/unverified items to resolve, not assume:** (a) whether DeepSeek/Zen actually avoids the concurrency bug in a real multi-tool-call session, (b) the true root cause of the original bun install error, (c) how long Zen's keyless access lasts, (d) whether opencode-mem works correctly in practice (loads without errors; live behavior unverified). RESOLVED 2026-07-19 (see errors.md): the plugin-init stall was a one-time cold npm install, not a bug; Graphify is incompatible with the current plugin API (no fixed release exists) and was removed from `.opencode/opencode.jsonc` — CodeGraph MCP covers that need.
-
-**Discipline reminder unchanged:** don't add plugins/features beyond the confirmed 4-phase build order until each phase is actually done and tested.
+**Policy: Commit and push more frequently.** Changes pushed to `origin/dev` after every logical checkpoint.

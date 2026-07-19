@@ -1,6 +1,6 @@
 # OVERVIEW.md — VanGio
 > Renamed from CLAUDE.md on 2026-07-16 — this is a fork-doc, NOT opencode's loaded root instruction file (that's `/AGENTS.md`; see the Fork Notice banner at its top). Keeping the old name risked being mistaken for that file.
-> Last updated: 2026-07-16
+> Last updated: 2026-07-19
 > Planning docs: BRD.md | PRD.md | CONFIG.md | SDD.md
 > IMPORTANT: This project is a FORK of OpenCode (sst/opencode), not a from-scratch build. Patch and extend; do not rebuild. Everything unverified is flagged "VERIFY AT SETUP" — never assume.
 > WORKFLOW NOTE: Actual code editing on the forked source now happens in Claude Code (local filesystem access), not this chat interface. These planning docs are the shared reference kept in sync across sessions/tools.
@@ -18,7 +18,14 @@
 ---
 
 ## 1. Project Overview
-VanGio is a fork of OpenCode: a terminal AI coding agent, run **natively on Windows 11** (WSL2 was abandoned — unfixable Windows component-store corruption, error 14098), defaulting to the free DeepSeek V4 Flash Free model (cloud, via OpenCode Zen) with GLM-4.7-Flash as a configured fallback and Qwen/Kimi as switchable profiles, plus local Ollama as an optional offline fallback. For personal freelance frontend use first; possible commercial/subscription product later.
+VanGio is an AI-powered multi-surface development tool, forked from OpenCode. It has two modes:
+
+- **Terminal mode** (v1, shipped) — CLI/TUI with Gryphon 3-head orchestration, DeepSeek V4 Flash Free default, free cloud models
+- **Desktop app** (v2, planned) — visual UI wrapping the same engine for noob-friendly vibecoding
+
+The long-term vision: **VanGio isn't just one AI. It's a factory that builds the perfect AI team for your job.** You describe what you want to build → VanGio assembles a 3-model paradigm (orchestrator + implementer + researcher) tailored to that domain. From TikTok marketing to full-stack web apps — the right team for every task, at the lowest possible cost.
+
+Built **natively on Windows 11** (WSL2 was abandoned — unfixable component-store corruption, error 14098), defaulting to DeepSeek V4 Flash Free (cloud, via OpenCode Zen) with GLM-4.7-Flash as a configured fallback and Qwen/Kimi as switchable profiles, plus local Ollama as optional offline fallback. For personal freelance frontend use first; possible commercial/subscription product later.
 → Full context + accepted risks: BRD.md
 
 ---
@@ -72,13 +79,13 @@ Gryphon now has two plugins wired in:
 
 | Plugin | Purpose | How to use |
 |---|---|---|
-| **Graphify** (`@sentropic/graphify`) | General knowledge graph — entities, relations, ontology clusters. Best for big-picture architecture questions: "how does the plugin system relate to providers?" | Run `/graphify .` in TUI once to build index, then ask concept-level questions. Gryphon's prompt has routing rules for when to use this vs CodeGraph |
+| **Graphify** (`@sentropic/graphify`) | General knowledge graph — entities, relations, ontology clusters. Best for big-picture architecture questions: "how does the plugin system relate to providers?" | **NOTE 2026-07-19:** Graphify removed — incompatible with current plugin API (no fixed release exists). CodeGraph MCP covers this need. |
 | **opencode-mem** | Persistent memory via local vector DB — remembers project conventions, preferences, and decisions across sessions | Activated automatically on load. Consult at session start |
 | **CodeGraph** (`@colbymchenry/codegraph`) | Code-specific intelligence — symbols, callers, callees, call paths, impact analysis. 55K+ nodes already indexed. Best for debugging and refactoring: "who calls this function?", "what breaks if I change X?" | Wired as MCP server via `"mcp"` block in `.opencode/opencode.jsonc`. Tools fire automatically when Gryphon needs code intelligence |
 
 **Routing logic** (baked into Gryphon's prompt):
 - "Who calls X?" → **CodeGraph** (its specialty)
-- "How does area X relate to Y?" → **Graphify** (concept-level)
+- "How does area X relate to Y?" → **Graphify** (concept-level — currently unavailable, CodeGraph covers most needs)
 - "What is this symbol?" → just **grep/read** (too simple for either graph tool)
 - "What changed recently?" → **git**
 
@@ -86,14 +93,16 @@ Gryphon now has two plugins wired in:
 
 ---
 
-## 5. Key Behaviors to Build (Must-Have, from PRD) — REORDERED 2026-07-16
-Build in THIS order, one phase fully done before starting the next:
-1. **Banner** — cfonts "VANGIO" wordmark + owl face + "by bagusgiovani" byline + ANSI blink cursor. Code already verified (6-line cfonts output confirmed by real sandbox run). Purely cosmetic, no functional risk — good first real edit to the forked source.
-2. **Default provider switch** — config-only change to DeepSeek V4 Flash Free via Zen (see Section 4). No code change, just `opencode.json` + `/connect`.
-3. **Rate-limit/concurrency handling** — catch 429/overload errors, show clear message suggesting a provider switch, never crash the session. Verify first whether DeepSeek/Zen still needs this (may or may not still hit the issue — see unverified flag in Section 4).
-4. **Rebranding** — rename config folder/CLI output references from OpenCode → VanGio.
-- Manual provider switching via `/models` remains available throughout
-- Verify the inherited agent loop (file read/edit, shell exec, streaming, LSP for TS/JS) actually works with the new default provider before considering each phase done
+## 5. Phases Completed (v1)
+All v1 phases are done and shipped. See `build-progress.md` for the full roadmap beyond v1:
+
+- **v1 (shipped):** Banner, default provider switch, rebranding, Gryphon 3-head orchestration
+- **v2 (next):** Desktop app — visual UI wrapping the VanGio engine
+- **v3:** Mobile remote control — watch/reply/approve sessions from Android
+- **v4:** Paradigm presets — hand-crafted 3-AI teams for common domains
+- **v5:** Paradigm customizer — user tweaks models/roles/routing
+- **v6:** AI-assisted paradigm builder — wizard generates a custom team from your goal
+- **v7:** Autonomous paradigm generation — full vision: you describe it, VanGio builds it
 
 ---
 
@@ -132,4 +141,5 @@ Step 10: After banner — Phase 2: switch default provider to DeepSeek V4 Flash 
 - custom codebase indexing differentiator (verify OpenCode doesn't already have it first — confirmed it does NOT natively; opencode-codebase-index and CodeGraph are candidate free plugins, pick one not both, they overlap)
 - VanGio native side-panel VS Code/Cursor extension (OpenCode's own extension is terminal-wrapper only, no native panel exists yet)
 - native Windows clean-installer polish (pre-launch blocker before going public — v1 personal use already works natively)
+- 🔮 **Long-term vision: Paradigm Shift** — see build-progress.md v4-v7. VanGio becomes a factory that assembles the perfect AI team for any job, not just a single AI assistant.
 ```
