@@ -127,33 +127,63 @@ winget install tailscale.tailscale --accept-package-agreements --accept-source-a
 
 Proof: `Successfully installed` (v1.98.9).
 
-## Remaining steps (in order)
-
-### 7. Tailscale login (interactive)
+### 7. Tailscale login — ✅ DONE (verified 2026-07-20)
 
 The `tailscale` CLI is not on PATH after a winget install — use the full path (or add
 `C:\Program Files\Tailscale` to PATH once):
 
 ```powershell
 & "C:\Program Files\Tailscale\tailscale.exe" up       # opens browser login; use your Tailscale account
-& "C:\Program Files\Tailscale\tailscale.exe" status   # note the DNS name, e.g. mymachine.tail1234.ts.net
+& "C:\Program Files\Tailscale\tailscale.exe" status   # laptop + phone should both be listed
+```
+
+Already logged in when checked on 2026-07-20 — no `up` needed. Both nodes are enrolled on the
+tailnet under the same account: the laptop (online) and the Android phone (was offline at the
+time, which affects only step 11's proof, not the mounts).
+
+Recover the machine's own DNS name any time — don't hardcode it, it changes if the node is
+re-created after an OS reinstall:
+
+```powershell
+$ts = "C:\Program Files\Tailscale\tailscale.exe"
+(& $ts status --json | ConvertFrom-Json).Self.DNSName.TrimEnd('.')
+```
+
+`VANGIO_CLICK_BASE_URL` was set (User env var) to `https://<that-dns-name>`:
+
+```powershell
 [System.Environment]::SetEnvironmentVariable("VANGIO_CLICK_BASE_URL", "https://<machine-dns-name>", "User")
 ```
 
-`VANGIO_CLICK_BASE_URL` makes each notification tap-through open the web app on the right
-session. Without it, buzzes still arrive — just without deep links.
+It makes each notification tap-through open the web app on the right session. Without it,
+buzzes still arrive — just without deep links.
 
-### 8. Start the VanGio server (verified flags, 2026-07-19)
+**Gotcha:** a User env var is NOT visible to already-running shells. Either restart the shell
+or pass it inline when launching the server (step 8), or click URLs come out blank.
+
+## Remaining steps (in order)
+
+### 8. Start the VanGio server — ✅ verified running 2026-07-20
 
 ```bash
-bun run --cwd packages/opencode src/index.ts serve --port 4096
+VANGIO_CLICK_BASE_URL="https://<machine-dns-name>" \
+  bun run --cwd packages/opencode src/index.ts serve --port 4096
 ```
 
 `vangio serve` options confirmed: `--port` (default 0 = random), `--hostname` (default
-127.0.0.1 — keep it), `--cors <origin>` (array; needed in step 9 if the browser console
-shows CORS errors). Expected: boot log free of `[vangio-notifier]` errors.
+127.0.0.1 — keep it), `--cors <origin>` (array; needed in step 10 if the browser console
+shows CORS errors).
 
-### 9. Build + serve the web app — ✅ already verified 2026-07-19
+Proof 2026-07-20: boot log was `vangio server listening on http://127.0.0.1:4096` with **no
+`[vangio-notifier]` errors**, and `GET /config` returned 200.
+
+The boot log also prints `OPENCODE_SERVER_PASSWORD is not set; server is unsecured`. That is
+**expected and accepted** — spec §7 trusts every device on the tailnet because the tailnet is
+one person's account, and `tailscale serve` (step 10) publishes to the tailnet only. This
+warning would become a genuine problem only if `tailscale funnel` were ever used instead of
+`serve`, since Funnel exposes to the public internet. Do not substitute one for the other.
+
+### 9. Build + serve the web app — ✅ verified 2026-07-19, re-confirmed 2026-07-20
 
 ```bash
 bun run --cwd packages/app build
@@ -164,12 +194,32 @@ bun run --cwd packages/app serve -- --host 127.0.0.1 --port 4173
 Both were run on this machine: the build completed in 1m 30s (chunk-size warnings only, no
 errors) and `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4173` returned `200`.
 The `dist/` output is already on disk, so this step only needs re-running after code changes.
+Re-confirmed 2026-07-20: `dist/index.html` still dated 2026-07-19 with no `packages/app` changes
+since, so no rebuild was needed; the preview server came up and returned 200 again.
 
-### 10. Publish both onto the tailnet over HTTPS
+### 10. Publish both onto the tailnet over HTTPS — ⛔ BLOCKED (2026-07-20)
 
-Syntax confirmed against the installed Tailscale 1.98.9 (`--bg` and `--https <port>` both
-exist; `--https` is the default mode). On Windows the CLI is not on PATH by default — use the
-full path or add it:
+**Serve must be enabled on the tailnet first — this is an admin-console click, not a CLI step.**
+Attempting the mount returned:
+
+```
+Serve is not enabled on your tailnet.
+To enable, visit:
+         https://login.tailscale.com/f/serve?node=<node-id>
+```
+
+The command then *polls* rather than exiting, so it looks like a hang — it is waiting for the
+feature to be switched on. Get the node-specific URL by running the mount command below and
+reading its output; open it in a browser, signed in to the same Tailscale account.
+
+Related symptom that predicts this: `(& $ts status --json | ConvertFrom-Json).CertDomains` is
+empty when HTTPS certs have never been provisioned. Spec §7 assumes Tailscale-issued HTTPS, so
+if the console offers **HTTPS Certificates** (under DNS settings) as a separate toggle, enable
+that too — `--https` depends on it.
+
+Once enabled, re-run the mounts. Syntax confirmed against the installed Tailscale 1.98.9
+(`--bg` and `--https <port>` both exist; `--https` is the default mode). On Windows the CLI is
+not on PATH by default — use the full path or add it:
 
 ```bash
 "/c/Program Files/Tailscale/tailscale.exe" serve --bg --https=443  http://127.0.0.1:4173   # web app
