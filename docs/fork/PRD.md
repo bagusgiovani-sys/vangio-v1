@@ -55,7 +55,7 @@ VanGio is an AI-powered multi-surface development tool. **v1** (shipped) is a te
 - As a freelance frontend engineer, I want the CLI to default to a free model so I don't incur costs during daily coding work.
 - As a solo developer on a hardware-limited laptop (16GB RAM, no dedicated GPU), I want cloud-based free models as the default so my hardware doesn't bottleneck responsiveness.
 - As a user who may hit free-tier rate limits, I want clear error messages and an easy way to switch providers so I can keep working without the session crashing.
-- As a first-time user, I want a guided setup wizard so I don't have to manually configure WSL2/OpenCode/providers by hand.
+- As a first-time user, I want a guided setup wizard so I don't have to install and configure the engine and providers by hand.
 - As the builder, I want the tool to feel like my own (VanGio branding, even minimal) rather than an unmodified copy of OpenCode.
 - As a noob user (post-v1), I want to describe my goal in plain language and have VanGio set up the perfect AI team for that job — I don't want to know what a "model" or "provider" is.
 - As an advanced user (post-v1), I want to customize my own 3-AI paradigms, swapping models and roles to optimize for cost, speed, or quality per task.

@@ -1,6 +1,6 @@
 # OVERVIEW.md — VanGio
 > Renamed from CLAUDE.md on 2026-07-16 — this is a fork-doc, NOT opencode's loaded root instruction file (that's `/AGENTS.md`; see the Fork Notice banner at its top). Keeping the old name risked being mistaken for that file.
-> Last updated: 2026-07-19
+> Last updated: 2026-07-20
 > Planning docs: BRD.md | PRD.md | CONFIG.md | SDD.md
 > IMPORTANT: This project is a FORK of OpenCode (sst/opencode), not a from-scratch build. Patch and extend; do not rebuild. Everything unverified is flagged "VERIFY AT SETUP" — never assume.
 > WORKFLOW NOTE: Actual code editing on the forked source now happens in Claude Code (local filesystem access), not this chat interface. These planning docs are the shared reference kept in sync across sessions/tools.
@@ -96,9 +96,9 @@ Gryphon now has two plugins wired in:
 ## 5. Phases Completed (v1)
 All v1 phases are done and shipped. See `build-progress.md` for the full roadmap beyond v1:
 
-- **v1 (shipped):** Banner, default provider switch, rebranding, Gryphon 3-head orchestration
-- **v2 (next):** Desktop app — visual UI wrapping the VanGio engine
-- **v3:** Mobile remote control — watch/reply/approve sessions from Android
+- **v1 (shipped):** Banner, default provider switch, rebranding, Gryphon 3-head orchestration — tagged v1.0.0 (83ccb91fa, 2026-07-19)
+- **v3 (IN PROGRESS — chosen 2026-07-19):** Mobile remote control — watch/reply/approve sessions from Android over Tailscale. Notifier code complete and verified end-to-end; laptop setup mostly done. See `mobile-control-setup.md`
+- **v2 (deferred, not cancelled):** Desktop app — visual UI wrapping the VanGio engine. Taken out of sequence deliberately: mobile and desktop both talk to the same engine HTTP API, so neither blocks the other
 - **v4:** Paradigm presets — hand-crafted 3-AI teams for common domains
 - **v5:** Paradigm customizer — user tweaks models/roles/routing
 - **v6:** AI-assisted paradigm builder — wizard generates a custom team from your goal
@@ -134,9 +134,10 @@ Step 5:  [DONE] Get free GLM key at open.bigmodel.cn or z.ai (kept as fallback p
 Step 6:  [DONE] Store key: `[System.Environment]::SetEnvironmentVariable("ZHIPU_API_KEY", "...", "User")` + add to Git Bash: `export PATH="$HOME/.bun/bin:$PATH"` pattern for any tool PATH issues
 Step 7:  [DONE] Created `~/.config/opencode/opencode.json` with GLM block; original first-run test passed
 Step 8:  [DONE] SUCCESS CHECKPOINT passed — OpenCode responded, agent loop confirmed working
-Step 9:  NEXT — implement Phase 1 (banner) in the forked source (see Section 5 build order above). Actual code editing has moved to Claude Code (local filesystem access) rather than this chat interface — planning docs are the shared reference between sessions
-Step 10: After banner — Phase 2: switch default provider to DeepSeek V4 Flash Free via Zen (config-only)
---- POST-V1 (do not start until v1 works & ships) ---
+Step 9:  [DONE] Banner implemented in the forked source (Phase 5) and render-verified. Actual code editing happens in Claude Code (local filesystem access) rather than this chat interface — planning docs are the shared reference between sessions
+Step 10: [DONE] Phase 6: default provider switched to DeepSeek V4 Flash Free via Zen (config-only)
+Step 11: NEXT — v1 is shipped; current work is v3 Mobile Remote Control. build-progress.md "Current Status" is the live answer to "what now?" — this list is history, not a queue
+--- POST-V1 (v1 works & shipped 2026-07-19) ---
 - Pixel-art mascot polish (parked — current banner uses a simple bracket/antenna face, verified working)
 - custom codebase indexing differentiator (verify OpenCode doesn't already have it first — confirmed it does NOT natively; opencode-codebase-index and CodeGraph are candidate free plugins, pick one not both, they overlap)
 - VanGio native side-panel VS Code/Cursor extension (OpenCode's own extension is terminal-wrapper only, no native panel exists yet)
