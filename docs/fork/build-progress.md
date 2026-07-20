@@ -137,11 +137,13 @@ VanGio v1 is shipped. This is the full product vision — each phase builds on t
 | 7 | 2026-07-18 | Phase 6.7 Gryphon upgrades (Graphify/opencode-mem/CodeGraph MCP/prompt sharpening/premium brain) done via Gryphon chat; Phase 7 cancelled per user; Phase 8 rebranding started; errors.md Zen limits added | Gryphon chat session (this environment) — all config changes done without switching tools. Phase 8 in progress. |
 | 8 | 2026-07-18 | (Claude Code) Phase 8 continued: internal path rebranding committed+pushed — data/cache/config dirs `opencode` → `vangio`, project config dir `.opencode` → `.vangio`, skill cache marker `.opencode-version` → `.vangio-version`, plan-edit permission path, new `VANGIO_TEST_HOME` env (falls back to `OPENCODE_TEST_HOME`) | These 4 files were sitting uncommitted from a prior session — pushed at session start per frequent-push policy. Same session: found root cause of zero-push behavior (CLAUDE.md Secretary rule was never updated to the push policy — fixed); repo detached from fork network so GitHub contributions count (see Phase 4 note) |
 | 9 | 2026-07-18 | (Claude Code) Phase 8 FINISHED: diagnosed "Gryphon missing / model fell back to GLM 5" (path rename orphaned old config — see errors.md), shipped legacy-dir migration (bun-tested + sandbox-verified + ran for real on this machine: Gryphon config, themes, tui.json, auth db all in `vangio` dirs now), committed prior session's CLI-name rebrand, fixed 3 rename leftovers (config dir match, plugin install target, TUI permission copy), swept 71 remaining user-facing strings incl. prompt identity + customize skill paths | 4 commits pushed (20eaacfe9, 7027e69a1, 1c6e01864 + docs). New watchlist item: `vangio models` in this repo stalls on project-plugin init (see errors.md) |
-| 10 | 2026-07-18 | (Claude Code) Global `vangio` command created: launcher shims in `~/.bun/bin` (`vangio.cmd` for PowerShell/cmd, `vangio` sh script for Git Bash) run the source entry `packages/opencode/src/index.ts` via `bun run --conditions=browser` WITHOUT changing cwd — so `vangio` opens whatever project folder you're standing in. Replaces typing `bun dev` from the repo. Verified from home dir in both shells (`vangio --version` → `local`, exit 0) | Shims are machine-level files (hardcode this repo's absolute path), NOT in the repo — recreate them if the repo moves or on a new machine. `bin/vangio` npm launcher is unusable from source (hunts for a prebuilt platform binary) |
+| 10 | 2026-07-18 | (Claude Code) Global `vangio` command created: launcher shims in `~/.bun/bin` (`vangio.cmd` for PowerShell/cmd, `vangio` sh script for Git Bash) run the source entry `packages/opencode/src/index.ts` via `bun run --conditions=browser` WITHOUT changing cwd — so `vangio` opens whatever project folder you're standing in. Replaces typing `bun dev` from the repo. Verified from home dir in both shells (`vangio --version` → `local`, exit 0) | **SUPERSEDED 2026-07-20 (session 14)** — this shim design was broken for the TUI; see the "Global `vangio` command" section below for the current one, and do NOT recreate the version described here. Shims are machine-level files (hardcode this repo's absolute path), NOT in the repo — recreate them if the repo moves or on a new machine. `bin/vangio` npm launcher is unusable from source (hunts for a prebuilt platform binary). **Note the verification gap that let the bug through: `vangio --version` was accepted as proof, and it never loads the TUI** |
 | 11 | 2026-07-19 | (Claude Code) Plugin-stall investigated + resolved (one-time cold npm install, not a bug — errors.md), graphify removed (incompatible with current plugin API, no fixed release; CodeGraph MCP covers it), **v1 TUI ACCEPTANCE PASSED** live under ConPTY harness: banner byline + owl glyphs render, DeepSeek V4 Flash (free) via OpenCode Zen shown as default (migrated config live), Tab cycle Build→Gryphon→Plan works with Gryphon marquee scrolling, `⊙ 1 MCP` indicator (codegraph) visible, boot log clean of plugin errors, clean Ctrl+C exit | Theme not explicitly asserted (harness strips color codes), but migrated `tui.json` is the active theme mechanism per boot log. v1 phase list is now fully done+verified — next step is the user's call: tag/ship v1 or pick a post-v1 item |
 | 12 | 2026-07-19 | (Claude Code) **v3 Mobile Remote Control started** — Tasks 1–3 of the mobile-session-control plan DONE via TDD: new `packages/notifier` (watcher decision logic, ntfy transport, plugin entry), 23 tests green + full-repo typecheck clean, 3 commits pushed (341194f26, e0ff54d43, 7924430c0). Task 4 partial: plugin bundled to `~/.config/vangio/plugins/vangio-notifier.js`, `VANGIO_NTFY_TOPIC` secret generated + set (User env), ntfy pipeline proven (HTTP 200), power settings verified already correct (lid=do nothing, AC sleep=never — hidden LIDACTION unhidden to check), Tailscale 1.98.9 installed; setup guide created (`docs/fork/mobile-control-setup.md`). **Notifier VERIFIED END-TO-END against live `vangio serve` sessions — BOTH notification paths**: (a) `Done - vangio-v1 / Session finished after 8 s` (priority 3) from a real completed session, and (b) the critical `Needs approval - vangio-v1 / bash: echo hello-from-vangio` at **priority 5 (max, DND-bypassing)** from a real gated shell command, with a tap-through click URL whose base64 segment decodes to the correct project path. Mobile approve/deny UI confirmed usable by the user, clearing spec §9.2's blocking-defect risk. Session-start cleanup: orphaned `launcher-test.ts` probe deleted | Plan deviations forced by post-plan reality (recorded in guide + commits): bundle target is `vangio` not `opencode` dir; plugin must default-export `{ id, server }` (v1 PluginModule shape — legacy path would call every named export as a plugin); `noUncheckedIndexedAccess` needed `!` in tests; tsconfig needs DOM libs. Live verification also caught a real bug (see errors.md): notifications were silently lost because the host fires event hooks fire-and-forget and the process can exit mid-POST — fixed with a `dispose` drain; note `vangio run` still can't deliver (exits too fast), `vangio serve` is the verified path. REMAINING (user): `tailscale up` login, VANGIO_CLICK_BASE_URL, serve + web app + tailscale serve mounts, phone setup, acceptance ritual |
 
 | 13 | 2026-07-20 | (Claude Code) Stale-plan-doc sweep, triggered while summarizing the plan for export. BRD: fork base corrected OpenClaude → OpenCode (one-liner + paid-API aside), Windows setup rewritten (WSL2 was still listed as the chosen path), default-endpoint open question closed as RESOLVED (DeepSeek via Zen), pre-launch blocker rewritten from "support native Windows without WSL2" (already true) to "clean installer/onboarding" — and it now records that the current `~/.bun/bin` shims hardcode this repo's absolute path, so they aren't shippable. OVERVIEW: §5 reordered to show v3 in progress / v2 deferred-not-cancelled, §7 Steps 9–10 marked DONE with a pointer that build-progress "Current Status" is the live queue, not that list. PRD: one stale WSL2 mention in a user story | No code touched — docs only. Per the README precedence rule (build-progress/errors are current-state truth; BRD/PRD/SDD are intended design and go stale), these were contradictions, not disagreements. BRD's remaining OpenClaude mentions are intentional: it's a real reference product and the record of why OpenCode was chosen over it |
+
+| 14 | 2026-07-20 | (Claude Code) **Global `vangio` command fixed.** User hit `Cannot find module 'react/jsx-dev-runtime'` running `vangio` from another project. Root-caused by controlled experiment, not inspection: bun resolves `jsxImportSource` from the tsconfig nearest **cwd**, not nearest the transpiled file, so the TUI's `@opentui/solid` setting was invisible from any folder except `packages/opencode` — it failed from the repo root too, so the other project's React config was never the cause. Fix: new tracked `script/vangio-launcher.ts` + rewritten sh/cmd shims that pin `--cwd packages/opencode` for bun and `chdir` back to the invocation directory (restoring `PWD` so `vangio ..` still resolves). Also started the v3 mobile work this session: steps 7–9 verified, step 10 blocked on a tailnet Serve admin toggle | Verified with the real command from KodeHub, repo root, and home; plus `vangio ..`, `--version`, `models`, and `serve` (whose `/path` confirmed worktree = invoking folder). Rejected: `--tsconfig-override` (build-only, runtime ignores it), per-file `@jsxImportSource` pragmas (103 files in packages/tui, permanent upstream-merge conflict), compiled binary (fixes cwd but goes **silently stale** after source edits — wrong trade while the fork is under active development). Root lesson recorded in errors.md: `--version` is not proof a launcher works, it exits before the TUI loads |
 
 ---
 
@@ -158,6 +160,43 @@ VanGio v1 is shipped. This is the full product vision — each phase builds on t
 - [x] **CodeGraph wired as OpenCode MCP server** — `@colbymchenry/codegraph` was already installed globally (v1.4.1) and configured for Claude Code, but not for Gryphon/OpenCode. Ran `codegraph install --target opencode` and moved the generated config to the correct `.opencode/opencode.jsonc`. Index already built: 55,528 nodes, 191,032 edges across 3,138 files.
 - [x] **Routing rules added to Gryphon prompt** — clear logic for when to use CodeGraph (code-level: callers, callees, impact analysis) vs Graphify (concept-level: architecture, entity relationships) vs Grep (simple: symbol lookups) vs Git (recent changes).
 - NOTE: All upgrades were done directly from the Gryphon chat session (this environment), not from Claude Code — proving the upgrade loop works without switching tools.
+
+## Global `vangio` command — launcher + shims (rewritten 2026-07-20)
+
+Typing `vangio` in any folder runs this fork from source and opens that folder as the project.
+
+Mechanism: the shims start bun with `--cwd <repo>/packages/opencode` so bun reads the tsconfig
+that sets `jsxImportSource: "@opentui/solid"` (it resolves that from **cwd**, not from the file
+being transpiled — see errors.md 2026-07-20), and pass the invocation directory in
+`VANGIO_ORIGINAL_CWD`. `script/vangio-launcher.ts` (tracked in the repo) chdirs back to it, and
+restores `PWD` so relative project paths like `vangio ..` still resolve, before importing the CLI.
+
+The two shims are **machine-level** files that hardcode this repo's absolute path — they are not
+in the repo. Recreate them if the repo moves or on a new machine.
+
+`~/.bun/bin/vangio` (Git Bash / sh):
+
+```sh
+#!/bin/sh
+VANGIO_REPO="C:/Exodus/Projects/VanGio-AI Agent/vangio-v1"
+VANGIO_ORIGINAL_CWD="$PWD" exec bun run --conditions=browser \
+  --cwd "$VANGIO_REPO/packages/opencode" \
+  "$VANGIO_REPO/script/vangio-launcher.ts" "$@"
+```
+
+`~/.bun/bin/vangio.cmd` (PowerShell / cmd):
+
+```bat
+@echo off
+setlocal
+set "VANGIO_REPO=C:\Exodus\Projects\VanGio-AI Agent\vangio-v1"
+set "VANGIO_ORIGINAL_CWD=%CD%"
+bun run --conditions=browser --cwd "%VANGIO_REPO%\packages\opencode" "%VANGIO_REPO%\script\vangio-launcher.ts" %*
+```
+
+**Verifying a change to any of this: `vangio --version` is NOT sufficient** — it exits before the
+TUI module graph loads, which is exactly why the JSX bug survived from session 10 to session 14.
+Run the bare default command from a folder outside the repo and confirm it opens that folder.
 
 ## Current Status
 **v1 is shipped and tagged** (v1.0.0 on 83ccb91fa, 2026-07-19). All v1 phases complete:
