@@ -126,6 +126,62 @@ VanGio v1 is shipped. This is the full product vision — each phase builds on t
 - Self-improves based on feedback ("this team produces weak video scripts")
 - **The differentiating feature:** no other coding tool ships a factory that builds perfect teams for your job
 
+### v8 — VanGio (the ecosystem): capability-aware automation — FINAL PHASE, DEFERRED
+> Direction set 2026-07-29. **Nothing here is scheduled.** Recorded so the reasoning is not
+> re-derived later. Do not start this before v3–v7 land.
+
+**Renaming/positioning decision:** this repository is **VanGio Code** — the coding agent, one
+product inside a larger **VanGio** ecosystem. It is no longer "the product"; it is the first one.
+
+**The main VanGio product** is a capability-aware automation AI. The user describes a workflow;
+VanGio decides which steps it can actually automate *on this machine, with these models*, assigns
+a model to each automatable step, and tells the user plainly which steps they must still do by
+hand. Paid models are an option, free models the default. **This is where the Gryphon schema
+graduates** — "the right model for each role" stops being a coding-agent detail and becomes the
+core principle of the main product.
+
+Worked example the direction came from (a video pipeline): find a niche video → upload → auto
+clip and edit → add sound and subtitles → render → upload to YouTube.
+
+**Analysis already done (2026-07-29) — read before designing this:**
+
+1. **Models are not the scarce resource; integrations are.** Of the six steps above, only about
+   two need a language model at all. The rest are ffmpeg invocations, a YouTube Data API client,
+   and OAuth credentials. A filter that asks "is there a free model for this step?" asks the
+   wrong question — it should ask "do I have a *tool plus credential* for this step?"
+   Filter on **capability**, not on model availability.
+2. **Every free Zen model is text-only** (verified against the live catalog 2026-07-29:
+   big-pickle, deepseek-v4-flash-free, laguna-s-2.1-free, ling-3.0-flash-free, mimo-v2.5-free,
+   nemotron-3-ultra-free, north-mini-code-free — all text/coding LLMs). None see pixels or hear
+   audio. Any video workflow can only reason over *text about* the media — transcripts, titles,
+   metadata — which makes ASR (Whisper) a hard dependency rather than a nice-to-have.
+3. **Hardware is a first-class constraint, not a footnote.** 16GB RAM, integrated graphics,
+   CPU-only. Whisper transcription and ffmpeg rendering are the heaviest steps in that pipeline
+   and are exactly the parts no cloud free tier will absorb. "Capability-aware" must mean aware
+   of the machine, not just of the model list.
+4. **Reliability compounds.** Six unattended steps at 90% each is ~53% end-to-end, before Zen's
+   unpublished rate-limit wall (see errors.md watchlist). Long unattended model-driven chains on
+   free tiers is where this design fails in practice.
+5. **The reframe that makes it work: do not put the model in the hot loop.** VanGio Code is a
+   coding agent — its strength is *writing and wiring* automation, not *being* the automation at
+   runtime. So: user describes the workflow → VanGio reports feasibility honestly → VanGio
+   **generates the pipeline as a script** (ffmpeg/API calls, with a model invoked only at the
+   steps needing judgment) → the script runs deterministically, repeatably, at near-zero cost.
+   This sidesteps the compounding-reliability trap and plays to what the fork is actually good at.
+
+**The genuinely novel part** is the honest feasibility filter: *"steps 1, 3, 4 I can automate;
+2 and 6 need YouTube credentials you haven't set up; 5 will take ~8 minutes per video on your
+hardware."* Zapier/n8n show thousands of integrations and let you discover the gaps yourself.
+
+**Open scope question, unresolved:** is this VanGio Code v8, or a separate product that merely
+uses VanGio Code? Today the fork inherits an agent loop, tool system, TUI, web app, and desktop
+shell for free by tracking OpenCode. An automation platform inherits far less of that leverage,
+and it pulls against the BRD's "solo dev, personal use first." Decide before building.
+
+**Parked idea (not adopted):** a front-door split in the web app between "Vibecoder" and
+"Programmer / dev AI tools" paths. It is a packaging decision and only becomes meaningful once
+there is a differentiated product to package.
+
 ### Smaller Enhancement Candidates (pick when specific pain appears)
 - [ ] Pixel-art mascot logo (use a real pixel-art tool, not hand-typed ASCII)
 - [ ] Custom codebase indexing differentiator (OpenCode doesn't have this natively)
@@ -154,9 +210,11 @@ VanGio v1 is shipped. This is the full product vision — each phase builds on t
 
 | 13 | 2026-07-20 | (Claude Code) Stale-plan-doc sweep, triggered while summarizing the plan for export. BRD: fork base corrected OpenClaude → OpenCode (one-liner + paid-API aside), Windows setup rewritten (WSL2 was still listed as the chosen path), default-endpoint open question closed as RESOLVED (DeepSeek via Zen), pre-launch blocker rewritten from "support native Windows without WSL2" (already true) to "clean installer/onboarding" — and it now records that the current `~/.bun/bin` shims hardcode this repo's absolute path, so they aren't shippable. OVERVIEW: §5 reordered to show v3 in progress / v2 deferred-not-cancelled, §7 Steps 9–10 marked DONE with a pointer that build-progress "Current Status" is the live queue, not that list. PRD: one stale WSL2 mention in a user story | No code touched — docs only. Per the README precedence rule (build-progress/errors are current-state truth; BRD/PRD/SDD are intended design and go stale), these were contradictions, not disagreements. BRD's remaining OpenClaude mentions are intentional: it's a real reference product and the record of why OpenCode was chosen over it |
 
+| 14 | 2026-07-20 | (Claude Code) **Global `vangio` command fixed.** User hit `Cannot find module 'react/jsx-dev-runtime'` running `vangio` from another project. Root-caused by controlled experiment, not inspection: bun resolves `jsxImportSource` from the tsconfig nearest **cwd**, not nearest the transpiled file, so the TUI's `@opentui/solid` setting was invisible from any folder except `packages/opencode` — it failed from the repo root too, so the other project's React config was never the cause. Fix: new tracked `script/vangio-launcher.ts` + rewritten sh/cmd shims that pin `--cwd packages/opencode` for bun and `chdir` back to the invocation directory (restoring `PWD` so `vangio ..` still resolves). Also started the v3 mobile work this session: steps 7–9 verified, step 10 blocked on a tailnet Serve admin toggle | Verified with the real command from KodeHub, repo root, and home; plus `vangio ..`, `--version`, `models`, and `serve` (whose `/path` confirmed worktree = invoking folder). Rejected: `--tsconfig-override` (build-only, runtime ignores it), per-file `@jsxImportSource` pragmas (103 files in packages/tui, permanent upstream-merge conflict), compiled binary (fixes cwd but goes **silently stale** after source edits — wrong trade while the fork is under active development). Root lesson recorded in errors.md: `--version` is not proof a launcher works, it exits before the TUI loads |
+
 | 15 | 2026-07-29 | (Claude Code) **First upstream merge since the 2026-07-16 fork point.** 220 upstream commits merged on branch `merge/upstream-2026-07-29` → exactly ONE conflict (`session/prompt/meta.txt`: VanGio had swapped 5 branding lines, upstream rewrote the whole file into new sections — resolved by taking upstream's version and re-applying the branding). Verified: `bun install` clean, `bun typecheck` 31/31 including `@vangio/notifier`, notifier 24/24 + legacy-dirs 5/5 + permission.shared 5/5 tests pass, and a real TUI launch under the ConPTY harness renders the owl, wordmark, byline, `Build ·DeepSeek V4 Flash (free) OpenCode Zen·` with marquee, and `⊙ 1 MCP` with no notifier errors. Then a post-merge inspection fixed 15 home-screen tips that taught the wrong CLI name and config paths (`opencode run/serve/upgrade/...` → `vangio ...`, `~/.config/opencode/tui.json` → `~/.config/vangio/`, `.opencode/{commands,agents,tools,plugins,themes}/` → `.vangio/...`) | **Fork is 2.5% of the codebase** — 78 of 3,090 source files touched, only 13 of them new. That thinness is why 220 commits produced one conflict. **Two roadmap discoveries:** upstream already ships `packages/app` (502 files — the web app VanGio serves to the phone, 0 files changed by VanGio) and `packages/desktop` (83 files — a full Electron app with electron-builder Mac/Win/Linux targets), so v2 is largely a rebrand, not a build. **New watchlist item** in errors.md: `.vangio` project-dir support is patched into only one of two live config paths — verified working today, but silently at risk when upstream finishes its v1→v2 config migration |
 
-| 14 | 2026-07-20 | (Claude Code) **Global `vangio` command fixed.** User hit `Cannot find module 'react/jsx-dev-runtime'` running `vangio` from another project. Root-caused by controlled experiment, not inspection: bun resolves `jsxImportSource` from the tsconfig nearest **cwd**, not nearest the transpiled file, so the TUI's `@opentui/solid` setting was invisible from any folder except `packages/opencode` — it failed from the repo root too, so the other project's React config was never the cause. Fix: new tracked `script/vangio-launcher.ts` + rewritten sh/cmd shims that pin `--cwd packages/opencode` for bun and `chdir` back to the invocation directory (restoring `PWD` so `vangio ..` still resolves). Also started the v3 mobile work this session: steps 7–9 verified, step 10 blocked on a tailnet Serve admin toggle | Verified with the real command from KodeHub, repo root, and home; plus `vangio ..`, `--version`, `models`, and `serve` (whose `/path` confirmed worktree = invoking folder). Rejected: `--tsconfig-override` (build-only, runtime ignores it), per-file `@jsxImportSource` pragmas (103 files in packages/tui, permanent upstream-merge conflict), compiled binary (fixes cwd but goes **silently stale** after source edits — wrong trade while the fork is under active development). Root lesson recorded in errors.md: `--version` is not proof a launcher works, it exits before the TUI loads |
+| 16 | 2026-07-29 | (Claude Code) **Product positioning set: this repo is VanGio Code**, the coding agent and first product in a **VanGio** ecosystem. The eventual flagship is a capability-aware automation AI that matches workflow steps to available models AND hardware (free default, paid optional) — the Gryphon "model per role" principle graduating from a coding-agent detail into the main product's core. Recorded as **v8, deferred**, with the full supporting analysis (integrations not models are the bottleneck; all 7 free Zen models are text-only; hardware is a first-class constraint; reliability compounds across unattended steps; generate pipelines rather than drive them live). BRD/PRD/OVERVIEW renamed to VanGio Code with pointers to the v8 section | No code touched — positioning + roadmap only. The unresolved scope question is recorded rather than answered: whether v8 is VanGio Code's final phase or a separate product that merely uses it. Parked without adopting: a "Vibecoder vs Programmer" front-door split in the web app |
 
 ---
 

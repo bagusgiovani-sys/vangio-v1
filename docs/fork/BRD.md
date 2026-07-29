@@ -5,7 +5,12 @@
 ---
 
 ## Product Summary
-**Name:** VanGio (tentative — open to renaming)
+**Name:** **VanGio Code** — renamed 2026-07-29 from plain "VanGio". This repo is the coding agent
+and the *first* product in a **VanGio** ecosystem; the eventual flagship is a capability-aware
+automation AI that matches workflow steps to the models and hardware actually available (free by
+default, paid optional). That flagship carries the Gryphon principle — a model per role — as its
+core. It is a **deferred final phase**: see build-progress.md → "v8 — VanGio (the ecosystem)" for
+the direction and the analysis behind it. Everything else in this BRD remains the active scope.
 **One-liner:** A terminal-based AI coding assistant, forked from OpenCode, defaulting to DeepSeek V4 Flash Free (via OpenCode Zen) with GLM/Qwen/Kimi as switchable fallback profiles and local Ollama as an optional offline mode.
 **Type:** CLI (terminal application)
 **Owner:** Self (freelance/self-employed frontend engineer)

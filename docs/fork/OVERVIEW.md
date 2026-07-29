@@ -18,10 +18,16 @@
 ---
 
 ## 1. Project Overview
-VanGio is an AI-powered multi-surface development tool, forked from OpenCode. It has two modes:
+> **Positioning (set 2026-07-29):** this repository is **VanGio Code** — the coding agent, and the
+> first product in a larger **VanGio** ecosystem. The eventual main VanGio product is a
+> capability-aware automation AI (see build-progress.md → "v8 — VanGio (the ecosystem)"), which
+> is where the Gryphon principle of *a model per role* graduates from a coding-agent detail into
+> the core of the product. **v8 is deferred — everything below is still the active scope.**
+
+VanGio Code is an AI-powered multi-surface development tool, forked from OpenCode. It has two modes:
 
 - **Terminal mode** (v1, shipped) — CLI/TUI with Gryphon 3-head orchestration, DeepSeek V4 Flash Free default, free cloud models
-- **Desktop app** (v2, planned) — visual UI wrapping the same engine for noob-friendly vibecoding
+- **Desktop app** (v2, planned — see the RESCOPE notice in build-progress.md; upstream already ships `packages/app` and `packages/desktop`) — visual UI wrapping the same engine for noob-friendly vibecoding
 
 The long-term vision: **VanGio isn't just one AI. It's a factory that builds the perfect AI team for your job.** You describe what you want to build → VanGio assembles a 3-model paradigm (orchestrator + implementer + researcher) tailored to that domain. From TikTok marketing to full-stack web apps — the right team for every task, at the lowest possible cost.
 

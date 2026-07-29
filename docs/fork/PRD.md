@@ -5,7 +5,11 @@
 ---
 
 ## Overview
-VanGio is an AI-powered multi-surface development tool. **v1** (shipped) is a terminal coding assistant running **natively on Windows 11**, defaulting to **DeepSeek V4 Flash Free** (via OpenCode Zen) with **GLM-4.7-Flash** as fallback and Qwen/Kimi/Ollama as switchable profiles. The long-term vision goes far beyond a single AI: **VanGio is a factory that builds the perfect AI team for any job** — automatically assembling 3-model paradigms (orchestrator + implementer + researcher) tailored to whatever you want to build, from TikTok marketing to full-stack web apps, at the lowest possible cost.
+> **Naming (2026-07-29):** this product is **VanGio Code**, the coding agent — the first product in a
+> **VanGio** ecosystem whose eventual flagship is capability-aware workflow automation (item 11 below,
+> deferred). The scope in this PRD is unchanged.
+
+VanGio Code is an AI-powered multi-surface development tool. **v1** (shipped) is a terminal coding assistant running **natively on Windows 11**, defaulting to **DeepSeek V4 Flash Free** (via OpenCode Zen) with **GLM-4.7-Flash** as fallback and Qwen/Kimi/Ollama as switchable profiles. The long-term vision goes far beyond a single AI: **VanGio is a factory that builds the perfect AI team for any job** — automatically assembling 3-model paradigms (orchestrator + implementer + researcher) tailored to whatever you want to build, from TikTok marketing to full-stack web apps, at the lowest possible cost.
 
 ---
 
@@ -47,6 +51,7 @@ VanGio is an AI-powered multi-surface development tool. **v1** (shipped) is a te
 8. **(v5+) Paradigm Customizer** — tweak models, roles, and routing rules per preset
 9. **(v6+) Wizard-Generated Paradigm** — describe your goal, AI builds you a custom team config
 10. **(v7) Autonomous Paradigm Factory** — full vision: say what you want to build, VanGio assembles the ideal team
+11. **(v8, DEFERRED — the VanGio ecosystem)** **Capability-Aware Workflow Automation** — the user describes a multi-step workflow; VanGio reports which steps it can actually automate *on this machine with these models*, assigns a model per automatable step, and names the steps the user must still do by hand. This repo becomes **VanGio Code**, one product in the ecosystem. Filter on **capability** (tool + credential + hardware), not on model availability — and generate the pipeline as a script rather than driving it live. Full reasoning and constraints in build-progress.md → "v8 — VanGio (the ecosystem)"; do not design from this line alone.
 
 ---
 
