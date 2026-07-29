@@ -73,6 +73,17 @@
 VanGio v1 is shipped. This is the full product vision — each phase builds on the one before.
 
 ### v2 — Desktop App (Visual UI)
+> **RESCOPE NEEDED (discovered 2026-07-29).** Upstream already ships both surfaces this phase
+> assumed VanGio would build: `packages/app` (502 files — a SolidJS client with session tabs,
+> file tree, embedded terminals, command palette, and settings dialogs for providers/models/
+> servers/keybinds) and `packages/desktop` (83 files — an Electron shell that depends on
+> `@opencode-ai/app` as a workspace package and is configured with electron-builder for Mac,
+> Windows, and Linux). VanGio has changed **zero** files in `packages/app`. The web app is also
+> already in use — v3's mobile setup serves it over Tailscale. So v2 is realistically a
+> **rebranding pass plus whatever is genuinely missing**, closer in size to Phase 8 than to a
+> ground-up build. Re-plan before starting. Related: `settings-models` / `dialog-manage-models`
+> are a natural host for v5's paradigm customizer, so v5 has a UI foundation too.
+
 - [ ] **Tauri/Electron desktop app** wrapping the VanGio engine via HTTP API
 - Visual project browser, click-to-edit, diff viewer, status dashboard
 - Preset workflow gallery (guided mode for noobs)
@@ -143,6 +154,8 @@ VanGio v1 is shipped. This is the full product vision — each phase builds on t
 
 | 13 | 2026-07-20 | (Claude Code) Stale-plan-doc sweep, triggered while summarizing the plan for export. BRD: fork base corrected OpenClaude → OpenCode (one-liner + paid-API aside), Windows setup rewritten (WSL2 was still listed as the chosen path), default-endpoint open question closed as RESOLVED (DeepSeek via Zen), pre-launch blocker rewritten from "support native Windows without WSL2" (already true) to "clean installer/onboarding" — and it now records that the current `~/.bun/bin` shims hardcode this repo's absolute path, so they aren't shippable. OVERVIEW: §5 reordered to show v3 in progress / v2 deferred-not-cancelled, §7 Steps 9–10 marked DONE with a pointer that build-progress "Current Status" is the live queue, not that list. PRD: one stale WSL2 mention in a user story | No code touched — docs only. Per the README precedence rule (build-progress/errors are current-state truth; BRD/PRD/SDD are intended design and go stale), these were contradictions, not disagreements. BRD's remaining OpenClaude mentions are intentional: it's a real reference product and the record of why OpenCode was chosen over it |
 
+| 15 | 2026-07-29 | (Claude Code) **First upstream merge since the 2026-07-16 fork point.** 220 upstream commits merged on branch `merge/upstream-2026-07-29` → exactly ONE conflict (`session/prompt/meta.txt`: VanGio had swapped 5 branding lines, upstream rewrote the whole file into new sections — resolved by taking upstream's version and re-applying the branding). Verified: `bun install` clean, `bun typecheck` 31/31 including `@vangio/notifier`, notifier 24/24 + legacy-dirs 5/5 + permission.shared 5/5 tests pass, and a real TUI launch under the ConPTY harness renders the owl, wordmark, byline, `Build ·DeepSeek V4 Flash (free) OpenCode Zen·` with marquee, and `⊙ 1 MCP` with no notifier errors. Then a post-merge inspection fixed 15 home-screen tips that taught the wrong CLI name and config paths (`opencode run/serve/upgrade/...` → `vangio ...`, `~/.config/opencode/tui.json` → `~/.config/vangio/`, `.opencode/{commands,agents,tools,plugins,themes}/` → `.vangio/...`) | **Fork is 2.5% of the codebase** — 78 of 3,090 source files touched, only 13 of them new. That thinness is why 220 commits produced one conflict. **Two roadmap discoveries:** upstream already ships `packages/app` (502 files — the web app VanGio serves to the phone, 0 files changed by VanGio) and `packages/desktop` (83 files — a full Electron app with electron-builder Mac/Win/Linux targets), so v2 is largely a rebrand, not a build. **New watchlist item** in errors.md: `.vangio` project-dir support is patched into only one of two live config paths — verified working today, but silently at risk when upstream finishes its v1→v2 config migration |
+
 | 14 | 2026-07-20 | (Claude Code) **Global `vangio` command fixed.** User hit `Cannot find module 'react/jsx-dev-runtime'` running `vangio` from another project. Root-caused by controlled experiment, not inspection: bun resolves `jsxImportSource` from the tsconfig nearest **cwd**, not nearest the transpiled file, so the TUI's `@opentui/solid` setting was invisible from any folder except `packages/opencode` — it failed from the repo root too, so the other project's React config was never the cause. Fix: new tracked `script/vangio-launcher.ts` + rewritten sh/cmd shims that pin `--cwd packages/opencode` for bun and `chdir` back to the invocation directory (restoring `PWD` so `vangio ..` still resolves). Also started the v3 mobile work this session: steps 7–9 verified, step 10 blocked on a tailnet Serve admin toggle | Verified with the real command from KodeHub, repo root, and home; plus `vangio ..`, `--version`, `models`, and `serve` (whose `/path` confirmed worktree = invoking folder). Rejected: `--tsconfig-override` (build-only, runtime ignores it), per-file `@jsxImportSource` pragmas (103 files in packages/tui, permanent upstream-merge conflict), compiled binary (fixes cwd but goes **silently stale** after source edits — wrong trade while the fork is under active development). Root lesson recorded in errors.md: `--version` is not proof a launcher works, it exits before the TUI loads |
 
 ---
@@ -197,6 +210,42 @@ bun run --conditions=browser --cwd "%VANGIO_REPO%\packages\opencode" "%VANGIO_RE
 **Verifying a change to any of this: `vangio --version` is NOT sufficient** — it exits before the
 TUI module graph loads, which is exactly why the JSX bug survived from session 10 to session 14.
 Run the bare default command from a folder outside the repo and confirm it opens that folder.
+
+## Upstream merge policy (added 2026-07-29)
+
+VanGio tracks upstream (`anomalyco/opencode`) rather than hard-forking. Nothing arrives
+automatically — `upstream` code only lands when you run `git fetch upstream` +
+`git merge upstream/dev` yourself. Leaving the GitHub fork network on 2026-07-18 changed only
+the contribution-graph label; the remote still works exactly as before.
+
+**Cadence: merge roughly monthly.** Measured cost at the first merge (13 days, 220 upstream
+commits): one conflict, about half a day including verification. Upstream ships ~37 commits/day
+and maintains 97.5% of what VanGio runs on, so tracking is overwhelmingly worth it. Postponing a
+merge does not avoid the work — it compounds it, because your own reasons for each patch fade.
+
+**Always merge on a branch, never on `dev`:**
+
+```bash
+git fetch upstream dev
+git checkout -b merge/upstream-YYYY-MM-DD
+git merge upstream/dev
+# resolve conflicts, then:
+bun install && bun typecheck
+# per-package tests (root `bun test` is deliberately blocked)
+cd packages/notifier && bun test
+# THEN the real gate — a TUI launch under the ConPTY harness (.claude/skills/verify/SKILL.md).
+# `--version` is NOT proof; it exits before the TUI module graph loads (errors.md 2026-07-20).
+```
+
+Only merge to `dev` once the TUI actually renders. If it fails, throw the branch away — you lose
+an afternoon, not the project.
+
+**Re-check after every merge:** the `.vangio` project-dir marker test (see the errors.md
+watchlist entry) — upstream's v1→v2 config migration will break it silently.
+
+**When to reconsider tracking:** a merge costing 3+ days, an upstream license/direction change,
+or the paradigm layer genuinely requiring a rewrite of the agent loop rather than a layer on top.
+All three are observable events, not calendar dates.
 
 ## Current Status
 **v1 is shipped and tagged** (v1.0.0 on 83ccb91fa, 2026-07-19). All v1 phases complete:
