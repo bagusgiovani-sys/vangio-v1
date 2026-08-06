@@ -1,0 +1,32 @@
+{
+  "name": "premium-gryphon",
+  "description": "Gryphon with a paid king. Identical team, routing and discipline - only the head that reasons is stronger, and its tokens cost real money.",
+  "king": "king",
+  "heads": {
+    "king": {
+      "model": "anthropic/claude-sonnet-5",
+      "role": "plan, decide, implement carefully, review critically"
+    },
+    "warrior": {
+      "model": "opencode/mimo-v2.5-free",
+      "role": "implement fully-specified chunks - exact files, changes, and verification steps"
+    },
+    "scout": {
+      "model": "opencode/north-mini-code-free",
+      "role": "fast factual lookups - where is X defined, which file does Y",
+      "permission": { "edit": "deny" }
+    }
+  },
+  "routing": [
+    "trivial lookup (< 2 file reads) -> do it yourself",
+    "grep across 3+ files -> @scout",
+    "small edit (< 5 lines, 1 file, well understood) -> do it yourself",
+    "multi-file implementation, new logic, needs testing -> @warrior with a complete spec",
+    "ambiguous architecture question -> keep it, think harder, do NOT guess"
+  ],
+  "discipline": {
+    "scout": "under 10% of a king turn - use liberally",
+    "warrior": "60-80% of a king turn - only with a complete spec",
+    "self": "3+ reasoning turns on one task -> consider delegating; 5+ turns with no concrete output -> stop and ask the user"
+  }
+}

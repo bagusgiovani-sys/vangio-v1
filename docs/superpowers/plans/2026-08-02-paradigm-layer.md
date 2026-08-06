@@ -765,7 +765,7 @@ clone and becomes one field.
 **Interfaces:**
 - Consumes: `parseParadigm` (Task 1), `compileParadigm` (Task 2).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 import { describe, expect, test } from "bun:test"
@@ -816,12 +816,12 @@ describe("shipped paradigms", () => {
 })
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `cd packages/paradigm && bun test test/gryphon.test.ts`
 Expected: FAIL — `paradigms/gryphon.json` does not exist.
 
-- [ ] **Step 3: Write `paradigms/gryphon.json`**
+- [x] **Step 3: Write `paradigms/gryphon.json`**
 
 ```json
 {
@@ -858,19 +858,19 @@ Expected: FAIL — `paradigms/gryphon.json` does not exist.
 }
 ```
 
-- [ ] **Step 4: Write `paradigms/premium-gryphon.json`**
+- [x] **Step 4: Write `paradigms/premium-gryphon.json`**
 
 Copy `gryphon.json` verbatim, then change exactly two things: `name` to `premium-gryphon`, and the
 `king` head's `model` to `anthropic/claude-sonnet-4-20250514`. Every other field — including all of
 `warrior`, `scout`, `routing`, and `discipline` — must stay byte-identical, because the test asserts
 it. Update `description` to note it is the paid king.
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run: `cd packages/paradigm && bun test test/gryphon.test.ts`
 Expected: PASS, 4 tests.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add paradigms packages/paradigm
