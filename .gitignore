@@ -2,8 +2,6 @@
 node_modules
 .worktrees
 .sst
-.env
-.env.local
 .idea
 .vscode
 .codex
@@ -35,3 +33,4 @@ tsconfig.tsbuildinfo
 
 # CodeGraph index (regenerated locally via `codegraph init`, not versioned)
 .codegraph/
+config.bat
