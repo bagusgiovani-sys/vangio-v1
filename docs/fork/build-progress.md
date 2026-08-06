@@ -218,6 +218,54 @@ remains unoccupied ground.
   script, an n8n import, or an OpenClaw skill.
 - **Tracker** (the run view from (1)) — what makes it feel real to a user.
 
+#### Added 2026-08-06 — model discovery is mostly already inherited; do NOT build a scraper
+
+**Requirement:** the product must search efficiently for which AI models are free and usable
+before deciding what an agent can automate and what stays manual work, weighed against the
+user's device spec.
+
+**Most of this already exists in the fork.** `packages/core/src/models-dev.ts` fetches
+`https://models.dev/api.json` and caches it to `~/.cache/vangio/models.json` (3.5 MB, refreshed
+automatically; `Flag.OPENCODE_MODELS_URL` overrides the source). Do not build a scraper, and do
+not use web search for this — it is a local JSON query.
+
+Per-model fields, which are exactly the capability filter's inputs (`models-dev.ts:62-95`):
+
+| Field | Use |
+|---|---|
+| `cost.{input,output}` | free tier detection — both `0` means free |
+| `modalities.{input,output}` | `text` / `audio` / `image` / `video` / `pdf` — can it see or hear |
+| `limit.{context,output}` | context window |
+| `tool_call` | can it drive tools — required for any agent step |
+| `reasoning`, `attachment`, `release_date`, `status` | quality/recency filtering |
+
+Precedent already in the codebase: `packages/opencode/src/provider/provider.ts:191-194` drops
+paid models with `if (value.cost.input === 0) continue` when no key is present.
+
+**Measured against the live cache 2026-08-06:** 180 providers, 6,149 models; **486 free**
+(input and output both 0), **386** of those tool-call capable, **204** accepting non-text input.
+
+**This overturns finding 2 above.** "Every free model is text-only" was verified against the
+**Zen catalog only** (7 models) on 2026-07-29. Across the full catalog it is false — free
+image/video/audio models exist, e.g. `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`
+(text+image+video+audio). Whisper may therefore not be the hard dependency finding 2 assumed.
+Do not delete finding 2 — it remains true of Zen, which is what VanGio defaults to.
+
+**Caveats that must survive into the design — free-by-cost is NOT reachable:**
+1. `cost: 0` means the catalog lists no price. It does not mean keyless, unmetered, or up right
+   now. The NVIDIA and Poe entries need API keys; rate limits are not in the catalog at all.
+2. Several "models" in that 204 are specialized vision nets (`bevformer`,
+   `active-speaker-detection`, `sparsedrive`), not general-purpose models. The number is an
+   upper bound.
+3. So the filter needs stages, not one query: **cost → modality → `tool_call` → actually
+   reachable with a credential this user holds → observed to work.** Only the first three are
+   answerable from the catalog.
+
+**The device half is not in the catalog and has no inherited machinery.** RAM, disk, CPU, GPU,
+and whether `ffmpeg` / `whisper` / a given CLI is installed must come from real local probes.
+That is the part still to be built, and per the standing risk below it is the part that has to
+be right.
+
 **Standing risk to design against:** the tracker is the easiest layer to build and the most
 impressive to demo, so it will feel like the product works before the hard part does. The hard
 part is the device probe being *right*. The first time it claims a step is automatable and it is
