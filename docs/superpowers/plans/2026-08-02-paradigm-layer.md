@@ -461,7 +461,7 @@ git commit -m "feat(paradigm): compile a paradigm into agent config entries"
 Both directories are created on demand. `writeActiveName` writes the marker file and its parent
 directory together, so activation never half-succeeds.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 import { describe, expect, test, beforeEach, afterEach } from "bun:test"
@@ -525,12 +525,12 @@ describe("active marker", () => {
 })
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `cd packages/paradigm && bun test test/load.test.ts`
 Expected: FAIL — cannot resolve `../src/load`.
 
-- [ ] **Step 3: Write the minimal implementation**
+- [x] **Step 3: Write the minimal implementation**
 
 ```ts
 import { readdir, readFile, mkdir, writeFile } from "fs/promises"
@@ -585,12 +585,12 @@ export async function writeActiveName(statePath: string, name: string): Promise<
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `cd packages/paradigm && bun test test/load.test.ts`
 Expected: PASS, 5 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/paradigm
