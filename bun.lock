@@ -702,7 +702,10 @@
       "version": "0.1.0",
       "devDependencies": {
         "@opencode-ai/plugin": "workspace:*",
+        "@opentui/core": "catalog:",
+        "@opentui/solid": "catalog:",
         "@types/bun": "catalog:",
+        "solid-js": "catalog:",
         "typescript": "catalog:",
       },
     },
