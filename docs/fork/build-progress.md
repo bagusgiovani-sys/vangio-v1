@@ -178,6 +178,58 @@ uses VanGio Code? Today the fork inherits an agent loop, tool system, TUI, web a
 shell for free by tracking OpenCode. An automation platform inherits far less of that leverage,
 and it pulls against the BRD's "solo dev, personal use first." Decide before building.
 
+#### Added 2026-08-06 — the workflow run view, and where the moat actually is
+
+Two things were established in discussion and are recorded here so they are not re-derived.
+
+**1. A new requirement that changes the architecture: the visual workflow run.** On approving a
+plan ("ok let's do this workflow"), the user gets a step-by-step view showing which steps are
+done and which are not. Point 5 above says "generates the pipeline as a script" — **a script has
+no state.** It cannot report that it is on step 3 of 7, cannot show what is blocked, cannot be
+resumed tomorrow. This requires a **run model**: steps as records, per-step status, artifacts,
+persistence. It is a real addition, not a skin over the generated script. The surface for it
+already exists — `packages/app` (502 files, desktop-class web client, zero files changed by
+VanGio) wrapped by `packages/desktop` (Electron). A run view is a new page in something we
+already own.
+
+**2. Competitive position, checked 2026-08-06 — the product is a planner, not an executor.**
+
+| | What it does | What it assumes |
+|---|---|---|
+| n8n | Executes a workflow you built by hand in a node graph | You already know what is automatable |
+| OpenClaw | Executes what you ask, now, from a chat app | You already know what your machine can do |
+| VanGio | **Reports what is possible before you commit**, then builds it | Nothing — that is the point |
+
+**OpenClaw** (Peter Steinberger; shipped Nov 2025 as Clawdbot, renamed Jan 2026; MIT; >250k
+GitHub stars in ~60 days) is an autonomous agent that runs on your machine and is driven from
+WhatsApp/Telegram — shell, browser, files, email. It is not a model; it wraps one and gives it
+hands. Notably **its memory is markdown files on disk**, which independently matches the profile
+decision recorded in session 18.
+
+Neither n8n nor OpenClaw probes the machine and reports honestly on what it cannot do. That
+remains unoccupied ground.
+
+**Therefore the three layers, with very different economics:**
+- **Planner** (decompose goal → probe device → classify automatable vs manual → report honestly)
+  — the entire moat. Build this.
+- **Executor** (actually run the steps) — **commodity, and where a solo project dies.** n8n has
+  400+ integrations from a funded team; OpenClaw has hands plus an MIT community skill format.
+  Do not rebuild this. Point 5's "generate, don't be the runtime" conclusion stands: emit a
+  script, an n8n import, or an OpenClaw skill.
+- **Tracker** (the run view from (1)) — what makes it feel real to a user.
+
+**Standing risk to design against:** the tracker is the easiest layer to build and the most
+impressive to demo, so it will feel like the product works before the hard part does. The hard
+part is the device probe being *right*. The first time it claims a step is automatable and it is
+not, the honest-feasibility promise — the only thing here that Zapier and n8n lack — is gone. The
+probe must be conservative to the point of pessimism and built on real checks (`ffmpeg -version`,
+does the OAuth token exist, actual RAM) rather than a model's opinion about what is installed.
+
+**Note on sequencing:** in conversation these collapse into one product — "an LLM that builds AI
+agents, which then checks the device and splits manual from automated." On this roadmap that is
+v6/v7 (assisted, then autonomous paradigm generation) *plus* v8. All three are operations on the
+**paradigm object**, which is why the paradigm layer is the prerequisite for every one of them.
+
 **Parked idea (not adopted):** a front-door split in the web app between "Vibecoder" and
 "Programmer / dev AI tools" paths. It is a packaging decision and only becomes meaningful once
 there is a differentiated product to package.
