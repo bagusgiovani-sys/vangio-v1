@@ -95,14 +95,14 @@ touching a filesystem or booting the engine.
 - Produces: `type Head = { model: string; role: string; permission?: Record<string, unknown>; prompt?: string }`, `type Paradigm = { name: string; description?: string; king: string; heads: Record<string, Head>; routing: string[]; discipline: Record<string, string> }`, and `parseParadigm(input: unknown): { ok: true; value: Paradigm } | { ok: false; errors: string[] }`.
 - `king` names which key in `heads` is the orchestrator. This is what keeps head-count open-ended (V-constraint "N heads"): there is no `king`/`warrior`/`scout` triple in the type, only a map plus a pointer.
 
-- [ ] **Step 1: Scaffold the package by copying the notifier's manifest**
+- [x] **Step 1: Scaffold the package by copying the notifier's manifest**
 
 Copy `packages/notifier/package.json` and `packages/notifier/tsconfig.json` to `packages/paradigm/`,
 then change the `name` field to `@vangio/paradigm`. Keep every other field identical — the notifier
 manifest already encodes the DOM-libs and `noUncheckedIndexedAccess` settings this repo needs
 (recorded in build-progress session 12).
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```ts
 import { describe, expect, test } from "bun:test"
@@ -159,12 +159,12 @@ describe("parseParadigm", () => {
 })
 ```
 
-- [ ] **Step 3: Run the test to verify it fails**
+- [x] **Step 3: Run the test to verify it fails**
 
 Run: `cd packages/paradigm && bun test test/schema.test.ts`
 Expected: FAIL — cannot resolve `../src/schema`.
 
-- [ ] **Step 4: Write the minimal implementation**
+- [x] **Step 4: Write the minimal implementation**
 
 ```ts
 export type Head = {
@@ -253,12 +253,12 @@ export function parseParadigm(input: unknown): ParseResult {
 }
 ```
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 Run: `cd packages/paradigm && bun test test/schema.test.ts`
 Expected: PASS, 5 tests.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/paradigm
