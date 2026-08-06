@@ -891,19 +891,19 @@ finding V7 (plugins fail silently). This task is the gate.
 **Interfaces:**
 - Consumes: everything above.
 
-- [ ] **Step 1: Write the install script**
+- [x] **Step 1: Write the install script**
 
 It must do three things, and print what it did:
 1. `Bun.build` `packages/paradigm/src/index.ts` into `~/.config/vangio/plugins/vangio-paradigm.js`, `target: "node"`, `format: "esm"`, bundling dependencies. Mirror `packages/notifier`'s existing bundling approach exactly — the notifier had to default-export `{ id, server }` and the same applies here.
 2. Copy `paradigms/*.json` into `~/.config/vangio/paradigms/`.
 3. Write `gryphon` into `~/.local/share/vangio/paradigm-active`.
 
-- [ ] **Step 2: Run the install script**
+- [x] **Step 2: Run the install script**
 
 Run: `bun run packages/paradigm/script/install.ts`
 Expected: prints the bundled plugin path, the copied paradigm files, and the active marker.
 
-- [ ] **Step 3: Verify the plugin actually loaded — do not skip this**
+- [x] **Step 3: Verify the plugin actually loaded — do not skip this**
 
 Run: `bun run packages/opencode/src/index.ts debug agent warrior`
 Expected: JSON for `warrior` showing `"mode": "subagent"` and the MiMo model.
@@ -916,7 +916,7 @@ Expected: `build` carries the DeepSeek model and a prompt containing `ROUTING RU
 top of `server()` and re-running — that is how the probe in the research phase distinguished "did not
 load" from "loaded but had no effect".
 
-- [ ] **Step 4: Verify Gryphon has LEFT the Tab cycle**
+- [x] **Step 4: Verify Gryphon has LEFT the Tab cycle**
 
 Remove the now-redundant `gryphon` and `premium-gryphon` entries from the `agent` block of
 `~/.config/vangio/opencode.json` (back the file up first — it is not version-controlled). Keep
@@ -929,7 +929,7 @@ Then launch the TUI under the ConPTY harness per `.claude/skills/verify/SKILL.md
 
 `--version` is NOT proof — it exits before the TUI module graph loads (errors.md 2026-07-20).
 
-- [ ] **Step 5: Determine whether runtime switching is reachable**
+- [x] **Step 5: Determine whether runtime switching is reachable**
 
 This is a genuine open question, not a formality. Try, in order:
 1. Change the active marker (`echo premium-gryphon > ~/.local/share/vangio/paradigm-active`) and check whether a **running** session picks it up, or whether it needs a restart.
@@ -939,12 +939,12 @@ Record the honest answer in `docs/fork/build-progress.md`:
 - If a restart is required, ship that as the documented behaviour for now and note that `/paradigm` as a live switch is **not yet implemented**.
 - Do **not** write a `/paradigm` command that appears to work but silently requires a restart.
 
-- [ ] **Step 6: Update the docs**
+- [x] **Step 6: Update the docs**
 
 - `docs/fork/build-progress.md`: new session row recording what shipped, and resolve open decisions #3 and #5 from `vangio-gryphon-issue.md`.
 - `docs/fork/errors.md`: add a watchlist entry for finding V2 — "`ctx.agent.transform` registers but never fires on the live path; re-run the probe after every upstream merge, because when upstream's v2 migration lands the compile target must move from `cfg.agent` to the v2 agent domain."
 
-- [ ] **Step 7: Commit and push**
+- [x] **Step 7: Commit and push**
 
 ```bash
 git add packages/paradigm paradigms docs/fork

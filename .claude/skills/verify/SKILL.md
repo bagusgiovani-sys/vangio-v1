@@ -19,6 +19,7 @@ description: How to run and verify the VanGio TUI (opencode fork) from source �
 
 ## Gotchas
 
-- Agent Tab-cycle order is alphabetical: Build → Gryphon → Plan (config agents interleave with built-ins).
+- Agent Tab-cycle order is alphabetical, and config agents interleave with built-ins. **Since the paradigm layer shipped (2026-08-06) the cycle is Build → Plan only** — Gryphon is no longer an agent; it is a paradigm applied *under* whichever mode is active, and its heads are subagents (`@warrior`, `@scout`) which never enter the cycle. If Gryphon reappears in the Tab cycle, the paradigm plugin failed to load (silently — see errors.md).
+- `pty.spawn` on Windows needs an **absolute exe path** (`C:\Users\<you>\.bun\bin\bun.exe`); ConPTY does not do a PATH lookup, and a bare `"bun"` fails with a bare `Error: File not found`.
 - The prompt status row (agent name · model · variant · description marquee) needs ~85+ cols or it wraps to a second line; use cols ≥ 120 in harnesses.
 - Incremental repaints only rewrite changed cells — static text like the agent name only appears in the stream on full repaints (boot, resize, agent switch). Absence from a chunk does not mean absence from the screen.
