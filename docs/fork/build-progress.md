@@ -444,16 +444,31 @@ subagents. Paradigms live in `~/.config/vangio/paradigms/*.json`, the active one
 Re-run `bun run packages/paradigm/script/install.ts` after any change to `packages/paradigm/src`:
 the plugins dir holds a snapshot, not a live link.
 
-**← NEXT UP: the status-row paradigm picker, options A+B — DECIDED 2026-08-06, not yet built.**
-Full write-up, measured evidence and acceptance criteria in
-`docs/superpowers/plans/2026-08-06-paradigm-picker-options.md`. **A:** show the active paradigm in
-the status row (there is currently no way to see it at all). **B:** a picker that writes the
-marker and says plainly that it applies on restart. A *live* switch (option C) is **rejected for
-now** — the v1 `config` hook fires exactly once at boot (probed twice, see errors.md), so
-switching live means making agent resolution mutable at runtime, which is explicitly one of the
-three events that would justify cutting ties with upstream; that is a separate strategic call.
-Option D (picker relaunches the TUI and resumes) stays unprobed unless B's restart notice proves
-annoying in real use. **Next session: write the A+B implementation plan, then execute it TDD.**
+**Status-row paradigm picker (A+B) is SHIPPED — 2026-08-06.** The active paradigm shows at the
+right end of the prompt status row, and `/paradigm` (also in the command palette) opens a picker
+that writes the marker and says plainly that it applies on restart. A pending switch renders as
+`gryphon → premium-gryphon` so the row never claims a paradigm is running when it isn't.
+
+**It cost zero upstream edits.** The options doc assumed A+B meant patching
+`packages/tui/src/component/prompt/index.tsx` — permanent monthly merge cost. It doesn't: the TUI
+exposes slots, keymap layers and a ready-made select dialog, so the whole feature is a second
+VanGio-owned plugin (`packages/paradigm/src/tui.tsx` + `picker.ts`). The only trade is position —
+the `home_prompt_right` / `session_prompt_right` slots render at the right end of the row rather
+than beside the model.
+
+**Writing a TUI plugin — three things that are not obvious** (all measured, all in errors.md):
+1. **TUI plugins are NOT auto-discovered from the plugins dir.** That glob is server-only; a tui
+   plugin must be declared in `~/.config/vangio/tui.json`'s `plugin` array. `install.ts` now does
+   this idempotently.
+2. **A module exports `server()` or `tui()`, never both** — hence two bundles.
+3. **The bundle must not carry its own Solid** — `solid-js`/`@opentui/*` stay `external` so the
+   host maps them to its live modules; `@opentui/solid/bun-plugin` does the JSX transform.
+
+Verified under the ConPTY harness against all six acceptance criteria, including
+`debug agent build` reporting `anthropic/claude-sonnet-5` after picking `premium-gryphon` and
+restarting. Live switching (option C) remains **rejected** — unchanged by this work, since nothing
+here touches agent resolution. Option D (relaunch-and-resume) stays unprobed unless the restart
+notice proves annoying in real use.
 
 **Standing user profile (added 2026-08-06).** `~/.config/vangio/AGENTS.md` is the single source of
 truth for who the user is, the machine's constraints, and the hard rules. VanGio loads it into

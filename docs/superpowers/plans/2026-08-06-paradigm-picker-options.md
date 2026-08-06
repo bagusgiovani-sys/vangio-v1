@@ -1,8 +1,14 @@
 # Status-row paradigm picker — options, and the decision
 
-> **Status: DECIDED 2026-08-06 — build A + B.** C is rejected for now; D is not to be probed
-> unless B's restart notice proves annoying in real use. Nothing is implemented yet: next session
-> starts by writing the implementation plan for A+B, then executes it TDD.
+> **Status: SHIPPED 2026-08-06 — A + B built and verified.** C stays rejected; D stays unprobed.
+>
+> **One assumption below turned out to be wrong, and it was the expensive one.** The Scope Split
+> note says this work "puts VanGio code into `packages/tui/`". It does not. The TUI exposes slots,
+> keymap layers and a ready-made select dialog, so A+B shipped as a second VanGio-owned plugin
+> with **zero upstream files modified** — and therefore none of the standing merge cost this doc
+> priced in. The only concession is position: the available slots render at the right end of the
+> status row, not beside the model. See `docs/fork/build-progress.md` for what shipped and the
+> three non-obvious constraints on writing a TUI plugin.
 >
 > Split out of `2026-08-02-paradigm-layer.md`, whose Scope Split section deferred the picker to a
 > separate plan because it is the only part of the feature that puts VanGio code into

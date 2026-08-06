@@ -14,6 +14,26 @@
 **Files affected:** List of changed files
 ---
 
+## [2026-08-06 21:15] TUI plugin silently never loaded — only SERVER plugins are auto-discovered from the plugins dir
+#[plugins] #[tui] #[config] #[paradigm]
+**Context:** Building the paradigm status row + picker as a TUI plugin. Bundled it to `~/.config/vangio/plugins/vangio-paradigm-tui.js`, right beside the working server plugin `vangio-paradigm.js`, and installed it the same way.
+**Error:** No error anywhere. The plugin simply never ran — nothing in the status row, no `/paradigm` command, nothing in the log, nothing on stderr in piped mode.
+**Root cause:** The two plugin kinds are discovered by completely different code. `ConfigPlugin.load()` globs `{plugin,plugins}/*.{ts,js}` — and it is called only from the SERVER config (`packages/opencode/src/config/config.ts:464`). The TUI config (`packages/opencode/src/config/tui.ts:157-168`) takes its plugin origins purely from a `plugin` array inside a tui config file and scans no directory at all. A tui plugin dropped in the plugins dir is therefore invisible; it has to be declared in `~/.config/vangio/tui.json`. (Relative specs there resolve against the config file's own directory — `ConfigPlugin.resolvePluginSpec`.)
+**Fix:** `packages/paradigm/script/install.ts` now declares the bundle in `tui.json` idempotently as a fourth install step. Two related constraints found while proving this out, both worth knowing before writing any tui plugin: (1) **a module may export `server()` or `tui()`, never both** — `readV1Plugin` throws on a module carrying both (`packages/opencode/src/plugin/shared.ts:293`), so the tui half must be a second file; (2) **the bundle must not carry its own Solid** — mark `solid-js`, `@opentui/*` and `@opencode-ai/plugin/tui` external and let the host's exact-specifier resolvers map them to its live modules (`@opentui/core/runtime-plugin.js:433`), or the plugin gets a second reactive graph. Use `@opentui/solid/bun-plugin` for the JSX transform at build time.
+**Prevention:** When a plugin does nothing at all, confirm it is even *loaded* before debugging its contents — drop in a 10-line probe plugin that appends to a file on import and in `tui()`. That distinguishes "never loaded" from "loaded but broken" in one run, and it is the difference between fixing config and rewriting working code. More generally: server and tui plugins share a bundling story but NOT a discovery story.
+**Files affected:** packages/paradigm/script/install.ts, ~/.config/vangio/tui.json (out-of-repo config)
+---
+
+## [2026-08-06 21:00] Harness false negative — grepping the PTY stream for a word the TUI is drawing in fragments
+#[verification] #[tooling] #[tui]
+**Context:** Verifying the paradigm name in the prompt status row under the ConPTY harness. The harness stripped ANSI from each chunk, concatenated it, and counted occurrences of `gryphon`.
+**Error:** `gryphon 0 hit(s)` — over a full 50s session, with the feature working perfectly the whole time. Two consecutive runs "proved" a working feature broken, and sent a debugging session after a bug that did not exist.
+**Root cause:** opentui repaints incrementally: it rewrites only changed cells, so a word is emitted as separate positioned writes (`gryph` at one column, `on` at another, often in different chunks) and interleaved with the scrolling description marquee. The literal string never appears contiguously in the byte stream even though it is plainly on screen. The same illusion made a working dialog look like it never opened.
+**Fix:** Judge the screen, not the stream. Reconstruct a grid from the cursor-positioning sequences (`ESC[row;colH` + printable runs, wrapping at the terminal width) and read the row, or match on short fragments and full-repaint frames — boot, resize and agent switch emit large contiguous chunks where whole phrases do survive (`gryphon → premium-gryphon` and the toast text both landed verbatim in one such frame).
+**Prevention:** Never let a substring search over PTY output be the sole evidence that a TUI feature is absent. Absence of a string is not absence of the text — confirm with a full-repaint frame or a reconstructed grid before believing a negative, and prefer a probe file written from the code itself for anything the renderer might fragment.
+**Files affected:** none in-repo (harness lives in session scratchpad; lesson added to `.claude/skills/verify/SKILL.md`)
+---
+
 ## [2026-07-20 07:10] Global `vangio` dead outside the repo — bun reads jsxImportSource from cwd, not from the file
 #[environment] #[tooling] #[bun] #[tui] #[jsx]
 **Context:** Running the global `vangio` command from another project (`C:\Exodus\Projects\Kodecoon LMS\KodeHub`) to start a TUI session there.
