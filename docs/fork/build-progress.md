@@ -321,6 +321,8 @@ there is a differentiated product to package.
 
 | 19 | 2026-08-06 | (Claude Code) **The paradigm layer shipped and is LIVE.** Tasks 1–6 of `docs/superpowers/plans/2026-08-02-paradigm-layer.md`, TDD throughout, 26 tests green, typecheck 32/32. New package `packages/paradigm`: `schema.ts` (the paradigm as data, open-ended head count), `compile.ts` (paradigm → agent config entries), `load.ts` (read paradigm files + active marker; malformed files return error strings, never throw), `index.ts` (v1 plugin `config` hook wiring load+compile, config-wins merge). `paradigms/gryphon.json` + `paradigms/premium-gryphon.json` — **`diff` between them is three lines**: name, description, and the king's model. **Zero upstream files modified.** Installed via `packages/paradigm/script/install.ts` (bundles to `~/.config/vangio/plugins/vangio-paradigm.js`, copies paradigms, writes the marker), then the four now-redundant agent entries (`gryphon`, `premium-gryphon`, `warrior`, `scout`) were removed from live `~/.config/vangio/opencode.json`, leaving it with no `agent` key at all | **Verified in the real engine, not by unit tests.** `debug agent`: `build` and `plan` both carry the king's model *and* the compiled doctrine (`PARADIGM: gryphon`, `ROUTING RULES`); `warrior`/`scout` are `mode: subagent` on their own models; **`gryphon` returns NOT FOUND**. TUI under the ConPTY harness: boot shows `Build`, then Tab alternates `Plan → Build → Plan → Build` — **Gryphon never appears**. The paradigm swap works: one marker change moved the king from `deepseek-v4-flash-free` to `claude-sonnet-5`, doctrine included, no prompt copying. **Deviation from plan:** premium's king is `anthropic/claude-sonnet-5`, not the plan's `claude-sonnet-4-20250514` (May 2025, no longer in the catalog's current Anthropic listing). **Also removed `warrior`/`scout` from config, which the plan left optional** — the merge gives config precedence, so leaving them would have made edits to `paradigms/*.json` silently do nothing. **Open item closed honestly: runtime switching does NOT work** — measured, see errors.md. A switch needs a restart; no `/paradigm` live-switch command was shipped. Two errors.md watchlist entries added (v2 API trap; restart requirement) and `.claude/skills/verify/SKILL.md`'s stale "Build → Gryphon → Plan" gotcha corrected |
 
+| 20 | 2026-08-06 | (Claude Code) **Picker feasibility probed; session closed with the decision open.** Second probe on live switching, this time instrumenting the hook itself: a throwaway plugin appended to a log on every v1 `config` hook fire, then the session had its active marker changed, `opencode.json` rewritten, and Tab pressed. **Exactly one fire, at boot.** Combined with session 19's harness result (a running session keeps the paradigm it booted with), live switching is confirmed unreachable through this mechanism. Four options for the status-row picker written up with that evidence in `docs/superpowers/plans/2026-08-06-paradigm-picker-options.md`; recommendation is A+B (display the active paradigm + a picker that applies on restart), C (live switching) parked behind the upstream-tracking question, D (relaunch-and-resume) unprobed | **Nothing implemented — this row records a measurement and an open decision, not a feature.** Probe plugin removed from `~/.config/vangio/plugins/` afterwards; only `vangio-notifier.js` and `vangio-paradigm.js` remain. Worth noting the shape of the finding: the picker looked like a UI task and turned out to be gated on an engine constraint, which is why it was probed before any UI was written |
+
 ---
 
 ## Phase 6.7 — Gryphon Upgrades: Plugins + Sharper Prompt + Premium Brain (2026-07-17)
@@ -440,9 +442,17 @@ All three are observable events, not calendar dates.
 subagents. Paradigms live in `~/.config/vangio/paradigms/*.json`, the active one in
 `~/.local/share/vangio/paradigm-active`. **Switching requires a restart** (measured — errors.md).
 Re-run `bun run packages/paradigm/script/install.ts` after any change to `packages/paradigm/src`:
-the plugins dir holds a snapshot, not a live link. Remaining from the plan: the status-row
-paradigm picker, deliberately split into a follow-up because it is the only part that would put
-VanGio code into `packages/tui`.
+the plugins dir holds a snapshot, not a live link.
+
+**← NEXT DECISION: the status-row paradigm picker.** Four options written up with the measured
+evidence in `docs/superpowers/plans/2026-08-06-paradigm-picker-options.md`. **Not decided.**
+Short version: a *live* switch is not reachable — the v1 `config` hook fires exactly once at boot
+(probed twice, see errors.md), so switching live means making agent resolution mutable at runtime,
+which is explicitly one of the three events that would justify cutting ties with upstream.
+Recommendation is **A+B**: show the active paradigm in the status row (there is currently no way
+to see it at all), plus a picker that writes the marker and says plainly that it applies on
+restart. Option D — picker relaunches the TUI and resumes the session — is unprobed and worth one
+experiment only if B's restart notice proves annoying in use.
 
 **Standing user profile (added 2026-08-06).** `~/.config/vangio/AGENTS.md` is the single source of
 truth for who the user is, the machine's constraints, and the hard rules. VanGio loads it into
