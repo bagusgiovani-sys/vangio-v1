@@ -616,7 +616,7 @@ silently does nothing on the live path. Do not "modernize" this without re-runni
 Existing keys in `cfg.agent[id]` win over compiled values, so someone who has pinned a model by hand
 keeps it. The compiled doctrine is *appended* to any existing prompt rather than replacing it.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 import { describe, expect, test } from "bun:test"
@@ -677,12 +677,12 @@ describe("applyParadigm", () => {
 })
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `cd packages/paradigm && bun test test/index.test.ts`
 Expected: FAIL — `applyParadigm` is not exported.
 
-- [ ] **Step 3: Write the minimal implementation**
+- [x] **Step 3: Write the minimal implementation**
 
 ```ts
 import os from "os"
@@ -734,17 +734,17 @@ export default {
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `cd packages/paradigm && bun test test/index.test.ts`
 Expected: PASS, 6 tests.
 
-- [ ] **Step 5: Run the whole package suite and typecheck**
+- [x] **Step 5: Run the whole package suite and typecheck**
 
 Run: `cd packages/paradigm && bun test` then from the repo root `bun typecheck`
 Expected: all paradigm tests pass; typecheck reports 32 successful (31 existing + `@vangio/paradigm`).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add packages/paradigm
