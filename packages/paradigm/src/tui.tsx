@@ -18,8 +18,10 @@ import { pickerOptions, statusLabel, switchNotice, type PickerOption } from "./p
 
 const id = "vangio-paradigm-tui"
 
-// flexShrink={0} matters: the status row is space-between, and the agent
-// description marquee to the left will otherwise squeeze this to nothing.
+// flexShrink={0} keeps the name intact when the agent-description marquee grows
+// - the same declaration the model text carries upstream. Measured at 140 and
+// 200 cols: the name sits on the status row itself, right-aligned (col 101 with
+// Build at col 37), so it does not wrap.
 function Status(props: { api: TuiPluginApi; label: () => string | undefined }) {
   const theme = () => props.api.theme.current
   return (
