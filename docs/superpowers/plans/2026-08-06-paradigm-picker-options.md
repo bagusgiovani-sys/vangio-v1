@@ -1,7 +1,8 @@
-# Status-row paradigm picker — options, pending decision
+# Status-row paradigm picker — options, and the decision
 
-> **Status: NOT DECIDED.** Recorded 2026-08-06 at the end of a session, so the reasoning is not
-> re-derived. Nothing here is implemented. Pick an option, then write the implementation plan.
+> **Status: DECIDED 2026-08-06 — build A + B.** C is rejected for now; D is not to be probed
+> unless B's restart notice proves annoying in real use. Nothing is implemented yet: next session
+> starts by writing the implementation plan for A+B, then executes it TDD.
 >
 > Split out of `2026-08-02-paradigm-layer.md`, whose Scope Split section deferred the picker to a
 > separate plan because it is the only part of the feature that puts VanGio code into
@@ -65,16 +66,32 @@ flash instead of a restart instruction.
 - **Unknown:** whether relaunch-and-resume is clean (session restoration, PTY handoff, scrollback,
   in-flight requests). Needs its own probe before it can be planned.
 
-## Recommendation
+## Decision — 2026-08-06
 
-**A + B.** A fills a genuine visibility gap; B removes the actual friction without lying about
-what it does. Both are additive and confined to the status row plus one dialog — small enough that
-the standing `packages/tui/` merge cost is worth paying.
+**Build A + B.** A fills a genuine visibility gap; B removes the actual friction without lying
+about what it does. Both are additive and confined to the status row plus one dialog — small
+enough that the standing `packages/tui/` merge cost is worth paying.
 
-**C is off the table** until the upstream-tracking question is answered separately.
+**C is rejected for now** — it is gated on the upstream-tracking question, which is a separate
+strategic decision and not part of this work.
 
-**D is worth one probe** if the restart instruction in B turns out to annoy in real use. Decide
-that after living with B, not before.
+**D is not to be probed** unless B's restart notice proves annoying after real use. Do not
+pre-emptively build it.
+
+### Acceptance criteria for A+B
+
+1. The status row shows the active paradigm name alongside the model, and reads correctly at boot
+   for both `gryphon` and `premium-gryphon`.
+2. When no paradigm is active, the row degrades cleanly — no empty separator, no crash.
+3. The picker lists every valid paradigm in `~/.config/vangio/paradigms/`; a malformed file is
+   skipped, not fatal (`listParadigms` already returns errors rather than throwing).
+4. Selecting one writes the marker via `writeActiveName()` and **states that it applies on
+   restart** — no wording that implies a live switch.
+5. Verified under the ConPTY harness, not by `--version` and not by unit tests alone: boot with
+   each paradigm and confirm the row; open the picker; select the other one; restart; confirm the
+   row and `debug agent build` both changed.
+6. `bun test` per package green, `bun typecheck` 32/32, no upstream file modified outside the two
+   TUI touch points.
 
 ## Reusable pieces already built and tested
 

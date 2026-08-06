@@ -444,15 +444,16 @@ subagents. Paradigms live in `~/.config/vangio/paradigms/*.json`, the active one
 Re-run `bun run packages/paradigm/script/install.ts` after any change to `packages/paradigm/src`:
 the plugins dir holds a snapshot, not a live link.
 
-**← NEXT DECISION: the status-row paradigm picker.** Four options written up with the measured
-evidence in `docs/superpowers/plans/2026-08-06-paradigm-picker-options.md`. **Not decided.**
-Short version: a *live* switch is not reachable — the v1 `config` hook fires exactly once at boot
-(probed twice, see errors.md), so switching live means making agent resolution mutable at runtime,
-which is explicitly one of the three events that would justify cutting ties with upstream.
-Recommendation is **A+B**: show the active paradigm in the status row (there is currently no way
-to see it at all), plus a picker that writes the marker and says plainly that it applies on
-restart. Option D — picker relaunches the TUI and resumes the session — is unprobed and worth one
-experiment only if B's restart notice proves annoying in use.
+**← NEXT UP: the status-row paradigm picker, options A+B — DECIDED 2026-08-06, not yet built.**
+Full write-up, measured evidence and acceptance criteria in
+`docs/superpowers/plans/2026-08-06-paradigm-picker-options.md`. **A:** show the active paradigm in
+the status row (there is currently no way to see it at all). **B:** a picker that writes the
+marker and says plainly that it applies on restart. A *live* switch (option C) is **rejected for
+now** — the v1 `config` hook fires exactly once at boot (probed twice, see errors.md), so
+switching live means making agent resolution mutable at runtime, which is explicitly one of the
+three events that would justify cutting ties with upstream; that is a separate strategic call.
+Option D (picker relaunches the TUI and resumes) stays unprobed unless B's restart notice proves
+annoying in real use. **Next session: write the A+B implementation plan, then execute it TDD.**
 
 **Standing user profile (added 2026-08-06).** `~/.config/vangio/AGENTS.md` is the single source of
 truth for who the user is, the machine's constraints, and the hard rules. VanGio loads it into
