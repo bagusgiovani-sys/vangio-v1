@@ -14,6 +14,16 @@
 **Files affected:** List of changed files
 ---
 
+## [2026-08-13 01:00] Scout head bound to an expired free model — Zen retired North Mini Code and nothing told us
+#[paradigm] #[free-model-quirk] #[zen] #[config]
+**Context:** Researching the Zen free tier while designing the free-limit fallback. Cross-checked `paradigms/*.json` against the models Zen actually publishes.
+**Error:** No error surfaced anywhere. Both `gryphon` and `premium-gryphon` bound the scout head to `opencode/north-mini-code-free`, which upstream removed from the published Zen roster on 2026-08-12 (`1f94d8a3c8`, "docs(zen): remove expired free models", alongside LongCat-2.0 Free). Config validation passes, the paradigm compiles, `@scout` resolves — the model is simply gone at request time.
+**Root cause:** Free Zen models are explicitly time-boxed ("available on OpenCode for a limited time") and are retired without any client-visible signal. Two things hide the retirement: `parseParadigm` validates *shape*, never model existence (`packages/paradigm/src/schema.ts:43-52` only checks that `model` is a non-empty string), and models.dev — the catalog OpenCode resolves against — keeps retired entries indefinitely. models.dev still lists `north-mini-code-free` (released 2026-06-09) plus 25 other `-free` ids when Zen publishes only 8. So the stale binding looks valid to every layer that could have caught it.
+**Fix:** Rebound scout to `opencode/ling-3.0-tiny-free` (262k context / 32k output, tool calls, released 2026-08-06) in both paradigm files and synced them to `~/.config/vangio/paradigms/`. `bun test` in `packages/paradigm`: 38 pass, 0 fail — and note those tests pass either way, which is the point.
+**Prevention:** models.dev is NOT authoritative for Zen availability; the roster in `packages/web/src/content/docs/zen.mdx` at the current upstream ref is. Re-check every `*-free` model id in `paradigms/*.json` against that table whenever upstream is merged, and treat any `docs(zen): remove expired free models` commit as a direct action item. This incident is the motivating case for the per-head fallback chains being designed in the free-limit-fallback spec — a head whose model dies should degrade, not silently point at nothing.
+**Files affected:** paradigms/gryphon.json, paradigms/premium-gryphon.json, ~/.config/vangio/paradigms/*.json (out-of-repo sync)
+---
+
 ## [2026-08-06 21:15] TUI plugin silently never loaded — only SERVER plugins are auto-discovered from the plugins dir
 #[plugins] #[tui] #[config] #[paradigm]
 **Context:** Building the paradigm status row + picker as a TUI plugin. Bundled it to `~/.config/vangio/plugins/vangio-paradigm-tui.js`, right beside the working server plugin `vangio-paradigm.js`, and installed it the same way.

@@ -12,7 +12,7 @@
       "role": "implement fully-specified chunks - exact files, changes, and verification steps"
     },
     "scout": {
-      "model": "opencode/north-mini-code-free",
+      "model": "opencode/ling-3.0-tiny-free",
       "role": "fast factual lookups - where is X defined, which file does Y",
       "permission": { "edit": "deny" }
     }
