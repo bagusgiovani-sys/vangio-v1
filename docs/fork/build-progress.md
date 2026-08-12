@@ -476,3 +476,35 @@ every session in every project (`session/instruction.ts:60-63`); `~/.claude/CLAU
 so Claude Code reads the same copy. **Neither file is version-controlled** — session 18's row is
 the recipe to recreate them. Keep it to a page; anything longer belongs in `docs/fork/` and gets
 referenced from it.
+
+---
+
+## Phase 9 - Free-tier fallback: research + design (2026-08-13)
+
+Spec: `docs/superpowers/specs/2026-08-13-free-tier-fallback-design.md`. Design only; nothing
+implemented yet, and two questions are still open (Q1 bucket scope, Q2 runtime proof).
+
+- [x] **Scout was bound to a dead model.** Zen retired `north-mini-code-free` 2026-08-12 (upstream
+  `1f94d8a3c8`); both paradigms still pointed at it and no layer caught it. Rebound to
+  `opencode/ling-3.0-tiny-free`. Full write-up in `errors.md`.
+- [x] **models.dev is NOT authoritative for Zen availability** - it carries 26 `opencode` ids
+  ending `-free`; Zen publishes 8. The roster in `packages/web/src/content/docs/zen.mdx` at the
+  current upstream ref is the authority. Re-check every `*-free` id in `paradigms/*.json` at each
+  upstream merge.
+- [x] **The Go upsell is a deliberate funnel**, not an oversight: `retry.ts:76-88` mints the
+  action, `usage-exceeded-dialogs.tsx` renders it with a 24h re-show timer and a don't-show flag.
+  It will not be fixed upstream, which is what makes it fork-differentiating territory.
+- [x] **A model swap between retry attempts is reachable** (`processor.ts:640/660-673` +
+  `llm.ts:35-48`) - the session layer, NOT the config layer, so the 2026-08-06 live-switch blocker
+  does not apply and option C's cost is sidestepped. Read-verified; runtime proof still owed.
+- [x] **Zen's free limit is a per-IP daily counter** bucketed by date + the first TWO characters of
+  the model id *only when* the model has an explicit `rateLimit`; otherwise every default-limit
+  free model shares one budget. Numbers live in the `ZEN_LIMITS` SST secret and no quota header
+  ever reaches the client (`handler.ts:300-306`).
+- [x] **OmniRoute evaluated on this machine and rejected as a backend for now.** v3.8.48, 1321
+  packages, **2.53 GB**, 9 min install. Binds `0.0.0.0` with the default `CHANGEME` management
+  password. `providers list` -> "No providers configured"; `/api/free-tier/summary` -> 401;
+  `quota` -> "No quota data". Two keyless models tested: one returned HTTP 200 with an empty
+  stream, the other 503. Its catalog claims `oc/deepseek-v4-flash-free` has 1M context / 384k
+  output when Zen says 200k / 128k. `omniroute stop` orphans a `server-ws.mjs` holding the port.
+  Kept as a possible future substrate behind the resolver interface, not a dependency.
