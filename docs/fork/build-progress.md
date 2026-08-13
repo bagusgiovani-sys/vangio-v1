@@ -534,10 +534,17 @@ implementation.
   localhost instead of `0.0.0.0` before using it for anything.
 
 **Environment left behind by this session:**
-- OmniRoute v3.8.48 installed globally (~2.53 GB at
-  `C:\Users\kodec\AppData\Roaming\npm\node_modules\omniroute`), data dir `~/.omniroute/`. Server
-  is STOPPED and ports 20128/20131/20132 are clear. Note `omniroute stop` orphans a
-  `server-ws.mjs` process - check the port after stopping it.
+- OmniRoute was installed, evaluated, and **fully uninstalled** the same session (user's call, on
+  the evidence above). `npm uninstall -g omniroute` removed 1189 packages; the package dir, the
+  shims and the `~/.omniroute/` data dir are all gone, and global npm is back to claude-code,
+  codegraph, npm and opencode-ai. Nothing of the user's was in the data dir - the `.env` held only
+  a self-generated `STORAGE_ENCRYPTION_KEY`. **To re-evaluate:** `npm install -g omniroute` (~2.5
+  GB, ~9 min, needs `--fetch-retries`; it failed once with ECONNRESET and left a partial tree that
+  had to be removed by hand). Before using it for anything: change the management password off the
+  default `CHANGEME` and bind it to localhost instead of `0.0.0.0`. Two operational gotchas worth
+  remembering: `omniroute stop` orphans a `server-ws.mjs` process still holding port 20128, and
+  `setup-opencode` hard-codes `~/.config/opencode/opencode.json` (wrong dir for VanGio; use
+  `--dry-run` and place the output by hand).
 - `git fetch upstream` was run: `upstream/dev` is local at `999be62662` (2026-08-12). The roughly
   monthly upstream merge is now ~4 weeks overdue and has not been started. Merge on a branch,
   never directly on `dev`.
