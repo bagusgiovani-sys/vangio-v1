@@ -508,3 +508,38 @@ implemented yet, and two questions are still open (Q1 bucket scope, Q2 runtime p
   stream, the other 503. Its catalog claims `oc/deepseek-v4-flash-free` has 1M context / 384k
   output when Zen says 200k / 128k. `omniroute stop` orphans a `server-ws.mjs` holding the port.
   Kept as a possible future substrate behind the resolver interface, not a dependency.
+
+### Session state - resume here (2026-08-13)
+
+**Where we stopped:** the fallback spec is written, committed and pushed (`bf6a1545ff`). It is
+awaiting the user's review. Nothing is implemented. The next step after the user approves the spec
+is `superpowers:writing-plans` to turn it into a task-by-task implementation plan - NOT
+implementation.
+
+**Two questions gate the plan; neither is answered:**
+- **Q1 - is Zen's daily bucket per-model or shared across all default-limit free models?** Cannot
+  be observed (no quota header ever reaches the client). Do NOT burn a day's quota forcing it.
+  Instrument the next genuine 429 instead: on the first free-tier 429, immediately issue one
+  minimal request to each of the other seven free models and record which also 429.
+- **Q2 - does mutating `streamInput.model` in the `set` callback actually change the model on the
+  next retry attempt?** Read-verified only (F2 in the spec). Must be proven under the ConPTY
+  harness (`.claude/skills/verify/SKILL.md`) before any plan claims the auto path works.
+  `--version` is not proof.
+
+**Open decisions for the user:**
+- Uninstall OmniRoute, or keep it and connect a couple of provider accounts so its quota API has
+  real data? Connecting accounts is the only way to learn whether a non-Zen fallback target is
+  actually viable - which is what Q1 makes or breaks.
+- If OmniRoute is kept: change the management password off the default `CHANGEME` and bind it to
+  localhost instead of `0.0.0.0` before using it for anything.
+
+**Environment left behind by this session:**
+- OmniRoute v3.8.48 installed globally (~2.53 GB at
+  `C:\Users\kodec\AppData\Roaming\npm\node_modules\omniroute`), data dir `~/.omniroute/`. Server
+  is STOPPED and ports 20128/20131/20132 are clear. Note `omniroute stop` orphans a
+  `server-ws.mjs` process - check the port after stopping it.
+- `git fetch upstream` was run: `upstream/dev` is local at `999be62662` (2026-08-12). The roughly
+  monthly upstream merge is now ~4 weeks overdue and has not been started. Merge on a branch,
+  never directly on `dev`.
+- Scout is rebound to `opencode/ling-3.0-tiny-free` in both paradigms and synced to
+  `~/.config/vangio/paradigms/`. Active paradigm marker: `gryphon`.
