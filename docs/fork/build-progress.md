@@ -550,3 +550,68 @@ implementation.
   never directly on `dev`.
 - Scout is rebound to `opencode/ling-3.0-tiny-free` in both paradigms and synced to
   `~/.config/vangio/paradigms/`. Active paradigm marker: `gryphon`.
+
+### Session state - resume here (2026-08-14) - SUPERSEDES the 2026-08-13 block above
+
+Q1 and Q2 from the 2026-08-13 block are both STILL OPEN and unchanged. Everything below is new.
+
+**Provider testing - what is now PROVEN vs still unverified.**
+
+- [x] **`zhipu/glm-4.7-flash` is a working non-Zen fallback, verified end to end.** The provider block
+  was already in `~/.config/vangio/opencode.json` (named "Zhipu GLM (free, fallback)") and
+  `ZHIPU_API_KEY` is already set. Live results: HTTP 200 in 2.4s; it is a *reasoning* model
+  (`reasoning_content` present - a low `max_tokens` returns EMPTY content because the budget is
+  spent thinking, which is how the first test failed); tool calling works
+  (`finish_reason: tool_calls`, correct name and args); and `vangio run --model zhipu/glm-4.7-flash`
+  works. 200k ctx / 131k out - a HIGHER output ceiling than deepseek-v4-flash-free's 128k.
+- [x] **GLM's free tier is hard-limited to 1 concurrent request** - measured: 3 parallel requests
+  gave two 429s and one 200. Fine as a sequential fallback, NOT fine for parallel heads.
+- [x] **DESIGN CONSEQUENCE: not every 429 means paradigm shift.** GLM's 429 is a *concurrency*
+  limit (retry in a second and it works); Zen's is a *daily quota* (only tomorrow fixes it). Same
+  status code, opposite correct response. Current code already handles this correctly - generic
+  rate-limit text returns a plain retry (`retry.ts:129-136`) and only Zen's `FreeUsageLimitError`
+  mints the shift action. The spec must state this explicitly or a naive "429 -> shift" breaks GLM.
+- [x] **OpenCode splits `provider/model` on the FIRST slash** (`packages/opencode/src/acp/config-option.ts:135-141`),
+  so nested ids like `openrouter/nvidia/nemotron-3-super-120b-a12b:free` parse correctly.
+- [x] **NVIDIA is a first-class provider and is the recommended signup - NOT OpenRouter.** OpenCode
+  ships a dedicated plugin (`packages/core/src/plugin/provider/nvidia.ts`) that injects
+  `HTTP-Referer` / `X-Title` / `X-BILLING-INVOKE-ORIGIN` headers. Provider id `nvidia`, env
+  `NVIDIA_API_KEY`, api `https://integrate.api.nvidia.com/v1`, npm `@ai-sdk/openai-compatible`.
+  Free tier: ~1000 credits on joining the developer program, no credit card, **40 RPM** (200 on
+  application). **Staleness check PASSED** - fetched the live 102-model list and confirmed all five
+  recommended models are present: `nemotron-3-super-120b-a12b` (262k/262k),
+  `nemotron-3.5-lightning-30b-a3b` (262k/262k), `nemotron-3-ultra-550b-a55b` (1M/65k),
+  `nvidia-nemotron-nano-9b-v2` (131k/131k), `nemotron-3-nano-omni-30b-a3b-reasoning` (256k/65k, images).
+  NVIDIA's terms are stricter than the others: trial use only, no confidential data, usage logged.
+- [ ] **NOT tested - needs keys the user must create:** NVIDIA, OpenRouter, Google AI Studio, Groq,
+  Mistral. NVIDIA is the one to get; one key covers a fallback for all three heads.
+
+**Proposed chains (positions 2+ deliberately cross to a DIFFERENT quota system, so they survive
+Q1 resolving to "shared bucket"):**
+
+| Head | 1 (Zen) | 2 | 3 |
+|---|---|---|---|
+| king | `opencode/deepseek-v4-flash-free` | `zhipu/glm-4.7-flash` (PROVEN, serial only) | `nvidia/nemotron-3-super-120b-a12b` |
+| warrior | `opencode/mimo-v2.5-free` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` (images) | `google/gemini-3-flash-preview` |
+| scout | `opencode/ling-3.0-tiny-free` | `nvidia/nvidia-nemotron-nano-9b-v2` | `groq/llama-3.1-8b-instant` |
+
+**Pricing correction:** OpenCode Go is **$5 first month, then $10/month** (upstream `go.mdx` and the
+live site). The string at `retry.ts:83` says "starting at $5/month" and is misleading. Go's limits
+are $12 of usage per 5h, $30/week, $60/month, and it unlocks the *Pro* models.
+
+**NEW THREAD, not yet specced - the session sidebar ("sessions like a chat room").**
+Decision reached: **yes to a chat-room VIEW, no to a chat-room STORAGE MODEL.** "Session" is four
+layers - Store (`opencode-local.db`), Model (the `parentID` hierarchy), Loop (`processor.ts` is
+keyed on `sessionID`), View. The first three are the agent loop and rewriting them is one of the
+three named events justifying a break from upstream. The View is a TUI plugin, and the paradigm
+picker already proved that ships with ZERO upstream files modified.
+The trap that decides it: **`@warrior` and `@scout` run as CHILD sessions** with a `parentID`;
+flattening the list either hides delegated runs or buries real conversations.
+Explainer deck published: https://claude.ai/code/artifact/cde8bba4-a814-44f9-823d-82b0e80344d1
+Four decisions await the user: (1) do child sessions appear in the sidebar, (2) does a session keep
+generating when you switch away, (3) fixed width or collapsible, (4) does it replace `<leader>l` or
+sit beside it. Also found: `app_toggle_session_directory_filter` exists in `keybind.ts` but is bound
+to `"none"`, so the project-scope toggle is currently unreachable.
+
+**Nothing was written to VanGio for either thread** - the user asked for testing and confirmation
+before any change. The only commits this session are the scout fix and documentation.
