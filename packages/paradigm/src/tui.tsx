@@ -13,8 +13,21 @@
 import type { TuiPluginApi, TuiPlugin } from "@opencode-ai/plugin/tui"
 import { createSignal, onMount, Show } from "solid-js"
 import { ACTIVE_MARKER, PARADIGM_DIR } from "./index"
-import { listParadigms, readActiveName, writeActiveName } from "./load"
+import { listParadigms, readActiveName, writeActiveName, writeParadigm } from "./load"
 import { pickerOptions, statusLabel, switchNotice, type PickerOption } from "./picker"
+import { getRole, listRoles } from "./roles"
+import { modelOptions, type CandidateModel } from "./resolve"
+import {
+  emptyDraft,
+  firstStep,
+  nextStep,
+  stepBack,
+  toParadigm,
+  validateName,
+  type Draft,
+  type Step,
+} from "./craft"
+import { parseParadigm } from "./schema"
 
 const id = "vangio-paradigm-tui"
 
@@ -96,6 +109,190 @@ function Picker(props: { api: TuiPluginApi; onPick: (name: string) => void }) {
   )
 }
 
+function Craft(props: { api: TuiPluginApi }) {
+  const [draft, setDraft] = createSignal<Draft>(emptyDraft())
+  const [step, setStep] = createSignal<Step>(firstStep())
+  const [existing, setExisting] = createSignal<string[]>([])
+  const [error, setError] = createSignal<string | undefined>(undefined)
+  const DialogSelect = props.api.ui.DialogSelect
+  const DialogPrompt = props.api.ui.DialogPrompt
+
+  onMount(() => {
+    void listParadigms(PARADIGM_DIR).then(({ paradigms }) => setExisting(Object.keys(paradigms)))
+  })
+
+  // api.state.provider is already loaded and synchronous, so the model step
+  // needs no await and no loading state.
+  const candidates = (): CandidateModel[] =>
+    props.api.state.provider.flatMap((provider) =>
+      Object.values(provider.models).map((model) => model as unknown as CandidateModel),
+    )
+
+  // Measured live under ConPTY 2026-08-18: a plain reactive <Show when={step()}
+  // keyed> inside one dialog.replace() call does NOT repaint when step()
+  // changes - the signal advances (confirmed by instrumentation) but the
+  // screen stays on the first dialog forever. The proven mechanism (F9 in the
+  // design spec) is calling dialog.replace() again at every transition, so
+  // that is what advance()/back()/the error path do here.
+  const rerender = () => props.api.ui.dialog.replace(() => render())
+
+  const advance = (answer: string) => {
+    const result = nextStep(draft(), step(), answer)
+    setDraft(result.draft)
+    setStep(result.step)
+    if (result.step.kind === "done") {
+      finish(result.draft)
+      return
+    }
+    rerender()
+  }
+
+  const back = () => {
+    setStep(stepBack(draft(), step()))
+    rerender()
+  }
+
+  const finish = (final: Draft) => {
+    const paradigm = toParadigm(final)
+    // Belt and braces: Task 4's state machine should never produce a paradigm
+    // the parser rejects, but this is the last stop before disk - a silently
+    // written invalid file is worse than a toast.
+    const result = parseParadigm(paradigm)
+    if (!result.ok) {
+      props.api.ui.toast({
+        variant: "error",
+        title: "Paradigm",
+        message: `Could not create paradigm: ${result.errors.join("; ")}`,
+      })
+      return
+    }
+    props.api.ui.dialog.clear()
+    void writeParadigm(PARADIGM_DIR, paradigm)
+      .then(() => {
+        props.api.ui.toast({
+          title: "Paradigm",
+          message: `Created "${final.name}". Use /paradigm to switch - it applies when you restart VanGio.`,
+        })
+      })
+      .catch((err: unknown) => {
+        props.api.ui.toast({
+          variant: "error",
+          title: "Paradigm",
+          message: `Could not write paradigm: ${err instanceof Error ? err.message : String(err)}`,
+        })
+      })
+  }
+
+  const BACK_ROW = { title: "← Back", value: "__back__", description: "return to the previous step" }
+
+  const withBack = <T extends { title: string; value: string; description?: string }>(rows: T[]) =>
+    [BACK_ROW as unknown as T, ...rows]
+
+  const onRow = (value: string) => (value === "__back__" ? back() : advance(value))
+
+  function render() {
+    const current = step()
+    if (current.kind === "name") {
+      return (
+        <DialogPrompt
+          title="New paradigm - name"
+          placeholder="lowercase, numbers and hyphens"
+          description={() => <text>{error() ?? "This becomes the filename."}</text>}
+          onConfirm={(value) => {
+            const problem = validateName(value, existing())
+            if (problem) {
+              setError(problem)
+              rerender()
+              return
+            }
+            setError(undefined)
+            advance(value)
+          }}
+        />
+      )
+    }
+
+    if (current.kind === "shape") {
+      return (
+        <DialogSelect
+          title="New paradigm - shape"
+          options={withBack([
+            { title: "Court", value: "court", description: "distinct roles, order matters" },
+            { title: "Legion", value: "legion", description: "interchangeable workers in parallel" },
+          ])}
+          onSelect={(option) => onRow(String(option.value))}
+        />
+      )
+    }
+
+    if (current.kind === "role") {
+      const rows = listRoles()
+        .filter((role) => !role.mandatory)
+        .map((role) => ({ title: role.title, value: role.id, description: role.summary }))
+      const done =
+        Object.keys(draft().heads).length >= 2
+          ? [{ title: "Done - no more heads", value: "done", description: "go to review" }]
+          : []
+      return (
+        <DialogSelect
+          title={`New paradigm - head ${current.slot} role`}
+          options={withBack([...rows, ...done])}
+          onSelect={(option) => onRow(String(option.value))}
+        />
+      )
+    }
+
+    if (current.kind === "model") {
+      const head = draft().heads[current.slot]
+      const role = head ? getRole(head.role) : undefined
+      const rows = modelOptions({
+        needs: role?.needs ?? {},
+        picks: role?.picks ?? [],
+        models: candidates(),
+      }).map((choice) => ({
+        title: choice.title,
+        value: choice.model,
+        description: choice.description,
+        disabled: choice.disabled,
+      }))
+      return (
+        <DialogSelect
+          title={`New paradigm - model for ${role?.title ?? head?.role ?? "head"}`}
+          placeholder="Search models"
+          options={withBack(rows)}
+          onSelect={(option) => {
+            const row = rows.find((r) => r.value === String(option.value))
+            // Belt and braces: DialogSelect's own `disabled` filter already keeps
+            // these rows out of the selectable list entirely (verified live,
+            // 2026-08-18), so this branch should be unreachable - kept anyway,
+            // since it is cheap and this is the last line of defense.
+            if (row?.disabled) return
+            onRow(String(option.value))
+          }}
+        />
+      )
+    }
+
+    if (current.kind === "review") {
+      const p = toParadigm(draft())
+      const summary = Object.entries(p.heads)
+        .map(([id, head]) => `${id}: ${head.model}`)
+        .join(", ")
+      return (
+        <DialogSelect
+          title={`Create "${p.name}"?`}
+          options={withBack([{ title: "Create", value: "confirm", description: summary }])}
+          onSelect={(option) => onRow(String(option.value))}
+        />
+      )
+    }
+
+    return null
+  }
+
+  return render()
+}
+
 const tui: TuiPlugin = async (api) => {
   // What this session actually booted with. Held separately from the marker so a
   // switch made here can be shown as pending instead of overwriting the truth.
@@ -128,8 +325,19 @@ const tui: TuiPlugin = async (api) => {
           api.ui.dialog.replace(() => <Picker api={api} onPick={setPending} />)
         },
       },
+      {
+        name: "paradigm.craft",
+        title: "Craft paradigm",
+        desc: "Create a new paradigm - choose heads and a model for each",
+        category: "VanGio",
+        namespace: "palette",
+        slashName: "craft",
+        run() {
+          api.ui.dialog.replace(() => <Craft api={api} />)
+        },
+      },
     ],
-    bindings: api.tuiConfig.keybinds.gather("paradigm.palette", ["paradigm.list"]),
+    bindings: api.tuiConfig.keybinds.gather("paradigm.palette", ["paradigm.list", "paradigm.craft"]),
   })
 }
 

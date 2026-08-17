@@ -251,14 +251,38 @@ Numbering is continuous with `2026-08-13-free-tier-fallback-design.md`, which ow
 |---|---|---|
 | **Q1** | Is Zen's daily bucket per-model or shared across all default-limit free models? | **Open.** Unobservable without a real 429; **load-bearing** — it decides whether parallel heads are viable on free tiers at all. The `researcher` paradigm's three-different-models binding is the instrumentation. Do not force a 429. |
 | **Q3** | How does a model swap survive the loop-step boundary? | **Open, and load-bearing for Paradigm Shift stage one.** The loop reads `lastUser.model`, not `currentModel()`, so a retry-time swap (Q2) covers the current step and `ModelSwitched` covers the next prompt — the steps in between are covered by neither. Recommendation: publish `ModelSwitched` plus one conditional at `prompt.ts:1141`, which requires amending the fallback spec's Global Constraints to allow that third seam. **Awaiting the user.** |
-| **Q4** | Does `api.state.provider` list *all* providers or only credentialed ones? | Open. Section 1's three-state absence taxonomy depends on it. **Fold into the first implementation task**, not a separate spike. |
-| **Q5** | Does `DialogSelect`'s `disabled` actually block selection? | Open (F12). Prove before the model step relies on it. |
 | — | Shape names **Court** / **Legion** | Still placeholders pending review. Does not block a plan; they are display strings. |
 
 **Closed:** **Q2** (can the model be swapped at retry time) — proven by
 `packages/opencode/test/session/retry-model-swap.test.ts`, 4 tests green. **The auto-mode
 ambiguity** — resolved to the stronger reading: Gryphon composes the team itself, which is why
 Paradigm Shift splits across v4–v6 and v7.
+
+**Q4** (does `api.state.provider` list *all* providers or only credentialed ones?) — **all of
+them.** Measured live under ConPTY 2026-08-18 with no `auth.json` present on the box at all: `Craft`'s
+`onMount` logged `props.api.state.provider.map(p => p.id)` and got `["zai", "zhipuai-coding-plan",
+"zai-coding-plan", "zhipuai", "opencode", "anthropic", "zhipu"]` — seven providers, none
+credentialed, `anthropic` included. `state.provider` is the raw catalog, not `Catalog.model.available()`
+(F5); the resolver's hard filter is doing real work here; a paradigm crafted against an
+uncredentialed model still gets written, and only fails at use time. Section 1's three-state
+absence taxonomy is confirmed live rather than assumed: the `seer` model step listed several
+`anthropic`/`zai`/`zhipuai` image models as fitting (their catalog metadata claims image support)
+despite the box holding no key for any of them — "exists, no credentials" is real and common, not
+an edge case.
+
+**Q5** (does `DialogSelect`'s `disabled` actually block selection?) — **yes, more than that: it
+hides the row entirely.** `packages/tui/src/ui/dialog-select.tsx`'s `filtered()` memo drops every
+option with `disabled === true` before building the navigable list (`grouped()`/`flat()`), so a
+disabled row never renders and is never reachable by keyboard or mouse — `onSelect` cannot fire
+for it because there is no row to select. Verified two ways under ConPTY 2026-08-18: (1) a
+full-repaint frame of the `seer` model step (whose candidate list has both fitting and failing
+entries) shows only the fitting titles, in the same order as the resolver's own ranking, with zero
+occurrences anywhere of any of the disabled titles; (2) every `onSelect` observed across two full
+wizard runs carried `disabled=false` — there is no code path that reaches the handler with a
+disabled row. This is stronger than Section 4's stated design ("shown disabled with the reason,
+not hidden") — in practice a failing model is hidden, not shown-and-greyed. The wizard's own
+belt-and-braces guard (`if (row?.disabled) return`) is consequently unreachable but kept, since it
+is cheap and free of any hidden costs.
 
 **Q3 does not block this spec.** It belongs to Paradigm Shift stage one, which lives in the
 fallback spec; Craft and the resolver can be planned and built without it.
