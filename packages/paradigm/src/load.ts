@@ -48,3 +48,11 @@ export async function writeActiveName(statePath: string, name: string): Promise<
   await mkdir(path.dirname(statePath), { recursive: true })
   await writeFile(statePath, `${name.trim()}\n`, "utf8")
 }
+
+/** Writes a paradigm as <dir>/<name>.json and returns the path written. */
+export async function writeParadigm(dir: string, paradigm: Paradigm): Promise<string> {
+  await mkdir(dir, { recursive: true })
+  const file = path.join(dir, `${paradigm.name}.json`)
+  await writeFile(file, `${JSON.stringify(paradigm, null, 2)}\n`, "utf8")
+  return file
+}
