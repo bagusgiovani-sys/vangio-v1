@@ -14,6 +14,20 @@
 **Files affected:** List of changed files
 ---
 
+## [2026-08-17 15:20] Scout bound to a dead model AGAIN — the replacement model was itself retired, and the docs still list it
+#[paradigm] #[free-model-quirk] #[zen] #[config] #[staleness]
+**Context:** Building `docs/fork/model-index.md`. Cross-checked every `*-free` id in `paradigms/*.json` against Zen's **live** catalog endpoint rather than against documentation.
+**Error:** Silent again. Both paradigms bound scout to `opencode/ling-3.0-tiny-free` — the model chosen on 2026-08-13 to replace the already-dead `north-mini-code-free`. `https://opencode.ai/zen/v1/models` returns 62 models and **zero** matching "ling". Nothing at any layer complained: the JSON parses, the paradigm compiles, `@scout` resolves.
+**Root cause:** Two distinct failures stacked. (1) Zen retires free models with no client-visible signal, so a dead binding is indistinguishable from a live one until a request is made. (2) **We verified the replacement against the wrong source.** `zen.mdx` at `upstream/dev` still documents `ling-3.0-tiny-free`, and models.dev still carries it — both are catalogs of *capabilities*, and neither tracks *availability*. Checking documentation felt like verification and was not.
+**Fix:** Rebound both paradigms to `opencode/laguna-s-2.1-free` (256k context / 32k output — the largest context among the low-output free models, which suits scout's read-heavy, low-output role). Deliberately NOT `big-pickle`: `zen.mdx` calls it a stealth model, making it the likeliest to vanish next. Removed the dead `north-mini-code-free` entry from `~/.config/vangio/opencode.json` and added the three free models that were missing from it. Verified with `vangio models`: all three bound ids resolve, both dead ids appear nowhere.
+**Prevention:** **Capability data and availability data come from different sources and must be checked separately.** models.dev and `zen.mdx` are authoritative for context/output/tools/images and NEVER for whether a model still exists. Availability comes only from the provider's live endpoint. Run this before trusting any `*-free` binding, at every upstream merge, and before shipping any preset schemata:
+```sh
+curl -s https://opencode.ai/zen/v1/models | tr ',' '\n' | grep -o '"id":"[^"]*free[^"]*"' | sort -u
+```
+Two retirements in five days means a hand-maintained binding is not a viable long-term design — this is the concrete case for the `needs` + `fallback` resolver in the free-tier fallback spec, where a retired model degrades instead of dead-ending.
+**Files affected:** paradigms/gryphon.json, paradigms/premium-gryphon.json, docs/fork/model-index.md (new), ~/.config/vangio/opencode.json (out-of-repo)
+---
+
 ## [2026-08-13 01:00] Scout head bound to an expired free model — Zen retired North Mini Code and nothing told us
 #[paradigm] #[free-model-quirk] #[zen] #[config]
 **Context:** Researching the Zen free tier while designing the free-limit fallback. Cross-checked `paradigms/*.json` against the models Zen actually publishes.

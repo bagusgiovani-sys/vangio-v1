@@ -665,3 +665,106 @@ Global Constraints to name `prompt.ts:1141` as an allowed seam alongside `retry.
 2026-08-12) is now ~5 weeks overdue - merge on a branch, never on `dev`. The session-sidebar thread
 still has its four decisions awaiting the user. No VanGio source file has been modified by this
 work; the only change is one new test file plus documentation.
+
+---
+
+## Phase 10 - Schemata track opened (2026-08-17)
+
+### Session state - RESUME HERE (2026-08-17) - supersedes every earlier block
+
+**The roadmap was resequenced. v4-v6 (schemata) is now the ACTIVE track, ahead of the desktop (v2)
+and mobile (v3) surfaces.** User decision. `vangio-project-plan-summary.md` section 7 is rewritten
+and is the authority; the rationale is that v5, v6 and v7 are all interfaces onto the schemata data
+model, so building the surfaces first means building them twice.
+
+**We are mid-brainstorm on the schemata design (architectural path, `superpowers:brainstorming`).**
+Nothing is implemented. The HARD GATE applies: no code until the design is presented and approved.
+The immediate next step is the answer to the open question at the bottom of this block, then the
+sectioned design, then a spec, then `superpowers:writing-plans`.
+
+#### Decisions already taken - do not relitigate
+
+1. **Shape.** King mandatory and non-negotiable; minimum 2 heads; up to 6 heads below the king.
+2. **Both team shapes are user-selectable** per schemata: a *pipeline* of distinct roles (planner,
+   coder, tester, reviewer, documenter, researcher) where order matters, OR interchangeable
+   *workers* of one kind that the king slices a task across.
+3. **Parallelism is a posture, not a mode.** The schemata declares which heads *may* run in
+   parallel plus a default posture; the king decides per task. Rejected: baking sequential-vs-
+   parallel in at creation time, because the right shape is a property of the task, not the team.
+   **Default posture is sequential** until Q1 is answered.
+4. **Heads declare `needs`, not model lists.** The engine filters the live catalog; the user picks
+   a role and is offered the 3-5 models that fit and are alive. Never a list of 100.
+5. **Curated recommendations ship as JSON** the TUI can read, not prose only - v6's builder needs
+   machine-readable recommendations, and prose can be generated from data but not the reverse.
+6. **The agent loop will NOT be rewritten.** The user proposed it; the argument that settled it is
+   that the loop is stateless between iterations *by design* - it rebuilds from SQLite every pass,
+   which is exactly the property that lets multiple clients drive one session, which is what v3
+   mobile needs. Rewriting it to hold state in memory would delete v3. The model-durability problem
+   it was meant to solve is a one-line DB write instead (Q3 below).
+
+#### What the engine ALREADY provides - verified 2026-08-17, do not rebuild
+
+- **Per-agent models** - OpenCode agents already carry their own `model`.
+- **Parallel subagents** - the `task` tool already takes `background: true`, backed by a fully
+  wired `BackgroundJob.Service` (`start`/`wait`/`extend`/`cancel`/`waitForPromotion`); tool calls
+  within one turn already dispatch as concurrent fibers. **Swarm mode is not a subsystem to build.**
+  Gryphon's routing rules simply never mention `background`.
+- **Durable per-session model override** - `SessionEvent.ModelSwitched` writes the `session.model`
+  column AND appends a `model-switched` message to the transcript.
+- **Model-neutral session storage** - the "vault" idea is already how it works; sessions are stored
+  as provider-neutral records and translated per-model at call time. What actually breaks across a
+  model swap is capability mismatch (context size, images, output ceiling), not storage.
+- **Capability catalog** - models.dev, already consumed.
+
+**Differentiation, sharpened:** it is NOT multi-agent teams or parallelism (Kimi K2.6 swarms to 300
+sub-agents; Claude Code and OpenCode both have subagents). It IS capability-aware selection against
+a live catalog plus honest degradation when a free tier ends. OpenCode cannot close that gap - its
+free-limit response is a deliberate Go upsell funnel, not an oversight.
+
+**Kimi comparison, for the record:** K2.6's Agent Swarm decomposes server-side, inside one model
+family. Gryphon decomposes outside the model, so each head can be a different vendor. Different
+layers, not competitors.
+
+#### Work completed this session
+
+- **Q2 CLOSED - the retry-time model swap is proven.** `packages/opencode/test/session/retry-model-swap.test.ts`,
+  4 tests green. Commit `3f7b7d817e`.
+- **F10/F11/F12 found** - the swap lasts one loop step; a durable override already exists as
+  `ModelSwitched`; but neither covers the steps in between. Spec updated.
+- **`docs/fork/model-index.md` written** - commit `f9ec1dbe38`.
+- **Scout rebound off a second dead model** - commit `2f2b2099be`, errors.md entry 2026-08-17.
+- **Roadmap resequenced** - commit `68c6aa566a`.
+
+#### Model reality - the short version (full detail in model-index.md)
+
+- **Only Zen and Zhipu work today.** Everything else needs a signup. **NVIDIA is the one to get**
+  (~1000 free credits, 40 RPM, no card, first-class OpenCode plugin).
+- **Ruled out:** Groq (6,000 TPM cap - one 30k-token request blows a full minute), Cerebras (8k
+  free context), Mistral (limits unpublished, unverifiable from outside).
+- **Zhipu is 1-concurrent by contract** - never bind it to a head that runs in parallel.
+- **Exactly one free model accepts images:** `mimo-v2.5-free`.
+- **For implementer roles the binding constraint is output ceiling, not context.**
+  `nemotron-3.5-lightning-free` at 262k output is the standout.
+
+#### Open questions, in priority order
+
+- **THE IMMEDIATE ONE (blocks the JSON design):** should a head's `needs` **hard-filter** the model
+  list so an unfit model is not offered, or merely **sort** it advisorily? Recommendation given:
+  hard-filter with an explicit override, because a documenter on a 32k-output model silently
+  truncates files. Awaiting the user.
+- **Q1 - is Zen's daily bucket per-model or shared?** Unchanged, unobservable, and now
+  **load-bearing**: it decides whether parallel heads are viable on free tiers at all. Instrument
+  the next genuine 429; do not force one.
+- **Q3 - how does a model swap survive the loop-step boundary?** Recommendation: publish
+  `ModelSwitched` plus one conditional at `prompt.ts:1141`, which needs the spec's Global
+  Constraints amended to allow that third seam. Awaiting the user.
+- **Session sidebar** - four decisions still parked, untouched this session.
+
+#### Environment left behind
+
+- Working tree clean, everything pushed to `origin/dev`.
+- Scout now on `opencode/laguna-s-2.1-free` in both paradigms, synced via
+  `bun run packages/paradigm/script/install.ts`. Active paradigm marker: `gryphon`.
+- `~/.config/vangio/opencode.json` (NOT version-controlled) had the dead `north-mini-code-free`
+  removed and laguna / lightning / ultra added.
+- Upstream merge still ~5 weeks overdue at `999be62662`.

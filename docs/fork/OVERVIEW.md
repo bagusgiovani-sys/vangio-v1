@@ -125,6 +125,9 @@ All v1 phases are done and shipped. See `build-progress.md` for the full roadmap
 10. DO NOT confuse the free GLM endpoint (`/api/paas/v4`) with the paid Coding Plan endpoint (`/api/coding/paas/v4`) — they are NOT interchangeable
 11. DO NOT use the paid Coding Plan endpoint unless a paid plan is explicitly purchased later
 12. DO NOT expand scope mid-build — if it's not in PRD Must-Have, it waits
+13. DO NOT verify that a model still exists by reading documentation. models.dev and `zen.mdx` are authoritative for **capabilities** (context, output, tools, images) and never for **availability**. Availability comes only from the provider's live endpoint — `curl -s https://opencode.ai/zen/v1/models`. Two scout bindings died silently in five days because docs were treated as proof (errors.md 2026-08-13, 2026-08-17)
+14. DO NOT rebuild what the engine already has. Verified present: per-agent models, parallel subagents (`task` tool `background: true` + `BackgroundJob.Service`), durable per-session model override with transcript announcement (`SessionEvent.ModelSwitched`), model-neutral session storage, and the models.dev catalog. Check for the existing mechanism before designing a new subsystem
+15. DO NOT bind a 1-concurrent provider (Zhipu GLM, measured) to a schemata head that may run in parallel — and remember a 429 is ambiguous: GLM's is a concurrency limit that clears in a second, Zen's is a daily quota that only tomorrow fixes. Same status code, opposite correct response
 
 ---
 
