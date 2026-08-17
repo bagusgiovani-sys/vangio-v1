@@ -841,3 +841,61 @@ layers, not competitors.
 - `~/.config/vangio/opencode.json` (NOT version-controlled) had the dead `north-mini-code-free`
   removed and laguna / lightning / ultra added.
 - Upstream merge still ~5 weeks overdue at `999be62662`.
+
+#### Base runtime re-evaluated — staying on OpenCode (2026-08-17)
+
+User raised DeepSeek Harness (`dsh`) as a possible replacement base. Evaluated as a spike; full
+reasoning and citations are in `vangio-project-plan-summary.md` § 7. **Outcome: do not switch.
+Ship Gryphon on OpenCode, then port it to dsh as a plugin later.**
+
+The decisive fact: **dsh has no automated model capability catalog** — modalities are hand-declared
+per endpoint and `contextWindow` is a hand-written config value. VanGio's differentiation is
+capability-aware selection against a *live* catalog, which OpenCode supplies via models.dev. On dsh
+the resolver would have no data source at all.
+
+Also weighed: dsh ships a web UI with no official TUI (the terminal UI is a four-day-old
+third-party Rust/ratatui plugin); it is a developer preview promising breaking changes; and 64
+commits across 34 packages plus the approved schemata design assume OpenCode's `Catalog`/plugin API.
+
+**Two things to carry forward:**
+
+1. **The resolver must be a pure function over an injected `ModelInfo[]`**, never reaching into
+   `Catalog.Service` directly. Amends Section 3 below. Testable without a live catalog, and
+   portable to any runtime that can supply a model list — this is what keeps the dsh port cheap.
+2. **dsh is a distribution target, not a base.** Revisit only after it hits a stable release.
+
+**Fair to OpenCode's critics:** dsh genuinely fixes real pain here — the `config()` hook's errors
+are swallowed by `Effect.ignore` at `packages/opencode/src/plugin/index.ts:241-249`, and hard rule
+"patch, don't rewrite" exists because the core resists modification. Those are OpenCode costs we
+are choosing to keep paying, not pretending away.
+
+---
+
+## Phase 10 (cont.) — Section 3 of the schemata design presented (2026-08-17)
+
+**Section 3 — the resolver. PRESENTED, awaiting approval.** Verified against the engine:
+
+- `needs` maps cleanly onto real catalog fields: `minContext`→`limit.context`,
+  `minOutput`→`limit.output`, `tools`→`capabilities.tools`,
+  `attachment`→ non-`text` entries in `capabilities.input[]` (`packages/schema/src/model.ts:60-86`).
+- `Catalog.model.available()` (`packages/core/src/catalog.ts:210`) already returns only models whose
+  provider has credentials and which are `enabled` — the candidate list is a method call.
+- **The resolver runs at authoring time, never at startup.** `config()` fires during plugin
+  construction wrapped in `Effect.ignore`, so errors there are invisible; and the catalog is itself
+  populated by a plugin (`packages/core/src/plugin/models-dev.ts`), so it may be unsynced at that
+  moment. Boot-time resolution would be both silent and racy.
+- Drift detection reuses the `event` hook — `models-dev.refreshed` / `Catalog.Event.Updated` fire
+  after startup with the client live, so an audit there can actually be reported.
+- **Absence is three states, not two:** in `all()` but not `available()` = exists, no API key
+  (actionable); missing from `all()` = retired (the unsuppressable error). Different fixes.
+
+**Two corrections to previously approved sections:**
+
+1. **`allowPaid: false` cannot be implemented as "cost is zero."**
+   `packages/core/src/plugin/models-dev.ts:14-20` defaults absent cost data to
+   `{input: 0, output: 0}`, so a genuinely free model is byte-identical to one with unknown
+   pricing. Fail closed — treat unknown cost as paid, and say so in the message.
+2. **Ranking should follow `Catalog.model.small()`** (`catalog.ts:249-286`), which already
+   implements weighted filter-then-rank (normalised cost 0.8 / age 0.2). Hard-filter on `needs`,
+   then rank survivors by `picks` order first, capability headroom second. Do not invent a new
+   scoring scheme.

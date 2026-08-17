@@ -165,6 +165,48 @@ silently in five days (`north-mini-code-free`, then `ling-3.0-tiny-free`).
 
 **Smaller candidates:** pixel-art mascot; custom codebase indexing (confirmed absent from OpenCode natively); quota-aware provider suggestions; native side-panel VS Code/Cursor extension (upstream's is a terminal wrapper only — verified gap); native Windows installer polish.
 
+### Base runtime — DeepSeek Harness evaluated, staying on OpenCode (2026-08-17)
+
+**Decision: do not switch off OpenCode. Ship Gryphon on OpenCode, then port it to dsh as a
+plugin.** Evaluated at user request the day it was raised; dsh had been public for four days.
+
+DeepSeek Harness (`dsh`, `deepseek-ai/deepseek-harness`, released 2026-08-13, MIT, TypeScript/Node
+on the Cordis plugin framework) is an agent runtime whose stated principle is that *every* part is
+a plugin — model adapter, tool registry, session log, **and the agent loop itself** — with "no
+privileged core to patch."
+
+**Why it was tempting, honestly:** it fixes real OpenCode pain. The paradigm plugin's only engine
+seam is the `config()` hook, and `packages/opencode/src/plugin/index.ts:241-249` wraps that call in
+`Effect.ignore` — validation errors from it are structurally unreportable. Hard rule #1
+("patch, don't rewrite") exists because OpenCode's core is hostile to modification. On dsh the
+paradigm layer would be a first-class plugin, and the agent loop would be swappable by config.
+
+**Why we are not switching — the decisive fact:** dsh has **no automated model capability
+catalog**. Its docs are explicit that users must hand-declare modalities per endpoint ("a
+hand-entered model is text-only until it says otherwise"), and `contextWindow` is a hand-written
+per-model config value with optimistic defaults (1M context / 256k output). VanGio's whole
+differentiation is capability-aware selection against a *live* catalog plus honest degradation.
+OpenCode hands that over via models.dev (`limit.context`, `limit.output`, `capabilities.tools`,
+`capabilities.input[]`, `cost[]`, `status`, auto-synced and event-refreshed). On dsh the resolver
+would have no data source, and step one would be rebuilding models.dev ingestion.
+
+**Three supporting reasons:** dsh ships a web UI and **no official TUI** (the terminal UI is a
+four-day-old third-party Rust/ratatui plugin), so VanGio Code's TUI work would be discarded; the
+README promises compatibility-breaking changes with config shapes actively drifting, which is far
+worse than the current monthly-merge tax; and 64 commits across 34 packages plus the entire
+approved schemata design are premised on OpenCode's `Catalog` and plugin API.
+
+**Portability constraint adopted as a result (amends the resolver design):** the resolver MUST be
+a pure function taking a candidate `ModelInfo[]` and returning a ranked list — it must never reach
+into `Catalog.Service` itself. That keeps it testable without a live catalog and portable to any
+runtime that can hand it a model list. It is the one design constraint that buys the dsh option
+for free.
+
+**Deferred, not dropped:** porting Gryphon to dsh as a plugin is a distribution play — a dsh plugin
+ecosystem is forming now, and a fork of OpenCode reaches nobody by comparison. That is a v7/v8
+conversation, not a v4 one. Re-evaluate the base question only after dsh reaches a stable release
+and its config shapes settle.
+
 ---
 
 ## 8. Hard rules — what NOT to do
