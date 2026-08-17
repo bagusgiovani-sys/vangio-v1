@@ -682,6 +682,38 @@ Nothing is implemented. The HARD GATE applies: no code until the design is prese
 The immediate next step is the answer to the open question at the bottom of this block, then the
 sectioned design, then a spec, then `superpowers:writing-plans`.
 
+#### GRYPHON IS THE OUTER LAYER - added 2026-08-17, late session
+
+Gryphon is not a schemata. It is the layer **above** schemata, and it has two modes:
+
+- **Gryphon Auto** ("ez but noob mode") - the engine picks which model fills king / warrior /
+  scout, and swaps models mid-session as quotas run out, without asking. The user never sees a
+  schemata.
+- **Gryphon Full Control** - the user is asked which schemata to use, and can create a new one or
+  modify an existing one, choosing roles and models per head.
+
+**In Full Control, shape is chosen BEFORE roles.** Two shapes, named this session as placeholders
+the user will review:
+
+- **Court** - distinct roles, order matters (planner, coder, tester, reviewer...). A king with
+  specialised officers.
+- **Legion** - interchangeable workers, same task shape, fanned out in parallel.
+
+Both still compile to the same `heads` + `instances` data model from section 1 - Court is several
+heads at `instances: 1`, Legion is one head at `instances: N`. The shape question is a wizard
+affordance that generates heads; it is not stored as a mode. Confirmed with the user.
+
+**Auto mode needs no new mode system.** The free-tier fallback spec already defines
+`"shift": { "auto": true }` per paradigm. Gryphon Auto *is* that toggle raised to the top level and
+given a name, combined with capability-aware model selection. One mechanism, not two - do not build
+a parallel mode subsystem.
+
+**One ambiguity flagged, not yet resolved:** "the engine decides who's king" can mean either
+(a) the engine picks which *model* fills each fixed role, using needs + live availability + quota -
+which is the resolver we are already designing and is achievable now; or (b) the engine derives the
+*team composition itself* from the task, which is v7 autonomous generation. Working assumption is
+(a). Confirm with the user before planning Auto mode.
+
 #### Decisions already taken - do not relitigate
 
 1. **Shape.** King mandatory and non-negotiable; minimum 2 heads; up to 6 heads below the king.
@@ -746,12 +778,53 @@ layers, not competitors.
 - **For implementer roles the binding constraint is output ceiling, not context.**
   `nemotron-3.5-lightning-free` at 262k output is the standout.
 
+#### Design APPROVED so far (brainstorming, architectural path)
+
+**Section 1 - data model. APPROVED.**
+- `packages/paradigm/roles.json` - curated role catalog, **bundled with the plugin, NOT copied to
+  `~/.config/vangio/`**. Copying would let a reinstall silently overwrite user edits - the same
+  class of bug as the path-rebrand orphaning. `picks` are candidates checked against the live
+  catalog at read time; retired ones are dropped and logged once.
+- Schemata extends today's `Paradigm` with `parallel: { posture, may }`, per-head `needs`,
+  `needsOverride: "<reason>"`, and `instances: N`.
+- **`instances` replaces a stored pipeline/workers mode.** Court = several heads at 1, Legion =
+  one head at N, and they can be mixed. Maps 1:1 onto `task` + `background: true`.
+- **`needs` has exactly four fields:** `minContext`, `minOutput`, `tools`, `attachment`. Paid-vs-
+  free is a schemata-level `allowPaid: false`, not a need - it is a wallet policy, not a capability.
+- **Hard-filter with override. APPROVED.** Model fits needs → fine. Fails needs + `needsOverride`
+  → warning, runs. Fails needs, no override → validation error. **Absent from the live catalog →
+  validation error that override CANNOT suppress.** Override means "I know it is underpowered",
+  never "this model does not exist". Override requires a reason *string*, not `true`.
+
+**Section 2 - TUI surface. APPROVED.**
+- The 2026-08-06 picker already does switch + display-active with zero upstream edits. Reuse it.
+- **Do NOT rename anything on disk.** `~/.config/vangio/paradigms/`, the `paradigm-active` marker
+  and `packages/paradigm` all stay; the TUI says "schemata". Precedent: `opencode.json` was
+  deliberately never renamed. Hard rule #5 makes a cosmetic path rename a bad trade.
+- Commands: `/schemata` (exists, relabel), `/schemata new` (wizard), `/schemata clone`,
+  `/schemata edit` → opens the JSON in `$EDITOR`.
+- **Field-by-field TUI editing is deliberately out of scope** - a form builder for arbitrary heads
+  is a large UI to own against monthly merges. `$EDITOR` is honest and free.
+- Wizard order: name → **shape (Court/Legion)** → heads → model per head (hard-filtered, ordered by
+  `picks`, `why` shown as row description) → parallel posture.
+- **Bundled presets are read-only; editing one clones it first.** `install.ts` copies
+  `paradigms/*.json` over config, so in-place edits of a bundled preset get silently reverted.
+  User-created files have unique names and survive (install only copies, never deletes).
+- Restart semantics: creating and cloning need no restart; switching does (measured 2026-08-06);
+  **editing the ACTIVE schemata does, and that must be said at the point of edit.**
+- **VERIFY BEFORE PLANNING:** the wizard chains multiple dialogs. `tui.tsx:40-42` documents that a
+  dialog must be pushed synchronously inside the handler or the keymap layer clears the stack. A
+  single dialog is proven; a *sequence* is not. Prove chaining under ConPTY first. Fallback if it
+  fights the stack: one dialog that scaffolds a default file and hands off to `$EDITOR`.
+- Text input is available - copy the `value` + `onConfirm` pattern from
+  `packages/tui/src/component/dialog-session-rename.tsx`.
+
 #### Open questions, in priority order
 
-- **THE IMMEDIATE ONE (blocks the JSON design):** should a head's `needs` **hard-filter** the model
-  list so an unfit model is not offered, or merely **sort** it advisorily? Recommendation given:
-  hard-filter with an explicit override, because a documenter on a 32k-output model silently
-  truncates files. Awaiting the user.
+- **Auto-mode ambiguity (see the Gryphon block above)** - does "the engine decides who's king" mean
+  model selection for fixed roles (assumed, achievable now) or team composition from the task (v7)?
+  Confirm before planning Auto mode.
+- **Shape names `Court` / `Legion` are placeholders** the user will review.
 - **Q1 - is Zen's daily bucket per-model or shared?** Unchanged, unobservable, and now
   **load-bearing**: it decides whether parallel heads are viable on free tiers at all. Instrument
   the next genuine 429; do not force one.

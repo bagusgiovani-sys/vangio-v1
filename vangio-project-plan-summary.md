@@ -112,6 +112,24 @@ paradigm and again after the data model changes. The engine work has to land fir
 | **v2** | Desktop app (Tauri/Electron) over the engine HTTP API — project browser, diff viewer, preset gallery | deferred behind v4–v6 |
 | **v3** | Mobile remote control | notifier shipped and verified; remaining user-side setup deferred |
 
+### Gryphon is the outer layer, schemata sit inside it (2026-08-17)
+
+Gryphon is not a schemata — it is the layer above, with two modes:
+
+- **Gryphon Auto** — the engine picks which model fills each role and swaps models mid-session as
+  quotas run out, without asking. The user never sees a schemata. The easy default.
+- **Gryphon Full Control** — the user picks a schemata, and can create or modify one, choosing
+  roles and models per head.
+
+In Full Control the **shape** is chosen before roles. Two shapes (names are placeholders pending
+review): **Court** — distinct roles where order matters; **Legion** — interchangeable workers run
+in parallel. Both compile to the same `heads` + `instances` data model, so shape is a wizard
+affordance, not a stored mode.
+
+**Auto mode is not a new subsystem.** The free-tier fallback spec already defines
+`"shift": { "auto": true }`; Gryphon Auto is that toggle raised to the top level and named,
+combined with capability-aware model selection.
+
 ### Schemata — decisions taken 2026-08-17
 
 - **Shape:** a king is mandatory and non-negotiable; minimum 2 heads total; up to 6 heads below
@@ -175,10 +193,7 @@ silently in five days (`north-mini-code-free`, then `ling-3.0-tiny-free`).
   six heads drain one budget six times faster and fail together. Cannot be observed (no quota
   header reaches the client); instrument the next genuine 429 rather than forcing one.
 - The VS Build Tools fix for the original `bun install` failure is **unconfirmed as root cause** — the successful install used 100% prebuilt binaries, so nothing compiled locally. Don't repeat that diagnosis as settled.
-- Differentiation strategy vs free competitors — **no longer deferred.** The v4–v7 schemata track
-  is the answer and is now the active track. Sharpened 2026-08-17: the differentiator is *not*
-  multi-agent teams or parallelism (Kimi, Claude Code and OpenCode all have those). It is
-  capability-aware selection against a live catalog plus honest degradation when a free tier ends.
+- Differentiation strategy vs free competitors (the v4–v7 paradigm shift *is* the answer; deferred until v4).
 - Per-client confidentiality/IP clauses — check per client.
 
 ---
