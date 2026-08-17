@@ -86,9 +86,12 @@ export function nextStep(draft: Draft, step: Step, answer: string): { draft: Dra
       return { draft: next, step: { kind: "model", slot: 0 } }
 
     case "role": {
-      // "done" is only offered once the minimum is met, but guard anyway.
+      // "done" is only offered once the minimum is met and all heads have models, but guard anyway.
       if (answer === "done") {
-        if (headCount(next) >= 2) return { draft: next, step: { kind: "review" } }
+        if (headCount(next) >= 2) {
+          const allHaveModels = Object.values(next.heads).every(h => h.model)
+          if (allHaveModels) return { draft: next, step: { kind: "review" } }
+        }
         return { draft: next, step }
       }
       next.heads[step.slot] = { role: answer }
@@ -117,7 +120,7 @@ export function nextStep(draft: Draft, step: Step, answer: string): { draft: Dra
   }
 }
 
-export function stepBack(_draft: Draft, step: Step): Step {
+export function stepBack(draft: Draft, step: Step): Step {
   switch (step.kind) {
     case "name":
       return { kind: "name" }
@@ -127,8 +130,11 @@ export function stepBack(_draft: Draft, step: Step): Step {
       return { kind: "model", slot: step.slot - 1 }
     case "model":
       return step.slot === 0 ? { kind: "shape" } : { kind: "role", slot: step.slot }
-    case "review":
-      return { kind: "role", slot: 1 }
+    case "review": {
+      const slots = Object.keys(draft.heads).map(Number)
+      const maxSlot = slots.length > 0 ? Math.max(...slots) : 0
+      return { kind: "model", slot: maxSlot }
+    }
     default:
       return step
   }

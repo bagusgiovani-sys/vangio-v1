@@ -187,3 +187,78 @@ describe("toParadigm", () => {
     expect(p.heads["warrior"]?.permission).toBeUndefined()
   })
 })
+
+describe("wizard completeness guard", () => {
+  test("done is refused when a head exists but has no model", () => {
+    let draft = emptyDraft()
+    let step = firstStep()
+    for (const answer of ["my-team", "court", "opencode/ultra", "warrior"]) {
+      const result = nextStep(draft, step, answer)
+      draft = result.draft
+      step = result.step
+    }
+    // Now at model step for slot 1, which has no model yet
+    // Try to say "done" at the role step
+    const beforeDone = nextStep(draft, { kind: "role", slot: 1 }, "done")
+    expect(beforeDone.step).toEqual({ kind: "role", slot: 1 })
+  })
+
+  test("done is accepted once that head gets a model", () => {
+    let draft = emptyDraft()
+    let step = firstStep()
+    for (const answer of ["my-team", "court", "opencode/ultra", "warrior", "opencode/light"]) {
+      const result = nextStep(draft, step, answer)
+      draft = result.draft
+      step = result.step
+    }
+    // Now at role step for slot 2
+    // Say "done" should advance to review because slot 1 now has a model
+    const afterModel = nextStep(draft, { kind: "role", slot: 2 }, "done")
+    expect(afterModel.step).toEqual({ kind: "review" })
+  })
+
+  test("full back-and-edit scenario keeps toParadigm valid", async () => {
+    const { parseParadigm } = await import("../src/schema")
+    let draft = emptyDraft()
+    let step = firstStep()
+    // Build a court with two heads
+    for (const answer of ["my-team", "court", "opencode/ultra", "warrior", "opencode/light", "scout", "opencode/hy3"]) {
+      const result = nextStep(draft, step, answer)
+      draft = result.draft
+      step = result.step
+    }
+    // At role step for slot 3
+    // Say done to reach review
+    let result = nextStep(draft, step, "done")
+    expect(result.step).toEqual({ kind: "review" })
+    // Back from review should go to model step of highest slot (2)
+    step = stepBack(draft, result.step)
+    expect(step).toEqual({ kind: "model", slot: 2 })
+    // Verify the paradigm is still valid
+    const p = toParadigm(result.draft)
+    const parsed = parseParadigm(p)
+    expect(parsed.ok).toBe(true)
+  })
+
+  test("stepBack from review with four heads returns model step of highest slot", () => {
+    let draft = emptyDraft()
+    let step = firstStep()
+    // Build a court with four heads (slots 0, 1, 2, 3)
+    for (const answer of [
+      "my-team", "court", "opencode/ultra",
+      "warrior", "opencode/a",
+      "scout", "opencode/b",
+      "seer", "opencode/c",
+      "done",
+    ]) {
+      const result = nextStep(draft, step, answer)
+      draft = result.draft
+      step = result.step
+    }
+    expect(step).toEqual({ kind: "review" })
+    expect(Object.keys(draft.heads).length).toBe(4)
+    // stepBack from review should go to model step of slot 3
+    const back = stepBack(draft, step)
+    expect(back).toEqual({ kind: "model", slot: 3 })
+  })
+})
