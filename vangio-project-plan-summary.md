@@ -80,7 +80,7 @@ Tagged **v1.0.0** on `83ccb91fa` (2026-07-19). All v1 phases done and live-verif
 
 ---
 
-## 6. In progress — v3 Mobile Remote Control
+## 6. v3 Mobile Remote Control — engine work done, surface deferred behind v4–v6
 
 Chosen 2026-07-19 (v2 desktop deliberately skipped for now; the two don't block each other — both talk to the same engine HTTP API).
 
@@ -92,16 +92,58 @@ Chosen 2026-07-19 (v2 desktop deliberately skipped for now; the two don't block 
 
 ---
 
-## 7. Roadmap beyond v3
+## 7. Roadmap — RESEQUENCED 2026-08-17
 
-| Version | Deliverable |
-|---|---|
-| **v2** | Desktop app (Tauri/Electron) over the engine HTTP API — project browser, diff viewer, preset gallery. The noob-friendly surface |
-| **v3** | Mobile remote control ← *in progress* |
-| **v4** | Paradigm presets — hand-crafted 3-AI teams (`web-dev`, `content-creator`, `data-analyst`, `tiktok-marketing`). Good defaults, no AI generation |
-| **v5** | Paradigm customizer — swap models, adjust routing, rename heads |
-| **v6** | AI-assisted paradigm builder — describe a goal, answer 3–5 questions, get a config to review |
-| **v7** | Autonomous paradigm generation — goal decomposition → role mapping → model selection → instantiation, self-improving. **The differentiator** |
+**The schemata work (v4–v6) is now the active track, in VanGio Code (the TUI), ahead of the
+desktop and web surfaces.** User decision, 2026-08-17. The prior ordering put v4–v7 after the
+phone and desktop apps; that is superseded. v2 and v3 are not cancelled — they are deprioritised
+behind the schemata track, and the mobile work already done stands.
+
+Rationale: v5, v6 and v7 are all *interfaces onto* the schemata data model. Building the desktop
+and mobile surfaces first would mean building them twice — once against today's fixed three-head
+paradigm and again after the data model changes. The engine work has to land first.
+
+| Version | Deliverable | Status |
+|---|---|---|
+| **v4** | Schemata presets — hand-crafted teams (`web-dev`, `content-creator`, `data-analyst`, `tiktok-marketing`). Good defaults, no AI generation | **active track** |
+| **v5** | Schemata customizer — create/name/clone, choose heads and roles, swap models, TUI shows the active one | **active track** |
+| **v6** | AI-assisted schemata builder — describe a goal, answer 3–5 questions, get a config to review | **active track** |
+| **v7** | Autonomous schemata generation — goal decomposition → role mapping → model selection → instantiation, self-improving. **The differentiator** | after v6; needs a real surface (desktop or web) |
+| **v2** | Desktop app (Tauri/Electron) over the engine HTTP API — project browser, diff viewer, preset gallery | deferred behind v4–v6 |
+| **v3** | Mobile remote control | notifier shipped and verified; remaining user-side setup deferred |
+
+### Schemata — decisions taken 2026-08-17
+
+- **Shape:** a king is mandatory and non-negotiable; minimum 2 heads total; up to 6 heads below
+  the king. Enforced in `packages/paradigm/src/schema.ts`.
+- **Both team shapes are user-selectable:** a *pipeline* of distinct roles (planner, coder,
+  tester, reviewer, documenter, researcher) where order matters, **or** interchangeable *workers*
+  of one kind that the king slices a task across. The user picks per schemata.
+- **Parallelism is a posture, not a mode.** The schemata declares which heads *may* run in
+  parallel plus a default posture (prefer-sequential / prefer-parallel); the king decides per
+  task. This matches the engine, where `background` is already a per-call decision.
+  **Default posture is sequential** until Zen's bucket question (Q1) is answered — see below.
+- **Heads declare `needs`, not model lists.** A head states what its role requires (min output,
+  tools, images); the engine filters the live catalog against that. The user picks a role and is
+  offered the 3–5 models that fit and are currently alive — never a list of 100.
+- **Curated recommendations ship as JSON**, not just prose, so the TUI picker and v6's builder can
+  both read them. Human reference: `docs/fork/model-index.md`.
+
+### What is already in the engine — do NOT rebuild
+
+Verified 2026-08-17. The schemata work is a layer over these, not a replacement:
+
+- **Per-agent models** — OpenCode agents already carry their own `model`.
+- **Parallel subagents** — the `task` tool already takes `background: true`, backed by a wired
+  `BackgroundJob.Service`; tool calls within one turn already dispatch as concurrent fibers.
+- **Durable per-session model override** — `SessionEvent.ModelSwitched` writes the `session.model`
+  column *and* appends a `model-switched` message to the transcript.
+- **Model capability catalog** — models.dev, already consumed.
+
+**The genuinely new ground is capability-aware, staleness-resistant selection and honest
+degradation.** Nothing upstream checks that a bound model still exists, and nothing degrades when
+a free tier ends — it shows a subscribe ad. That gap is real and measured: two scout bindings died
+silently in five days (`north-mini-code-free`, then `ling-3.0-tiny-free`).
 
 **Smaller candidates:** pixel-art mascot; custom codebase indexing (confirmed absent from OpenCode natively); quota-aware provider suggestions; native side-panel VS Code/Cursor extension (upstream's is a terminal wrapper only — verified gap); native Windows installer polish.
 
@@ -128,9 +170,15 @@ Chosen 2026-07-19 (v2 desktop deliberately skipped for now; the two don't block 
 - Whether DeepSeek-via-Zen actually avoids the concurrency retry-loop, or whether that bug is OpenCode-client-side and follows to any provider — **still untested** in a real multi-tool-call session.
 - How long Zen's keyless anonymous access lasts (expect sudden 401s → sign in at opencode.ai/auth + `/connect`).
 - Whether opencode-mem works in practice — loads clean, live behavior unverified.
-- Whether Zen's free budget is pooled or per-model.
+- Whether Zen's free budget is pooled or per-model — **Q1, still open and now load-bearing.** It
+  decides whether parallel schemata heads are viable on free tiers at all: if the bucket is shared,
+  six heads drain one budget six times faster and fail together. Cannot be observed (no quota
+  header reaches the client); instrument the next genuine 429 rather than forcing one.
 - The VS Build Tools fix for the original `bun install` failure is **unconfirmed as root cause** — the successful install used 100% prebuilt binaries, so nothing compiled locally. Don't repeat that diagnosis as settled.
-- Differentiation strategy vs free competitors (the v4–v7 paradigm shift *is* the answer; deferred until v4).
+- Differentiation strategy vs free competitors — **no longer deferred.** The v4–v7 schemata track
+  is the answer and is now the active track. Sharpened 2026-08-17: the differentiator is *not*
+  multi-agent teams or parallelism (Kimi, Claude Code and OpenCode all have those). It is
+  capability-aware selection against a live catalog plus honest degradation when a free tier ends.
 - Per-client confidentiality/IP clauses — check per client.
 
 ---
