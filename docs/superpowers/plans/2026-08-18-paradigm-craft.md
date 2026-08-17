@@ -1347,11 +1347,287 @@ git push origin dev
 
 ---
 
+### Task 6: Clone an existing paradigm
+
+**Files:**
+- Modify: `packages/paradigm/src/craft.ts` (append)
+- Modify: `packages/paradigm/src/tui.tsx` (append a component + a command)
+- Test: `packages/paradigm/test/craft.test.ts` (append)
+
+**Interfaces:**
+- Consumes: `Draft`, `emptyDraft` from `./craft`; `getRole` from `./roles`; `Paradigm` from `./schema`
+- Produces: `roleIdFor(headId: string): string`, `draftFromParadigm(paradigm: Paradigm): Draft`
+
+Clone reuses the whole wizard: pick a source, give it a new name, then land on **review** with the heads already filled in. "← Back" from review goes to role slot 1, so a clone can still be edited before it is written — `stepBack` already does this and needs no change.
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+// packages/paradigm/test/craft.test.ts — APPEND.
+// Add to the imports at the top of the file:
+//   import { draftFromParadigm, roleIdFor } from "../src/craft"
+//   import type { Paradigm } from "../src/schema"
+
+describe("roleIdFor", () => {
+  test("returns a head id that is already a known role", () => {
+    expect(roleIdFor("warrior")).toBe("warrior")
+    expect(roleIdFor("king")).toBe("king")
+  })
+
+  test("strips a suffix to recover the role", () => {
+    expect(roleIdFor("scout-a")).toBe("scout")
+    expect(roleIdFor("scout-2")).toBe("scout")
+  })
+
+  test("leaves an unrecognised id alone rather than guessing", () => {
+    expect(roleIdFor("bishop")).toBe("bishop")
+  })
+})
+
+describe("draftFromParadigm", () => {
+  const source: Paradigm = {
+    name: "researcher",
+    description: "three scouts",
+    king: "king",
+    heads: {
+      king: { model: "opencode/ultra", role: "split and synthesise" },
+      "scout-a": { model: "opencode/hy3", role: "one thread", permission: { edit: "deny" } },
+      "scout-b": { model: "opencode/big-pickle", role: "one thread" },
+    },
+    routing: ["fan out -> @scout-a"],
+    discipline: { self: "be brief" },
+  }
+
+  test("puts the king at slot 0", () => {
+    const draft = draftFromParadigm(source)
+    expect(draft.heads[0]?.role).toBe("king")
+    expect(draft.heads[0]?.model).toBe("opencode/ultra")
+  })
+
+  test("carries every other head with its role recovered and model intact", () => {
+    const draft = draftFromParadigm(source)
+    const roles = Object.values(draft.heads).map((h) => h.role)
+    expect(roles.filter((r) => r === "scout").length).toBe(2)
+    const models = Object.values(draft.heads).map((h) => h.model)
+    expect(models).toContain("opencode/hy3")
+    expect(models).toContain("opencode/big-pickle")
+  })
+
+  test("does NOT carry the name - the user must choose a new one", () => {
+    expect(draftFromParadigm(source).name).toBeUndefined()
+  })
+
+  test("defaults the shape to court, since today's schema cannot express a legion", () => {
+    expect(draftFromParadigm(source).shape).toBe("court")
+  })
+
+  test("a cloned draft round-trips through toParadigm into a valid paradigm", async () => {
+    const { parseParadigm } = await import("../src/schema")
+    const draft = { ...draftFromParadigm(source), name: "my-copy" }
+    const result = parseParadigm(toParadigm(draft))
+    expect(result.ok).toBe(true)
+  })
+
+  test("a clone of a three-head paradigm keeps three heads", () => {
+    const draft = { ...draftFromParadigm(source), name: "my-copy" }
+    expect(Object.keys(toParadigm(draft).heads).length).toBe(3)
+  })
+})
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd packages/paradigm && bun test test/craft.test.ts`
+Expected: FAIL — `roleIdFor is not a function`
+
+- [ ] **Step 3: Write minimal implementation**
+
+```ts
+// packages/paradigm/src/craft.ts — APPEND.
+
+/**
+ * Recovers a catalog role from a head id. Our own toParadigm writes "scout-1"
+ * when a role repeats, and hand-written paradigms use ids like "scout-a", so a
+ * single trailing "-segment" is stripped when that yields a known role. An id
+ * that matches nothing is returned unchanged rather than guessed at - the model
+ * step then filters with empty needs, which is honest about not knowing.
+ */
+export function roleIdFor(headId: string): string {
+  if (getRole(headId)) return headId
+  const stripped = headId.replace(/-[^-]+$/, "")
+  if (stripped !== headId && getRole(stripped)) return stripped
+  return headId
+}
+
+/**
+ * Seeds a draft from an existing paradigm for cloning. The name is deliberately
+ * left unset: install.ts would overwrite a file reusing a bundled preset name,
+ * so the user must pick a new one and have it validated.
+ */
+export function draftFromParadigm(paradigm: Paradigm): Draft {
+  const draft: Draft = { ...emptyDraft(), shape: "court" }
+  draft.heads[0] = {
+    role: KING_ROLE_ID,
+    model: paradigm.heads[paradigm.king]?.model,
+  }
+  let slot = 1
+  for (const [id, head] of Object.entries(paradigm.heads)) {
+    if (id === paradigm.king) continue
+    draft.heads[slot] = { role: roleIdFor(id), model: head.model }
+    slot += 1
+  }
+  return draft
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `cd packages/paradigm && bun test test/craft.test.ts`
+Expected: PASS — 9 new tests
+
+- [ ] **Step 5: Add the Clone component to `tui.tsx`**
+
+Insert immediately below the `Craft` component:
+
+```tsx
+function Clone(props: { api: TuiPluginApi }) {
+  const [source, setSource] = createSignal<Paradigm | undefined>(undefined)
+  const [options, setOptions] = createSignal<PickerOption[]>([])
+  const [existing, setExisting] = createSignal<string[]>([])
+  const [error, setError] = createSignal<string | undefined>(undefined)
+  const [all, setAll] = createSignal<Record<string, Paradigm>>({})
+  const DialogSelect = props.api.ui.DialogSelect
+  const DialogPrompt = props.api.ui.DialogPrompt
+
+  onMount(() => {
+    void listParadigms(PARADIGM_DIR).then(({ paradigms }) => {
+      setAll(paradigms)
+      setExisting(Object.keys(paradigms))
+      setOptions(pickerOptions({ paradigms }))
+    })
+  })
+
+  return (
+    <Show
+      when={source()}
+      keyed
+      fallback={
+        <DialogSelect
+          title="Clone a paradigm - pick the source"
+          placeholder="Search paradigms"
+          options={options()}
+          onSelect={(option) => setSource(all()[String(option.value)])}
+        />
+      }
+    >
+      {(chosen) => (
+        <DialogPrompt
+          title={`Clone "${chosen.name}" - new name`}
+          placeholder="lowercase, numbers and hyphens"
+          description={() => <text>{error() ?? "The copy gets its own file."}</text>}
+          onConfirm={(value) => {
+            const problem = validateName(value, existing())
+            if (problem) {
+              setError(problem)
+              return
+            }
+            const draft = { ...draftFromParadigm(chosen), name: value.trim() }
+            props.api.ui.dialog.clear()
+            void writeParadigm(PARADIGM_DIR, toParadigm(draft))
+              .then(() =>
+                props.api.ui.toast({
+                  title: "Paradigm",
+                  message: `Cloned "${chosen.name}" to "${value.trim()}". Use /paradigm to switch - it applies when you restart VanGio.`,
+                }),
+              )
+              .catch((err: unknown) =>
+                props.api.ui.toast({
+                  variant: "error",
+                  title: "Paradigm",
+                  message: `Could not write paradigm: ${err instanceof Error ? err.message : String(err)}`,
+                }),
+              )
+          }}
+        />
+      )}
+    </Show>
+  )
+}
+```
+
+Extend the `./craft` import with `draftFromParadigm`, and add `import type { Paradigm } from "./schema"`.
+
+- [ ] **Step 6: Register the clone command**
+
+Add after the `paradigm.craft` entry:
+
+```tsx
+      {
+        name: "paradigm.clone",
+        title: "Clone paradigm",
+        desc: "Copy an existing paradigm under a new name",
+        category: "VanGio",
+        namespace: "palette",
+        slashName: "clone",
+        run() {
+          api.ui.dialog.replace(() => <Clone api={api} />)
+        },
+      },
+```
+
+and extend the bindings line to:
+
+```tsx
+    bindings: api.tuiConfig.keybinds.gather("paradigm.palette", [
+      "paradigm.list",
+      "paradigm.craft",
+      "paradigm.clone",
+    ]),
+```
+
+- [ ] **Step 7: Verify**
+
+Run: `cd packages/paradigm && bun test`
+Expected: PASS, no regressions
+
+Run: `cd ../.. && bun typecheck`
+Expected: 32/32 successful
+
+Run: `bun run packages/paradigm/script/install.ts`
+Expected: bundles with no error
+
+Then under the ConPTY harness (same procedure as Task 5 Step 5, invoking `clone` via `ctrl+t`), clone `gryphon` to `gryphon-copy` and confirm:
+
+```bash
+cat ~/.config/vangio/paradigms/gryphon-copy.json
+```
+
+Expected: three heads, the same models as `gryphon`, no `permission` key on the king.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add packages/paradigm/src/craft.ts packages/paradigm/src/tui.tsx packages/paradigm/test/craft.test.ts
+git commit -m "feat(paradigm): add /clone
+
+Copies an existing paradigm under a new name, which is the supported way to
+modify a bundled preset - install.ts overwrites those filenames on every
+install, so editing one in place is silently reverted.
+
+Recovers each head's catalog role from its id, stripping a single trailing
+segment when that yields a known role, and leaving an unrecognised id alone
+rather than guessing. The name is deliberately not carried over so the copy
+goes through the same validation as a new paradigm."
+git push origin dev
+```
+
+---
+
 ## Self-Review
 
-**Spec coverage.** Section 1 data model → Tasks 1, 4 (`roles.ts`, `toParadigm`). Section 2 TUI surface → Task 5 (`/craft`; `/paradigm` already exists; `/paradigm edit` is out of scope per the spec). Section 3 resolver → Task 2, placed at authoring time inside the TUI per the spec. Section 4 wizard → Tasks 3, 4, 5. Q4 and Q5 → Task 5 Step 6.
+**Spec coverage.** Section 1 data model → Tasks 1, 4 (`roles.ts`, `toParadigm`). Section 2 TUI surface → Tasks 5, 6 (`/craft` and `/clone`; `/paradigm` already exists; `/paradigm edit` is out of scope per the spec). Section 3 resolver → Task 2, placed at authoring time inside the TUI per the spec. Section 4 wizard → Tasks 3, 4, 5. Clone → Task 6. Q4 and Q5 → Task 5 Step 6.
 
-**Not covered, deliberately:** `/paradigm clone` — the spec scopes v5 as `new` **and** `clone`, and this plan ships only `new`. Clone is a small follow-on once `Draft` exists (seed `emptyDraft()` from an existing paradigm and start at `{kind:"shape"}`), but it is not in these tasks. **Flagged as a known gap against the spec.** Paradigm Shift stage one is out of scope here — it belongs to the fallback spec.
+**v5 is now fully covered:** the spec scopes it as `new` **and** `clone`, and Tasks 5 and 6 ship both. Paradigm Shift stage one remains out of scope here — it belongs to the fallback spec.
 
 **Schema extensions not implemented:** the spec's `parallel: { posture, may }`, `needsOverride` and `instances` are not written by this plan, because `parseParadigm` does not accept them yet and the Global Constraints forbid touching anything outside `packages/paradigm/`. They are additive and belong with Paradigm Shift. `toParadigm` emits only fields today's parser accepts, which is why the round-trip test in Task 4 passes.
 
