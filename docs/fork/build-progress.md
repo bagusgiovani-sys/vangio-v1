@@ -899,3 +899,40 @@ are choosing to keep paying, not pretending away.
    implements weighted filter-then-rank (normalised cost 0.8 / age 0.2). Hard-filter on `needs`,
    then rank survivors by `picks` order first, capability headroom second. Do not invent a new
    scoring scheme.
+
+---
+
+## Phase 10 — Naming SETTLED (2026-08-17)
+
+**User decision. This supersedes the "Gryphon is the outer layer" block earlier in Phase 10 and
+the Gryphon Auto / Gryphon Full Control mode names. Full table in
+`vangio-project-plan-summary.md` § 7.**
+
+- **Gryphon = the ENGINE.** Rationale, from the user: a gryphon is a hybrid creature — eagle and
+  lion — and a paradigm is a hybrid too (Zhipu *and* NVIDIA *and* Zen as one animal). The name
+  encodes the core mechanic. It also stays the name of the default bundled paradigm and the mascot.
+- **Schemata = the CONTAINER**, the library of paradigms. Note this is the reverse of the earlier
+  reading, and it matches the existing disk layout exactly: `~/.config/vangio/paradigms/` is the
+  schemata, each `<name>.json` in it is one paradigm. **No rename, no migration.**
+- **A paradigm = one team config** (a king plus heads).
+- **Paradigm Shift = the automatic mode.** Ships in two stages — see below.
+- **Paradigm Craft = the manual mode.** The user authors and selects a paradigm. v5 deliverable.
+
+**Rejected for the manual mode, and why it matters:** *Lock*, *Hold*, *Anchor*, *Fixed*. Model
+swapping is always on in BOTH modes, so any name promising stillness would be false the first time
+a free tier died mid-session. The axis is *who composes the team*, not whether models move.
+
+### Paradigm Shift splits across versions — this resolves the auto-mode ambiguity
+
+The open question from earlier in Phase 10 — does "the engine decides who's king" mean (a) picking
+models for fixed roles or (b) deriving the team composition itself — is **answered: (b)**, the
+stronger reading. Consequence:
+
+- **Stage one (v4–v6, buildable now):** always-on model swapping when a quota dies. The fallback
+  spec's `"shift": { "auto": true }` already names this.
+- **Stage two (v7):** Gryphon composes the paradigm from the user's stated goal. This is the v7
+  autonomous-generation row. **Not a v4–v6 deliverable** — do not scope it into the current track.
+
+### Open naming item
+
+**Court / Legion** (the two shapes chosen before roles in Craft) are still placeholders.

@@ -105,30 +105,59 @@ paradigm and again after the data model changes. The engine work has to land fir
 
 | Version | Deliverable | Status |
 |---|---|---|
-| **v4** | Schemata presets — hand-crafted teams (`web-dev`, `content-creator`, `data-analyst`, `tiktok-marketing`). Good defaults, no AI generation | **active track** |
-| **v5** | Schemata customizer — create/name/clone, choose heads and roles, swap models, TUI shows the active one | **active track** |
-| **v6** | AI-assisted schemata builder — describe a goal, answer 3–5 questions, get a config to review | **active track** |
-| **v7** | Autonomous schemata generation — goal decomposition → role mapping → model selection → instantiation, self-improving. **The differentiator** | after v6; needs a real surface (desktop or web) |
+| **v4** | **Paradigm templates** — hand-crafted teams named for the job (`code-review`, `documenter`, `web-dev`, `content-creator`). Good defaults, no AI generation. Plus **Paradigm Shift stage one**: always-on model swapping | **active track** |
+| **v5** | **Paradigm Craft** — create/name/clone, choose heads and roles, swap models, TUI shows the active paradigm | **active track** |
+| **v6** | AI-assisted paradigm builder — describe a goal, answer 3–5 questions, get a paradigm to review | **active track** |
+| **v7** | **Paradigm Shift stage two** — Gryphon composes the paradigm itself from the user's goal: decomposition → role mapping → model selection → instantiation. **The differentiator** | after v6; needs a real surface (desktop or web) |
 | **v2** | Desktop app (Tauri/Electron) over the engine HTTP API — project browser, diff viewer, preset gallery | deferred behind v4–v6 |
 | **v3** | Mobile remote control | notifier shipped and verified; remaining user-side setup deferred |
 
-### Gryphon is the outer layer, schemata sit inside it (2026-08-17)
+### Naming — SETTLED 2026-08-17
 
-Gryphon is not a schemata — it is the layer above, with two modes:
+The vocabulary is fixed. This supersedes the earlier "Gryphon is the outer layer" framing and the
+Gryphon Auto / Full Control mode names.
 
-- **Gryphon Auto** — the engine picks which model fills each role and swaps models mid-session as
-  quotas run out, without asking. The user never sees a schemata. The easy default.
-- **Gryphon Full Control** — the user picks a schemata, and can create or modify one, choosing
-  roles and models per head.
+| Term | What it is | On disk |
+|---|---|---|
+| **VanGio** | the ecosystem | — |
+| **VanGio Code** | the coding agent (this repo) | — |
+| **Gryphon** | **the engine.** Capability-aware team assembly plus honest degradation | `packages/paradigm` |
+| **Schemata** | the **container** — the library holding every paradigm | `~/.config/vangio/paradigms/` |
+| **a paradigm** | one team configuration: a king plus heads | `paradigms/<name>.json` |
+| **heads** | the roles inside a paradigm (king, warrior, scout, …) | `heads` key |
+| **Paradigm Shift** | the automatic mode — see below | `"shift": { "auto": true }` |
+| **Paradigm Craft** | the manual mode — see below | — |
 
-In Full Control the **shape** is chosen before roles. Two shapes (names are placeholders pending
-review): **Court** — distinct roles where order matters; **Legion** — interchangeable workers run
-in parallel. Both compile to the same `heads` + `instances` data model, so shape is a wizard
-affordance, not a stored mode.
+**Why Gryphon is the engine name:** a gryphon is a hybrid creature — eagle and lion. A paradigm is
+a hybrid too: Zhipu *and* NVIDIA *and* Zen, working as one animal. The name encodes the core
+mechanic, so it stays. It also remains the name of the default bundled paradigm, and is the
+mascot if one is ever drawn.
 
-**Auto mode is not a new subsystem.** The free-tier fallback spec already defines
-`"shift": { "auto": true }`; Gryphon Auto is that toggle raised to the top level and named,
-combined with capability-aware model selection.
+**Note the containment:** schemata is the *library*, a paradigm is *one entry in it*. This is
+exactly the existing on-disk shape — a `paradigms/` directory holding one JSON per paradigm — so
+no rename or migration is required anywhere.
+
+#### The two modes
+
+- **Paradigm Shift** — the automatic mode. Two behaviours, and they ship in two stages:
+  - **Stage one (v4–v6, buildable now):** always-on model swapping. When a free tier dies or a
+    quota is spent, Gryphon re-binds the affected head and says so. **This half is always on in
+    both modes** — Craft does not mean your models stop moving.
+  - **Stage two (v7):** Gryphon *composes the paradigm itself* from what the user says they want
+    to build. This is the v7 "autonomous generation" row, now named. It is not a v4–v6 deliverable.
+- **Paradigm Craft** — the manual mode. The user authors a paradigm and selects it: choose the
+  heads, the roles and the models. This is the v5 deliverable and is fully buildable on the design
+  agreed so far.
+
+**Naming rejected and why:** *Lock*, *Hold*, *Anchor* and *Fixed* were all rejected as the manual
+mode's name because model swapping is always on — any name promising stillness would be a lie the
+first time a free tier died mid-session. The axis is *who composes the team*, not whether models
+move.
+
+In Craft the **shape** is chosen before roles. Two shapes (names still placeholders): **Court** —
+distinct roles where order matters; **Legion** — interchangeable workers run in parallel. Both
+compile to the same `heads` + `instances` data model, so shape is a wizard affordance, not a
+stored mode.
 
 ### Schemata — decisions taken 2026-08-17
 
