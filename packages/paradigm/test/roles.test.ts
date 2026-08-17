@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { ROLES, listRoles, getRole, KING_ROLE_ID } from "../src/roles"
+import { ROLES, listRoles, getRole, KING_ROLE_ID, validateRoles } from "../src/roles"
 
 describe("role catalog", () => {
   test("exposes exactly the four archetypes", () => {
@@ -38,5 +38,59 @@ describe("role catalog", () => {
 
   test("ROLES.version is a number", () => {
     expect(typeof ROLES.version).toBe("number")
+  })
+})
+
+describe("role catalog validation", () => {
+  test("throws when top-level roles key is missing", () => {
+    const malformed = { version: 1 }
+    expect(() => validateRoles(malformed)).toThrow(/roles.json.*roles.*key/)
+  })
+
+  test("throws when a role is missing needs object", () => {
+    const malformed = {
+      version: 1,
+      roles: {
+        badRole: {
+          title: "Bad",
+          summary: "Missing needs",
+          mandatory: false,
+          picks: [{ model: "test", why: "test" }],
+        },
+      },
+    }
+    expect(() => validateRoles(malformed)).toThrow(/roles.json.*badRole.*needs/)
+  })
+
+  test("throws when a role has an empty picks array", () => {
+    const malformed = {
+      version: 1,
+      roles: {
+        badRole: {
+          title: "Bad",
+          summary: "Empty picks",
+          mandatory: false,
+          needs: {},
+          picks: [],
+        },
+      },
+    }
+    expect(() => validateRoles(malformed)).toThrow(/roles.json.*badRole.*picks/)
+  })
+
+  test("throws when a pick is missing why field", () => {
+    const malformed = {
+      version: 1,
+      roles: {
+        badRole: {
+          title: "Bad",
+          summary: "Missing why",
+          mandatory: false,
+          needs: {},
+          picks: [{ model: "test" }],
+        },
+      },
+    }
+    expect(() => validateRoles(malformed)).toThrow(/roles.json.*badRole.*pick.*why/)
   })
 })
