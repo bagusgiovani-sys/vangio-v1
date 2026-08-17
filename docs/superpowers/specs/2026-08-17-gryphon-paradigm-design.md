@@ -1,6 +1,8 @@
 # Gryphon — Paradigm Engine Design
 
-> **Status: DESIGN, approved section by section on 2026-08-17. Not yet planned.**
+> **Status: APPROVED 2026-08-18. v5 is planned in
+> `docs/superpowers/plans/2026-08-18-paradigm-craft.md`** (which ships `/craft` only —
+> `/paradigm clone` is a flagged gap against this spec).
 > Sections 1–4 are agreed. Four questions remain open (Q1, Q3, Q4, Q5); none blocks a plan for
 > Craft or the resolver, though **Q3 blocks Paradigm Shift stage one** and is awaiting the user.
 > Read the Verified Findings table before writing code — several findings overturn assumptions
