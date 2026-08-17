@@ -1,8 +1,9 @@
 # Free-Tier Fallback — Design
 
-> **Status: DESIGN, not yet planned.** One gating finding (F2) is read-verified but not
-> runtime-proven, and one question (Q1) is still open. Do not let an implementation plan claim
-> the auto path works until Task 1 of that plan has actually been run.
+> **Status: DESIGN, not yet planned.** Q2 is now ANSWERED (see F2, F10) and Q1 is still open.
+> F2 is proven — but only for the span it actually covers, which is narrower than this document
+> originally assumed. Read F10 before writing a plan: a swap that is not also persisted reverts
+> on the next loop step.
 
 **Goal:** When a paradigm head's model hits its free-tier wall, VanGio Code performs a
 **paradigm shift** instead of showing OpenCode's "subscribe to Go" upsell. The head degrades to
@@ -22,7 +23,7 @@ of these overturn assumptions made earlier in the same session, so read them bef
 | # | Finding | Evidence |
 |---|---|---|
 | F1 | **The upsell is a deliberate, multi-surface funnel.** `retryable()` mints an action with `reason: "free_tier_limit"`, a "subscribe" label and a link to `opencode.ai/go`. A dialog consumes it with a 24-hour re-show timer and a persisted "don't show again" flag, gated to providers `opencode`/`opencode-go`. It will not be fixed upstream. | `packages/opencode/src/session/retry.ts:76-88`; `packages/app/src/pages/session/usage-exceeded-dialogs.tsx:11-34` |
-| F2 | **The model CAN be swapped between retry attempts.** `LLM.StreamInput` carries `model: Provider.Model`. `llm.stream(streamInput)` is called *inside* the effect wrapped by `Effect.retry`, so it is re-evaluated on every attempt, re-reading `streamInput.model`. The `set` callback fires on each retry decision, before the delay, with `streamInput` in lexical scope. Mutating `streamInput.model` there changes the model used by the next attempt. **Read-verified only — not yet runtime-proven.** | `packages/opencode/src/session/llm.ts:35-48`; `packages/opencode/src/session/processor.ts:627, 640, 660-673` |
+| F2 | **The model CAN be swapped between retry attempts — PROVEN (2026-08-17).** `llm.stream(streamInput)` is called *inside* the effect wrapped by `Effect.retry`, so it is re-evaluated on every attempt, re-reading `streamInput.model`. The `set` callback fires on each retry decision, before the delay, with `streamInput` in lexical scope. Mutating `streamInput.model` there changes the model the next attempt goes out on; `set` also sees `action.reason`, so the swap can be gated on `free_tier_limit`; and successive failures keep swapping, so a chain can be walked. Four tests reproduce the processor's exact wiring. | `packages/opencode/test/session/retry-model-swap.test.ts`; `src/session/llm.ts:35-48`; `src/session/processor.ts:627, 640, 660-673` |
 | F3 | **Zen's free limit is a per-IP daily counter whose bucketing depends on server config we cannot see.** If a model carries an explicit `rateLimit`, the Redis key is `YYYYMMDD` + **the first two characters of the model id**; otherwise it is `YYYYMMDD` alone, i.e. **one budget shared by every default-limit free model**. Keyed on IP, not account. A grace period gives 2× the daily limit while lifetime count < `dailyLimit × 7`. The numbers live in the `ZEN_LIMITS` SST secret. | `packages/console/app/src/routes/zen/util/ipRateLimiter.ts:19,23,37-39`; `infra/console.ts:271` |
 | F4 | **No quota telemetry ever reaches the client.** Zen's handler copies only `content-type` and `cache-control` onto the response. There is no remaining/limit/reset header to read. The 429 is the only signal. | `packages/console/app/src/routes/zen/util/handler.ts:300-306` |
 | F5 | The *keyed* limiter is a different mechanism entirely: per-**minute** bucket (`yyyyMMddHHmm`, 60s expiry), default 1000. Do not conflate it with F3. | `packages/console/app/src/routes/zen/util/keyRateLimiter.ts:15,16-20,33` |
@@ -30,6 +31,9 @@ of these overturn assumptions made earlier in the same session, so read them bef
 | F7 | **OmniRoute cannot back a live resolver today.** Installed and run on this machine (v3.8.48): 1321 packages, **2.53 GB**, 9 minutes. Server binds **`0.0.0.0`** (not localhost) and logs that the management password is the well-known default `CHANGEME`. `/v1/models` answers unauthenticated with 99 models across 7 real pools — but `providers list` reports **"No providers configured"**, `/api/free-tier/summary` returns **401**, and `quota` returns `{"error":"No quota data"}`. Two keyless models tested: `aug/claude-haiku-4.5` returned HTTP 200 with an **empty stream, 0 tokens**; `ddgw/gpt-4o-mini` returned **503**. Its catalog advertises `oc/deepseek-v4-flash-free` at 1M context / 384k output; Zen and models.dev both say **200k / 128k**. `omniroute stop` leaves an orphan `server-ws.mjs` holding the port with a 4 GB heap allowance. | measured 2026-08-13, this machine |
 | F8 | `omniroute setup-opencode` hard-codes `~/.config/opencode/opencode.json` with no path override — the wrong directory for VanGio, which reads `~/.config/vangio/`. It does support `--dry-run`, so its output can be inspected and placed by hand. | `omniroute setup-opencode --help`, v3.8.48 |
 | F9 | **The 2026-08-06 live-switch blocker does not apply here.** That blocker is in the *config* layer: the v1 `config` hook fires once at boot, so the active-paradigm marker cannot change live. F2 is in the *session* layer and never re-resolves agent config. Option C's strategic cost is sidestepped entirely. | `docs/superpowers/plans/2026-08-06-paradigm-picker-options.md:18-29` |
+| F10 | **An F2 swap lasts ONE loop step and is then thrown away.** The agent loop is `while (true)` in `SessionPrompt.loop`. Every iteration re-reads the messages **from the database**, derives `lastUser` from them, re-resolves `const model = getModel(lastUser.model.providerID, lastUser.model.modelID, …)`, and hands `handle.process({ … model … })` a **brand-new object literal**. Nothing carries the mutated `streamInput` across the step boundary. So a swap survives the remaining retry attempts of the current turn and dies at the next tool-call round-trip — where the loop re-issues the *dead* model and eats another 429 plus its backoff, every step, for the rest of the turn. **This is the finding that reshapes the design: `auto: true` needs a durable write, not just the F2 mutation.** | `packages/opencode/src/session/prompt.ts:1088, 1092-1096, 1141, 1272-1286` |
+| F11 | **A durable, session-scoped model override already exists — do not build one.** `SessionEvent.ModelSwitched` is a first-class event: `V2Session.switchModel` publishes it, the projector writes it to the `session.model` JSON column, and `currentModel()` reads that column *first*, ahead of the last user message and the global default. It is also already **announced in the transcript** — `message-updater` appends a `SessionMessage.ModelSwitched` (`type: "model-switched"`) message for it. That is the spec's "honest provenance" divider, already built and already rendered. | `packages/core/src/session.ts:402-416`; `packages/core/src/session/projector.ts:339-349`; `packages/core/src/session/message-updater.ts:114-124`; `packages/core/src/session/sql.ts:52-56`; `packages/opencode/src/session/prompt.ts:614-632` |
+| F12 | **`ModelSwitched` alone is not sufficient either.** The loop reads `lastUser.model` (prompt.ts:1141), **not** `currentModel()`. `currentModel()` is only consulted when a *new* prompt arrives without an explicit model (prompt.ts:469, 646). So publishing `ModelSwitched` mid-turn changes the model for the **next user prompt**, not for the remaining steps of the turn that is currently failing. F2 covers the current step; F11 covers the next prompt; **neither covers the steps in between.** | `packages/opencode/src/session/prompt.ts:469, 646, 1141` |
 
 **Consequence of F7:** every instinct to make OmniRoute the quota backend is premature. It is a
 plausible future substrate, not a usable one today, and its capability metadata is wrong for the
@@ -131,9 +135,16 @@ A paradigm-level toggle, default **on**:
 ```
 
 **auto: true — head swap.** The resolver runs inside the `set` callback (F2). On a resolution,
-`streamInput.model` is mutated and a divider is written into the transcript naming the old model,
-the new model, and the reason. The session continues. The paradigm on disk is untouched; the next
-launch is back to normal.
+`streamInput.model` is mutated so the next *attempt* uses the substitute — and, because that
+mutation dies at the next loop step (F10), the swap must **also** be made durable for the
+session. Use the mechanism that already exists (F11): publish `SessionEvent.ModelSwitched`, which
+writes the `session.model` column and appends a `model-switched` message to the transcript. That
+message **is** the announcement the "Honest provenance" constraint asks for — it does not need to
+be built. The paradigm on disk is still never written; the next launch is back to normal, because
+the override lives on the session row, not in config.
+
+The remaining gap is that the loop reads `lastUser.model` rather than the session row (F12). See
+Q3 — that is the one unresolved design decision left in this document.
 
 Two edits are needed on the `retry.ts` side of the seam, and they are the whole of the upstream
 diff there:
@@ -175,14 +186,24 @@ trigger.
 - `StaticResolver` unit tests against a fake registry: skips exhausted, skips unresolvable,
   respects order, returns `undefined` on an empty chain. Pure.
 - Loop protection: a chain where every entry 429s terminates at the cap, not infinitely.
-- **Runtime proof of F2** — the one test that cannot be a unit test. Under the ConPTY harness
-  (`.claude/skills/verify/SKILL.md`), force a `FreeUsageLimitError`, mutate `streamInput.model` in
-  `set`, and confirm the next attempt goes out on the new model. `--version` is not proof.
+- **Proof of F2 — DONE.** `packages/opencode/test/session/retry-model-swap.test.ts` reproduces the
+  processor's retry wiring against the real `SessionRetry.policy` and asserts the next attempt
+  goes out on the mutated model. It turned out not to need the ConPTY harness: the claim is about
+  `Effect.retry` re-evaluating a closure, which is exactly what a unit test can pin down. Keep it
+  — it is also the regression guard for the monthly upstream merge. If upstream ever hoists the
+  model read above `Effect.retry`, this goes red instead of the feature silently dying.
+- **Still owed under ConPTY:** an end-to-end run proving the swap survives a *tool-call round
+  trip* (F10). That one genuinely cannot be a unit test, and it is only meaningful once Q3 is
+  decided and the durable half is implemented.
 
 ## Scope split
 
-**In scope:** the schema fields, `StaticResolver`, the two modes, the transcript divider, the
-terminal message, loop protection, and the F2 runtime proof.
+**In scope:** the schema fields, `StaticResolver`, the two modes, the terminal message, loop
+protection, and whichever Q3 option is chosen for durability.
+
+**Dropped from scope as already-built (F11):** the transcript divider. `SessionMessage.ModelSwitched`
+is emitted, persisted and rendered today; publishing the event gets the announcement for free.
+**Dropped as done (F2):** the runtime proof.
 
 **Not in scope, deliberately:**
 - `LiveResolver` and any OmniRoute integration (F7 — no usable backend today).
@@ -199,8 +220,33 @@ terminal message, loop protection, and the F2 runtime proof.
   models and record which also 429. One real limit-hit answers it completely. If the bucket is
   shared, the static Zen-only chain is near-worthless and the feature's value rests entirely on
   non-Zen fallback targets, which today means paid models or nothing.
-- **Q2 — Does the F2 swap actually work at runtime?** Read-verified only. Gates the whole auto
-  path. If it fails, `auto: true` is removed and only the paradigm-shift path ships.
+- **Q2 — Does the F2 swap actually work at runtime?** **ANSWERED YES, 2026-08-17**, at the retry
+  layer, by `packages/opencode/test/session/retry-model-swap.test.ts` (4 tests, green). The
+  mutation is picked up on the next attempt, the `free_tier_limit` reason is visible to `set` so
+  the swap can be gated, and a chain can be walked across successive failures. **But see F10:
+  the answer is yes for one loop step, not for the turn.** The end-to-end ConPTY run is still
+  worth doing once the durable half of Q3 exists — there is nothing meaningful for it to observe
+  until then.
+
+- **Q3 — NEW. How does a swap survive the loop-step boundary?** (F10/F11/F12.) F2 covers the
+  current step, `ModelSwitched` covers the next prompt, and the steps in between are covered by
+  neither. Three candidates, none yet chosen:
+  1. **Publish `ModelSwitched` and teach the loop to prefer it.** One extra line at prompt.ts:1141
+     to consult `currentModel()` when the session row disagrees with `lastUser.model`. Reuses
+     F11 wholesale — durable, event-sourced, already rendered in the transcript. Cost: a third
+     upstream seam, in the agent loop, which the Global Constraints above currently forbid.
+  2. **Rewrite the persisted user message's `model`.** Zero prompt.ts changes — the loop's
+     DB re-read at :1092 would pick it up on its own. Cost: it edits history, so the transcript
+     would claim the user's turn was always sent to the fallback model. Conflicts with
+     "Honest provenance" unless paired with an explicit `ModelSwitched` marker.
+  3. **Ship `auto: false` only.** The paradigm-shift path needs no seam at all (it is the
+     existing picker plus a trigger), and it sidesteps F10 entirely. Smallest diff by far;
+     costs the automatic degradation that motivated the feature.
+  **Recommendation: (1).** It is the only option that is both durable and honest, it reuses a
+  mechanism that already exists end to end rather than inventing one, and the "third seam"
+  objection is weaker than it looks — the change is a single conditional at a stable call site,
+  far smaller than the `retry.ts` edits already budgeted. The Global Constraints section should
+  be amended to name prompt.ts:1141 as an allowed seam.
 
 ## Current free roster (2026-08-13)
 

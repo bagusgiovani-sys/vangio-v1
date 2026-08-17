@@ -615,3 +615,53 @@ to `"none"`, so the project-scope toggle is currently unreachable.
 
 **Nothing was written to VanGio for either thread** - the user asked for testing and confirmation
 before any change. The only commits this session are the scout fix and documentation.
+
+### Session state - resume here (2026-08-17) - Q2 CLOSED, Q3 OPENED
+
+**Q2 is answered YES and is now guarded by tests.**
+`packages/opencode/test/session/retry-model-swap.test.ts` (4 tests, green; 37 pass across both
+retry files; `bun typecheck` clean across 32 packages). It reproduces the processor's retry wiring
+against the real `SessionRetry.policy` and proves three things: mutating `streamInput.model` inside
+the `set` callback changes the model the next attempt goes out on; `set` can see
+`action.reason === "free_tier_limit"`, so a swap can be gated on a genuine free-tier wall rather
+than on any 429; and successive failures keep swapping, so a fallback chain can be walked.
+
+**It did not need the ConPTY harness, and that is not a shortcut.** The claim was about
+`Effect.retry` re-evaluating a closure - precisely what a unit test pins down. The harness is still
+owed for the *other* half (below), where it has something real to observe. The test is worth
+keeping regardless: it is the regression guard for the monthly upstream merge, because if upstream
+hoists the model read above `Effect.retry`, this goes red instead of the feature dying silently.
+
+**Three new findings, and the third one is the reason the spec changed shape (F10/F11/F12).**
+
+1. **An F2 swap lasts exactly ONE loop step.** The agent loop (`prompt.ts:1088`) re-reads messages
+   **from the database** every iteration, re-resolves the model from `lastUser.model` (`:1141`),
+   and hands `handle.process()` a **fresh object literal** (`:1272`). Nothing carries the mutated
+   `streamInput` across the step boundary. A swapped session reverts to the dead model on the next
+   tool-call round-trip and eats another 429 plus backoff - every step, for the rest of the turn.
+2. **A durable session-scoped model override already exists.** `SessionEvent.ModelSwitched` is
+   first-class: `V2Session.switchModel` publishes it, the projector writes the `session.model` JSON
+   column, `currentModel()` reads that column ahead of everything else - **and `message-updater`
+   already appends a `model-switched` message to the transcript.** That last part is the spec's
+   "announce the swap" divider, already built and already rendered. It has been dropped from scope.
+3. **But `ModelSwitched` alone does not close the gap either.** The loop reads `lastUser.model`,
+   not `currentModel()`; `currentModel()` is only consulted when a *new prompt* arrives without an
+   explicit model. So F2 covers the current step, `ModelSwitched` covers the next prompt, and the
+   steps in between are covered by neither.
+
+**Q3 - the one open design decision, awaiting the user.** How does a swap survive the step
+boundary? Three candidates, written up in the spec's Open Questions with the recommendation:
+(1) publish `ModelSwitched` and add one conditional at `prompt.ts:1141` so the loop prefers the
+session row - durable, honest, reuses existing machinery, costs a third upstream seam;
+(2) rewrite the persisted user message's model - zero prompt.ts changes, but edits history and so
+conflicts with honest provenance; (3) ship `auto: false` only - smallest diff, drops the automatic
+degradation that motivated the feature. **Recommended: (1)**, which means amending the spec's
+Global Constraints to name `prompt.ts:1141` as an allowed seam alongside `retry.ts`/`processor.ts`.
+
+**Q1 (Zen bucket per-model or shared) is unchanged and still open.** Unobservable without a real
+429; the instrumentation recipe in the 2026-08-13 block still stands.
+
+**Still untouched from prior sessions:** the upstream merge (`upstream/dev` local at `999be62662`,
+2026-08-12) is now ~5 weeks overdue - merge on a branch, never on `dev`. The session-sidebar thread
+still has its four decisions awaiting the user. No VanGio source file has been modified by this
+work; the only change is one new test file plus documentation.
