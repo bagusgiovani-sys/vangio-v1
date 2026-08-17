@@ -1001,3 +1001,63 @@ unresolved question, and it doubles as the instrumentation for answering it.
 `content-creator`, `data-analyst` and `tiktok-marketing` are mostly seer-and-prose work. They want
 more than one image-capable model to bind, which means they want an NVIDIA key. Deferred until
 that exists rather than shipped weak.
+
+---
+
+## Phase 10 — SPIKE RESOLVED: chained dialogs work (2026-08-17)
+
+**The blocker on Section 4 (the Paradigm Craft wizard) is cleared. A multi-step dialog sequence
+survives the keymap stack.** Proven under ConPTY, not asserted. Spike code was throwaway and has
+been reverted; `packages/paradigm/src/tui.tsx` is unchanged and the bundle is back to 8191 bytes
+with zero spike references.
+
+**Method.** A three-step chain (`DialogPrompt` name -> `DialogSelect` shape -> `DialogSelect`
+model) was added temporarily behind a `paradigm.craftspike` command, each step appending to a probe
+file. The probe file matters: the verify skill's gotcha is that incremental repaints fragment text
+across positioned writes, so stream-grepping cannot prove a dialog rendered. Code writing its own
+probe can.
+
+**Result — every step ran, in order, with state intact:**
+
+```
+command-run-start          depth=1 open=true
+step1-render               depth=1 open=true
+step1-confirm value=myteam depth=1 open=true
+step2-render name=myteam   depth=1 open=true
+step2-select value=court   depth=1 open=true
+step3-render name=myteam shape=court  depth=1 open=true
+step3-select value=lightning          depth=0 open=false
+DONE-all-three-steps-ran              depth=0 open=false
+```
+
+### What this settles
+
+1. **`api.ui.dialog.replace()` called synchronously inside `onConfirm`/`onSelect` advances the
+   wizard correctly.** The 2026-08-06 hazard documented at `tui.tsx:38-48` is real but **confined
+   to the command-handler return path** — whatever opened the command clears the stack when `run()`
+   returns. Dialog *callbacks* fire later and are not subject to it. The fallback plan (one dialog
+   that scaffolds a file and hands off to `$EDITOR`) is **not needed**.
+2. **State threads through props across replaces.** `name=myteam` survived into step 2 and was
+   still present alongside `shape=court` in step 3.
+3. **`depth` stays at 1 the whole way — `replace` swaps the top, it does not nest.** There is no
+   free Back button. A Back control must re-render the previous step from state held in closure.
+   That is easy but it is a thing the wizard has to do deliberately, not get for free.
+4. **`clear()` takes depth to 0 and closes.**
+
+### Two corrections to earlier assumptions
+
+- **`DialogPrompt` is exposed directly to plugins** with `title`, `placeholder`, `value`, `busy`
+  and `onConfirm(value)` (`packages/plugin/src/tui.ts:150-159`). The earlier note to "copy the
+  `value` + `onConfirm` pattern from `dialog-session-rename.tsx`" is obsolete — the primitive is
+  already in the plugin API.
+- **`DialogSelect` options carry a `disabled` flag** (`tui.ts:161-169`), which is exactly what the
+  resolver's hard-filter wants: a model that fails `needs` can be shown greyed with the reason in
+  `description`, rather than hidden. **Not verified:** whether `disabled` actually blocks selection.
+  The spike included a disabled option but selected an enabled one. Prove that before relying on it.
+
+### Harness lesson worth keeping
+
+Typing `/craftspike` fast and pressing Enter **submits it to the LLM as chat** — the slash menu
+does not keep up. The first run did exactly that and produced a false negative ("command never
+ran") while the plugin was in fact loaded and correct. Use the command palette (`ctrl+t`) and type
+at ~130ms per character. Both harnesses are in the session scratchpad.
