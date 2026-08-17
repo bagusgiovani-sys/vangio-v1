@@ -936,3 +936,68 @@ stronger reading. Consequence:
 ### Open naming item
 
 **Court / Legion** (the two shapes chosen before roles in Craft) are still placeholders.
+
+---
+
+## Phase 10 — v4 paradigm templates shipped (2026-08-17)
+
+**Four new paradigm templates plus the role catalog. All parse and compile against TODAY's schema —
+v4 was not blocked on the schema extension after all.** Verified: `bun test` in `packages/paradigm`
+38/38 green, and all six paradigms load and compile through the real `listParadigms` +
+`compileParadigm` path with zero errors.
+
+### The rule that fixes the role catalog's size
+
+**A role exists only when it needs a different model CAPABILITY — not merely a different
+instruction.** "Documenter", "reviewer" and "tester" are a warrior with a different prompt and a
+different model bound, so they are not roles. Only `seer` earns a new name, because no prompt can
+make a text-only model see a screenshot.
+
+That gives exactly four roles, and they map 1:1 onto the four approved `needs` fields:
+
+| Head | Job | Binding constraint |
+|---|---|---|
+| `king` | plans, decides, reviews, delegates. Mandatory | `minContext` |
+| `warrior` | produces the artifact — code, docs, copy | `minOutput` |
+| `scout` | finds things — lookups, research | cheap, fast, low output |
+| `seer` | anything involving images | `attachment: ["image"]` |
+
+### Files added
+
+- **`packages/paradigm/roles.json`** — the curated role catalog from approved Section 1. Bundled
+  and read in place, **deliberately not copied to `~/.config/vangio/`** so a reinstall can never
+  overwrite user edits. Carries `needs` and ranked `picks` with a `why` per role, including the
+  NVIDIA picks for when that key is set.
+- **`paradigms/code-review.json`** — king judges severity on a 1M-context model, scout reads the
+  code the diff does not show, warrior writes confirmed fixes.
+- **`paradigms/documenter.json`** — warrior on `nemotron-3.5-lightning-free` (262k output, the best
+  free ceiling anywhere) with a long-form prose brief.
+- **`paradigms/web-dev.json`** — the only template with a `seer`, and so the only one that
+  exercises the image path.
+- **`paradigms/researcher.json`** — the Legion demo: king plus three scouts fanned in parallel.
+  Written as three explicit heads today; collapses to one head at `instances: 3` once the schema
+  gains it.
+
+**The researcher's three scouts are bound to three DIFFERENT Zen models on purpose.** If Q1
+resolves to "Zen's daily bucket is per-model", that is three independent budgets; if it resolves to
+"shared", the arrangement costs nothing extra. It is the cheapest available hedge against an
+unresolved question, and it doubles as the instrumentation for answering it.
+
+### Two findings, both logged to errors.md, neither fixed unilaterally
+
+1. **`gryphon`'s warrior is on the worst free output ceiling.** `mimo-v2.5-free` gives 32k output
+   where `nemotron-3.5-lightning-free` gives 262k — and mimo is the *only* free model that accepts
+   images, so binding it to a head that never sees images wastes the one thing it is good for.
+   **Changing the flagship default's binding is the user's call**, so it is flagged, not changed.
+   One-line fix when wanted. This is precisely the mismatch the resolver is being built to catch.
+2. **`permission` on the king head is silently dropped.** `parseParadigm` accepts and validates it;
+   `compileParadigm` never reads it for the king (`compile.ts:59-65`). **Paradigm Craft must not
+   offer a permission control on the king head** or it will lie to the user. Same class of bug as
+   the config-hook `Effect.ignore` problem — a validated-but-ignored field is worse than an
+   unsupported one.
+
+### Dropped from the old v4 list, with reason
+
+`content-creator`, `data-analyst` and `tiktok-marketing` are mostly seer-and-prose work. They want
+more than one image-capable model to bind, which means they want an NVIDIA key. Deferred until
+that exists rather than shipped weak.

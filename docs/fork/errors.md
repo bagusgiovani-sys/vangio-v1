@@ -14,6 +14,26 @@
 **Files affected:** List of changed files
 ---
 
+## [2026-08-17 18:40] `permission` on the king head is silently dropped by the compiler
+#[paradigm] #[silent-failure] #[craft]
+**Context:** Authoring the first batch of paradigm templates (`code-review`, `documenter`, `web-dev`, `researcher`) and deciding whether to lock the king out of edits during a review.
+**Error:** No error — that is the problem. `parseParadigm` accepts and validates `permission` on *any* head including the king, but `compileParadigm` never reads it for the king. Non-king heads compile to `{ mode: "subagent", model, description, prompt, permission }`; the king compiles to `{ model, prompt }` only (`packages/paradigm/src/compile.ts:59-65`). A king-level `permission` block therefore parses cleanly, validates cleanly, and does nothing at all.
+**Root cause:** The king is not emitted as a subagent — it is merged onto the primary agents (`build`, `plan`), and that branch only carries model and doctrine. The schema was written to be uniform across heads; the compiler was not.
+**Fix:** Not fixed — avoided. None of the four new templates set `permission` on the king; read-only locks are applied to `scout` and `seer` heads only, which do compile correctly.
+**Prevention:** **Paradigm Craft must not offer a permission control on the king head**, or it will silently lie to the user. Either teach `compileParadigm` to carry king permissions onto the primaries, or reject `permission` on the king at parse time with a clear message. Rejecting at parse time is the smaller, more honest change. Same class as the config-hook `Effect.ignore` problem: a validated-but-ignored field is worse than an unsupported one.
+**Files affected:** None (documented only; `packages/paradigm/src/compile.ts` unchanged)
+---
+
+## [2026-08-17 18:35] The default `gryphon` paradigm binds its warrior to the lowest free output ceiling
+#[paradigm] #[model-selection] #[capability-mismatch]
+**Context:** Writing `roles.json` and cross-checking every bundled paradigm's bindings against `docs/fork/model-index.md`.
+**Error:** `gryphon.json` binds `warrior` to `opencode/mimo-v2.5-free` — 200k context but only **32k output**. The model index states plainly that for implementer roles "the binding constraint is output ceiling, not context" and that "a 32k output cap truncates real work". The default paradigm's implementer is therefore on the worst free ceiling available, while `nemotron-3.5-lightning-free` offers 262k — 8x more.
+**Root cause:** The binding predates the model index. `mimo-v2.5-free` was chosen before the capability survey existed, and was never revisited when the survey contradicted it. Compounding it: mimo is the *only* free model that accepts images, so it is the one model that should be reserved for a `seer` head — and a warrior never looks at images, so its single differentiating capability is wasted there.
+**Fix:** Not applied — flagged for the user. Changing the flagship default paradigm's model binding is a product decision, not a cleanup. The one-line fix is `gryphon.json` warrior -> `opencode/nemotron-3.5-lightning-free`.
+**Prevention:** This is exactly what Gryphon's resolver is being built to catch: a head whose bound model fails its role's `needs` (`warrior` requires `minOutput: 128000`; mimo offers 32000). Once the resolver exists, this binding raises a warning at authoring time instead of silently truncating output. Until then, re-check every bundled paradigm against the model index whenever the index is revised.
+**Files affected:** None (documented only; `paradigms/gryphon.json` unchanged)
+---
+
 ## [2026-08-17 15:20] Scout bound to a dead model AGAIN — the replacement model was itself retired, and the docs still list it
 #[paradigm] #[free-model-quirk] #[zen] #[config] #[staleness]
 **Context:** Building `docs/fork/model-index.md`. Cross-checked every `*-free` id in `paradigms/*.json` against Zen's **live** catalog endpoint rather than against documentation.

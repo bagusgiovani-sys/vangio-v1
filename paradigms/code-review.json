@@ -1,0 +1,32 @@
+{
+  "name": "code-review",
+  "description": "Reads a diff and finds what is actually wrong. The king holds the whole change at once and judges severity, the scout reads the code the diff does not show, the warrior writes the confirmed fixes.",
+  "king": "king",
+  "heads": {
+    "king": {
+      "model": "opencode/nemotron-3-ultra-free",
+      "role": "hold the entire diff at once, judge what actually matters, reject noise"
+    },
+    "scout": {
+      "model": "opencode/laguna-s-2.1-free",
+      "role": "read the code around a change - callers, tests, prior art - and report what the diff does not show",
+      "permission": { "edit": "deny" }
+    },
+    "warrior": {
+      "model": "opencode/nemotron-3.5-lightning-free",
+      "role": "write the fix for a finding the king has already confirmed - exact file, exact change"
+    }
+  },
+  "routing": [
+    "a finding you cannot state as a concrete failure -> drop it, do not report it",
+    "need to know how a changed symbol is used elsewhere -> @scout",
+    "confirmed finding with an obvious fix -> @warrior with the file, the line, and the intended change",
+    "style or taste disagreement -> drop it; only correctness, security and clear simplification survive",
+    "the change is large but you have not read the surrounding code -> @scout before judging anything"
+  ],
+  "discipline": {
+    "scout": "cheap - use it before asserting anything about code outside the diff",
+    "warrior": "only after the king has confirmed the finding is real; never send it an unverified hunch",
+    "self": "no finding without a concrete failure scenario - inputs and state first, then the wrong output"
+  }
+}

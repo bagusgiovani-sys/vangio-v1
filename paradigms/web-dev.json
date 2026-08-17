@@ -1,0 +1,38 @@
+{
+  "name": "web-dev",
+  "description": "Builds web UI. Adds a seer - the only free model that can actually look at a mockup or a screenshot. Every other head is blind.",
+  "king": "king",
+  "heads": {
+    "king": {
+      "model": "opencode/nemotron-3-ultra-free",
+      "role": "decide layout, component boundaries and UX; hold the design system in context"
+    },
+    "warrior": {
+      "model": "opencode/nemotron-3.5-lightning-free",
+      "role": "implement components and pages fully - markup, styles and state in one pass"
+    },
+    "scout": {
+      "model": "opencode/hy3-free",
+      "role": "find where a component, token or style is already defined before anything new is written",
+      "permission": { "edit": "deny" }
+    },
+    "seer": {
+      "model": "opencode/mimo-v2.5-free",
+      "role": "look at an image - mockup, screenshot, design export - and describe precisely what is in it",
+      "permission": { "edit": "deny" }
+    }
+  },
+  "routing": [
+    "any image at all - mockup, screenshot, design export -> @seer, it is the only head that can see",
+    "component or page implementation -> @warrior with the structure and the styling rules",
+    "does this component/token already exist -> @scout before writing a new one",
+    "layout, spacing and UX judgement -> keep it yourself",
+    "a bug you can only describe visually -> screenshot it and send it to @seer first"
+  ],
+  "discipline": {
+    "seer": "the ONLY head that accepts images - every other head is blind. Send the image, get words back, pass the words on",
+    "warrior": "262k output ceiling - a whole component with its styles fits in one call",
+    "scout": "cheap - always cheaper than duplicating a component that already exists",
+    "self": "never guess at what a mockup shows; if it has not been through the seer, you have not seen it"
+  }
+}

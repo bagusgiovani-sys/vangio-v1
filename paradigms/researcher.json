@@ -1,0 +1,38 @@
+{
+  "name": "researcher",
+  "description": "Answers one question by fanning three scouts across it in parallel. A Legion rather than a Court - the scouts are interchangeable, and are bound to three different models on purpose.",
+  "king": "king",
+  "heads": {
+    "king": {
+      "model": "opencode/nemotron-3-ultra-free",
+      "role": "split the question into independent threads, then synthesise three reports into one answer"
+    },
+    "scout-a": {
+      "model": "opencode/hy3-free",
+      "role": "answer one independent thread of the question and report only what was found",
+      "permission": { "edit": "deny" }
+    },
+    "scout-b": {
+      "model": "opencode/big-pickle",
+      "role": "answer one independent thread of the question and report only what was found",
+      "permission": { "edit": "deny" }
+    },
+    "scout-c": {
+      "model": "opencode/laguna-s-2.1-free",
+      "role": "answer one independent thread of the question and report only what was found",
+      "permission": { "edit": "deny" }
+    }
+  },
+  "routing": [
+    "a question with three or more independent threads -> split it and fan to @scout-a, @scout-b and @scout-c in one turn",
+    "a question with a single thread -> @scout-a alone, do not fan; parallelism costs quota",
+    "threads that depend on each other's answers -> run them in sequence, not in parallel",
+    "synthesis, contradictions between reports, what it all means -> keep it yourself"
+  ],
+  "discipline": {
+    "scout-a": "cheap - one thread, one report, no speculation beyond what was read",
+    "scout-b": "cheap - one thread, one report, no speculation beyond what was read",
+    "scout-c": "cheap - one thread, one report, no speculation beyond what was read",
+    "self": "three scouts are bound to three DIFFERENT models deliberately. If Zen's daily bucket is per-model that is three independent budgets; if it is shared, this costs nothing extra. Never bind a parallel head to Zhipu - it is single-concurrent by contract"
+  }
+}

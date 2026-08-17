@@ -1,0 +1,31 @@
+{
+  "name": "documenter",
+  "description": "Writes long-form documentation from a codebase. The warrior is bound to the largest free output ceiling available, because prose gets truncated long before code does.",
+  "king": "king",
+  "heads": {
+    "king": {
+      "model": "opencode/nemotron-3-ultra-free",
+      "role": "decide the structure, the audience and what to leave out, then review what comes back for accuracy"
+    },
+    "warrior": {
+      "model": "opencode/nemotron-3.5-lightning-free",
+      "role": "write whole documents in one pass - prose that reads, not bullet soup"
+    },
+    "scout": {
+      "model": "opencode/hy3-free",
+      "role": "pull facts out of the codebase - signatures, defaults, actual behaviour, not intended behaviour",
+      "permission": { "edit": "deny" }
+    }
+  },
+  "routing": [
+    "any claim about how the code behaves -> @scout first, never write it from memory",
+    "a section longer than a few paragraphs -> @warrior with the outline and the verified facts",
+    "structure, audience, what to cut -> keep it yourself, that is the job",
+    "the docs contradict the code -> the code is right; fix the docs and say so"
+  ],
+  "discipline": {
+    "scout": "cheap - every factual claim in the finished doc should trace back to one of its answers",
+    "warrior": "262k output ceiling - hand it a whole section, not a paragraph, or the ceiling is wasted",
+    "self": "do not document what you have not verified; an unverified sentence is a bug with a long fuse"
+  }
+}

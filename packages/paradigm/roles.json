@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "note": "Curated role catalog. Bundled with the plugin and read in place - deliberately NOT copied into ~/.config/vangio/, so a reinstall can never overwrite user edits. Every `picks` entry is a candidate, not a promise: it is checked against the live model catalog at read time, and anything that has been retired is dropped and logged once. A role exists here only when it needs a different model CAPABILITY - not merely a different instruction. 'Documenter', 'reviewer' and 'tester' are a warrior with a different prompt, so they are not roles.",
+  "roles": {
+    "king": {
+      "title": "King",
+      "summary": "Plans, decides, reviews and delegates. Every paradigm has exactly one, and it is never optional.",
+      "mandatory": true,
+      "needs": {
+        "minContext": 200000,
+        "minOutput": 32000,
+        "tools": true
+      },
+      "picks": [
+        {
+          "model": "opencode/nemotron-3-ultra-free",
+          "why": "1M context - holds the whole plan plus every delegation result without compacting"
+        },
+        {
+          "model": "opencode/deepseek-v4-flash-free",
+          "why": "200k context and fast; the long-standing default"
+        },
+        {
+          "model": "nvidia/deepseek-ai/deepseek-v4-pro",
+          "why": "1M context, 393k output - the best king available once an NVIDIA key is set"
+        }
+      ]
+    },
+    "warrior": {
+      "title": "Warrior",
+      "summary": "Produces the artifact - code, documentation, copy, whatever this paradigm makes. The binding constraint is output ceiling, not context: a 32k cap truncates real work.",
+      "mandatory": false,
+      "needs": {
+        "minContext": 128000,
+        "minOutput": 128000,
+        "tools": true
+      },
+      "picks": [
+        {
+          "model": "opencode/nemotron-3.5-lightning-free",
+          "why": "262k output - the best free ceiling anywhere on the index"
+        },
+        {
+          "model": "zhipu/glm-4.7-flash",
+          "why": "131k+ output; single-concurrent by contract, so never use it on a parallel head"
+        },
+        {
+          "model": "nvidia/nvidia/nemotron-3-super-120b-a12b",
+          "why": "262k context and 262k output once an NVIDIA key is set"
+        }
+      ]
+    },
+    "scout": {
+      "title": "Scout",
+      "summary": "Finds things - lookups, research, reconnaissance. Many small calls with short answers, so cheapness and speed matter far more than either limit.",
+      "mandatory": false,
+      "needs": {
+        "minContext": 100000,
+        "minOutput": 8000,
+        "tools": true
+      },
+      "picks": [
+        {
+          "model": "opencode/hy3-free",
+          "why": "190k context, 64k output - the closest thing to a small fast free model on Zen"
+        },
+        {
+          "model": "opencode/big-pickle",
+          "why": "200k context; useful as a second scout when fanning out"
+        },
+        {
+          "model": "opencode/laguna-s-2.1-free",
+          "why": "256k context - reaches for a scout that has to read a lot before answering"
+        }
+      ]
+    },
+    "seer": {
+      "title": "Seer",
+      "summary": "Looks at images - mockups, screenshots, design exports - and turns them into words the other heads can use. The only role defined by a modality rather than a limit, because no prompt can make a text-only model see.",
+      "mandatory": false,
+      "needs": {
+        "minContext": 100000,
+        "minOutput": 8000,
+        "tools": true,
+        "attachment": ["image"]
+      },
+      "picks": [
+        {
+          "model": "opencode/mimo-v2.5-free",
+          "why": "the ONLY free model on the index that accepts images"
+        },
+        {
+          "model": "nvidia/moonshotai/kimi-k2.6",
+          "why": "262k context and output with image input, once an NVIDIA key is set"
+        }
+      ]
+    }
+  }
+}
