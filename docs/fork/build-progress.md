@@ -1071,3 +1071,73 @@ Typing `/craftspike` fast and pressing Enter **submits it to the LLM as chat** �
 does not keep up. The first run did exactly that and produced a false negative ("command never
 ran") while the plugin was in fact loaded and correct. Use the command palette (`ctrl+t`) and type
 at ~130ms per character. Both harnesses are in the session scratchpad.
+
+---
+
+## Session state — RESUME HERE (2026-08-18) — supersedes every earlier RESUME block
+
+**v5 (Paradigm Craft) is SHIPPED.** `/craft` and `/clone` are built, reviewed, and live-verified
+under ConPTY. 12 commits, `a757bed4..1eb8156e`, all pushed to `origin/dev`. 105 tests in
+`packages/paradigm` (212 assertions), typecheck 32/32. Working tree clean, nothing unpushed.
+Every commit stayed inside `packages/paradigm` — **v5 added zero upstream-merge risk.**
+
+Spec: `docs/superpowers/specs/2026-08-17-gryphon-paradigm-design.md` (corrected against what
+implementation proved). Plan: `docs/superpowers/plans/2026-08-18-paradigm-craft.md`.
+
+### The next three things, in the order I would do them
+
+**1. Switch the wizard's model source to the SDK's available-models endpoint. Do this first —
+it is an afternoon, not a subsystem.**
+`packages/server/src/handlers/model.ts:13` returns `catalog.model.available()`, which is ALREADY
+credential-filtered. The wizard's `candidates()` in `packages/paradigm/src/tui.tsx` instead reads
+`api.state.provider`, the raw TUI state, which lists every provider declared in the user's
+`opencode.json` whether or not it has a key. That is why Craft will happily let you bind a head to
+`anthropic/claude-sonnet-5` with no credentials and only fail at use time.
+**Do not build a live credential probe.** Q4's investigation went hunting for a credential field
+on `Provider` (there isn't a trustworthy one — `key` is never set for account-based auth like Zen,
+and `source` is re-stamped `"config"` for anything in `opencode.json`) when the server had already
+done the filtering. Use `api.client` to fetch the available list, diff it against
+`api.state.provider` to confirm the filtering is real, then swap `candidates()` over.
+This closes the "VanGio cannot tell you which providers actually work" gap, which directly
+undercuts the product's core claim.
+
+**2. Decide Q3 — it is the only thing blocking Paradigm Shift stage one.**
+The loop reads `lastUser.model`, not `currentModel()`, so a retry-time swap (Q2, proven) covers
+the current step and `ModelSwitched` covers the next prompt — the steps between are covered by
+neither. **Recommendation on record: publish `SessionEvent.ModelSwitched` plus one conditional at
+`prompt.ts:1141` so the loop prefers the session row.** Durable, reuses existing machinery, and
+costs a THIRD upstream seam — which is why it needs a human decision, since it widens the patch
+surface against monthly merges. Requires amending the fallback spec's Global Constraints to allow
+that seam. **Awaiting the user. Do not start Shift stage one without this answer.**
+
+**3. Take the upstream merge, on a branch, never on `dev`.**
+~5 weeks overdue at `999be62662` (2026-08-12). v5 did not make it worse — this is the cheapest it
+will ever be, and it only gets more expensive.
+
+### Still open, lower priority
+
+- **Q1 — is Zen's daily bucket per-model or shared?** Unobservable without a real 429; do not force
+  one. The `researcher` paradigm binds three DIFFERENT Zen models deliberately as the
+  instrumentation for when one occurs. Load-bearing for whether parallel heads work on free tiers.
+- **v6** — AI-assisted paradigm builder. Build after the three above.
+- Deferred minors from the final review were all triaged "fine to leave" — no cleanup debt.
+
+### Two hard-won rules a future session must not relearn
+
+- **A step is painted explicitly in this TUI or it is not painted at all.** A reactive
+  `<Show when={step()} keyed>` inside a single `dialog.replace()` NEVER repaints — state advances,
+  screen does not, no error, all tests green. Full entry in `errors.md` (2026-08-18 04:10). v6/v7
+  build more multi-step dialogs on this API and inherit this rule.
+- **A green unit suite says nothing about whether a TUI repaints.** Both `--version` and
+  `bun test` are blind to it. Live ConPTY is the only proof; harness gotchas in
+  `.claude/skills/verify`, notably: run the harness under `node` not `bun`, wait 45s, and invoke
+  commands via the `ctrl+t` palette typing ~130ms/char — typing a slash command fast submits it to
+  the LLM as chat and produces a false negative.
+
+### Environment left behind
+
+- Working tree clean, everything pushed to `origin/dev`. Active paradigm marker: `gryphon`.
+- `~/.config/vangio/paradigms/` holds exactly the six bundled presets (any test clones removed).
+- `gryphon` and `premium-gryphon` warriors were rebound to `nemotron-3.5-lightning-free` (262k
+  output) earlier today; `mimo-v2.5-free` is now reserved for `seer` heads, being the only free
+  model that accepts images.
