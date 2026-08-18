@@ -7,11 +7,12 @@ import {
   nextStep,
   stepBack,
   toParadigm,
-  draftFromParadigm,
-  roleIdFor,
+  cloneParadigm,
+  canFinish,
   type Draft,
   type Step,
 } from "../src/craft"
+import { getRole } from "../src/roles"
 import type { Paradigm } from "../src/schema"
 
 describe("validateName", () => {
@@ -126,7 +127,7 @@ describe("wizard state machine", () => {
     expect(step).toEqual({ kind: "review" })
   })
 
-  test("legion asks the king's model, one role, its model, then a count", () => {
+  test("legion asks the king's model, one role, then its model, then goes straight to review", () => {
     const { draft, step } = run(["my-team", "legion", "opencode/ultra", "scout", "opencode/hy3"])
     expect(draft.shape).toBe("legion")
     expect(step).toEqual({ kind: "review" })
@@ -190,7 +191,7 @@ describe("toParadigm", () => {
 
   test("carries the role summary into each head's role text", () => {
     const p = toParadigm(built())
-    expect(p.heads["warrior"]?.role.length).toBeGreaterThan(0)
+    expect(p.heads["warrior"]?.role).toBe(getRole("warrior")!.summary)
   })
 
   test("denies edit on scout and seer heads but never sets permission on the king", () => {
@@ -230,7 +231,7 @@ describe("wizard completeness guard", () => {
     expect(afterModel.step).toEqual({ kind: "review" })
   })
 
-  test("full back-and-edit scenario keeps toParadigm valid", async () => {
+  test("reaching review through a full forward build keeps toParadigm valid (stepBack is computed here, not applied)", async () => {
     const { parseParadigm } = await import("../src/schema")
     let draft = emptyDraft()
     let step = firstStep()
@@ -251,6 +252,44 @@ describe("wizard completeness guard", () => {
     const p = toParadigm(result.draft)
     const parsed = parseParadigm(p)
     expect(parsed.ok).toBe(true)
+  })
+
+  test("a real back-edit that re-answers a role clears its model - done is refused until a model is supplied again", () => {
+    let draft = emptyDraft()
+    let step = firstStep()
+    // Build a complete two-head court: king, then warrior with a model.
+    for (const answer of ["my-team", "court", "opencode/ultra", "warrior", "opencode/light"]) {
+      const result = nextStep(draft, step, answer)
+      draft = result.draft
+      step = result.step
+    }
+    expect(step).toEqual({ kind: "role", slot: 2 })
+    expect(canFinish(draft)).toBe(true)
+
+    // "← Back" twice, exactly as tui.tsx's back() does, lands on slot 1's role step.
+    step = stepBack(draft, step)
+    expect(step).toEqual({ kind: "model", slot: 1 })
+    step = stepBack(draft, step)
+    expect(step).toEqual({ kind: "role", slot: 1 })
+
+    // Re-answering the role overwrites heads[1] with a fresh { role } that has
+    // no model - the six-keystroke repro from the review.
+    let result = nextStep(draft, step, "scout")
+    draft = result.draft
+    step = result.step
+    expect(draft.heads[1]?.model).toBeUndefined()
+    expect(canFinish(draft)).toBe(false)
+
+    // Back once more to the role step, where "done" is offered/refused.
+    step = stepBack(draft, step)
+    expect(step).toEqual({ kind: "role", slot: 1 })
+    const refused = nextStep(draft, step, "done")
+    expect(refused.step).toEqual({ kind: "role", slot: 1 })
+    expect(canFinish(refused.draft)).toBe(false)
+
+    // Supplying a model for slot 1 again restores completeness.
+    const modelled = nextStep(draft, { kind: "model", slot: 1 }, "opencode/hy3")
+    expect(canFinish(modelled.draft)).toBe(true)
   })
 
   test("stepBack from review with four heads returns model step of highest slot", () => {
@@ -276,68 +315,59 @@ describe("wizard completeness guard", () => {
   })
 })
 
-describe("roleIdFor", () => {
-  test("returns a head id that is already a known role", () => {
-    expect(roleIdFor("warrior")).toBe("warrior")
-    expect(roleIdFor("king")).toBe("king")
-  })
-
-  test("strips a suffix to recover the role", () => {
-    expect(roleIdFor("scout-a")).toBe("scout")
-    expect(roleIdFor("scout-2")).toBe("scout")
-  })
-
-  test("leaves an unrecognised id alone rather than guessing", () => {
-    expect(roleIdFor("bishop")).toBe("bishop")
-  })
-})
-
-describe("draftFromParadigm", () => {
+describe("cloneParadigm", () => {
+  // Populated with everything toParadigm's old draft round-trip used to drop:
+  // routing, discipline, description, and (on scout-a) a head prompt.
   const source: Paradigm = {
     name: "researcher",
     description: "three scouts",
     king: "king",
     heads: {
       king: { model: "opencode/ultra", role: "split and synthesise" },
-      "scout-a": { model: "opencode/hy3", role: "one thread", permission: { edit: "deny" } },
+      "scout-a": {
+        model: "opencode/hy3",
+        role: "one thread",
+        permission: { edit: "deny" },
+        prompt: "Stay narrow: one question, one answer.",
+      },
       "scout-b": { model: "opencode/big-pickle", role: "one thread" },
     },
-    routing: ["fan out -> @scout-a"],
+    routing: ["fan out -> @scout-a", "never bind a parallel head to Zhipu - it is single-concurrent by contract"],
     discipline: { self: "be brief" },
   }
 
-  test("puts the king at slot 0", () => {
-    const draft = draftFromParadigm(source)
-    expect(draft.heads[0]?.role).toBe("king")
-    expect(draft.heads[0]?.model).toBe("opencode/ultra")
+  test("takes the new name and nothing else changes", () => {
+    const clone = cloneParadigm(source, "my-copy")
+    expect(clone.name).toBe("my-copy")
   })
 
-  test("carries every other head with its role recovered and model intact", () => {
-    const draft = draftFromParadigm(source)
-    const roles = Object.values(draft.heads).map((h) => h.role)
-    expect(roles.filter((r) => r === "scout").length).toBe(2)
-    const models = Object.values(draft.heads).map((h) => h.model)
-    expect(models).toContain("opencode/hy3")
-    expect(models).toContain("opencode/big-pickle")
+  test("preserves routing and discipline verbatim", () => {
+    const clone = cloneParadigm(source, "my-copy")
+    expect(clone.routing).toEqual(source.routing)
+    expect(clone.discipline).toEqual(source.discipline)
   })
 
-  test("does NOT carry the name - the user must choose a new one", () => {
-    expect(draftFromParadigm(source).name).toBeUndefined()
+  test("preserves the description", () => {
+    const clone = cloneParadigm(source, "my-copy")
+    expect(clone.description).toBe(source.description)
   })
 
-  test("defaults the shape to court, since today's schema cannot express a legion", () => {
-    expect(draftFromParadigm(source).shape).toBe("court")
+  test("preserves each head's role text, prompt and permission - not the catalog summary", () => {
+    const clone = cloneParadigm(source, "my-copy")
+    expect(clone.heads["scout-a"]?.role).toBe("one thread")
+    expect(clone.heads["scout-a"]?.prompt).toBe("Stay narrow: one question, one answer.")
+    expect(clone.heads["scout-a"]?.permission).toEqual({ edit: "deny" })
+    expect(clone.heads["scout-b"]?.role).toBe("one thread")
   })
 
-  test("a cloned draft round-trips through toParadigm into a valid paradigm", async () => {
+  test("keeps all three heads", () => {
+    const clone = cloneParadigm(source, "my-copy")
+    expect(Object.keys(clone.heads).length).toBe(3)
+  })
+
+  test("a clone still parses as a valid paradigm", async () => {
     const { parseParadigm } = await import("../src/schema")
-    const draft = { ...draftFromParadigm(source), name: "my-copy" }
-    const result = parseParadigm(toParadigm(draft))
+    const result = parseParadigm(cloneParadigm(source, "my-copy"))
     expect(result.ok).toBe(true)
-  })
-
-  test("a clone of a three-head paradigm keeps three heads", () => {
-    const draft = { ...draftFromParadigm(source), name: "my-copy" }
-    expect(Object.keys(toParadigm(draft).heads).length).toBe(3)
   })
 })

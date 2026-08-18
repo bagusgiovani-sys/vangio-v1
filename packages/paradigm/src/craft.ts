@@ -71,6 +71,17 @@ function headCount(draft: Draft): number {
   return Object.keys(draft.heads).length
 }
 
+/**
+ * The one gate on entering "review": at least two heads (king plus one), and
+ * every head must have a model. Every transition into review - the "done" row,
+ * the MAX_HEADS auto-advance, and the legion early-exit - must agree on this,
+ * or the wizard can offer a step it will silently refuse.
+ */
+export function canFinish(draft: Draft): boolean {
+  const heads = Object.values(draft.heads)
+  return heads.length >= 2 && heads.every((h) => h.model)
+}
+
 export function nextStep(draft: Draft, step: Step, answer: string): { draft: Draft; step: Step } {
   const next: Draft = { ...draft, heads: { ...draft.heads } }
 
@@ -88,10 +99,7 @@ export function nextStep(draft: Draft, step: Step, answer: string): { draft: Dra
     case "role": {
       // "done" is only offered once the minimum is met and all heads have models, but guard anyway.
       if (answer === "done") {
-        if (headCount(next) >= 2) {
-          const allHaveModels = Object.values(next.heads).every(h => h.model)
-          if (allHaveModels) return { draft: next, step: { kind: "review" } }
-        }
+        if (canFinish(next)) return { draft: next, step: { kind: "review" } }
         return { draft: next, step }
       }
       next.heads[step.slot] = { role: answer }
@@ -103,10 +111,10 @@ export function nextStep(draft: Draft, step: Step, answer: string): { draft: Dra
       if (head) next.heads[step.slot] = { ...head, model: answer }
 
       // A legion has exactly two slots: the king and the repeated worker.
-      if (next.shape === "legion" && step.slot === 1) {
+      if (next.shape === "legion" && step.slot === 1 && canFinish(next)) {
         return { draft: next, step: { kind: "review" } }
       }
-      if (headCount(next) >= MAX_HEADS) {
+      if (headCount(next) >= MAX_HEADS && canFinish(next)) {
         return { draft: next, step: { kind: "review" } }
       }
       return { draft: next, step: { kind: "role", slot: step.slot + 1 } }
@@ -182,7 +190,7 @@ export function toParadigm(draft: Draft): Paradigm {
     }
     // Advisory heads are locked read-only. NEVER set permission on the king -
     // compileParadigm drops it silently, so offering it would be a lie.
-    if (draftHead.role !== KING_ROLE_ID && (draftHead.role === "scout" || draftHead.role === "seer")) {
+    if (draftHead.role === "scout" || draftHead.role === "seer") {
       head.permission = { edit: "deny" }
     }
     heads[id] = head
@@ -199,35 +207,12 @@ export function toParadigm(draft: Draft): Paradigm {
 }
 
 /**
- * Recovers a catalog role from a head id. Our own toParadigm writes "scout-1"
- * when a role repeats, and hand-written paradigms use ids like "scout-a", so a
- * single trailing "-segment" is stripped when that yields a known role. An id
- * that matches nothing is returned unchanged rather than guessed at - the model
- * step then filters with empty needs, which is honest about not knowing.
+ * A clone is the source paradigm verbatim, under a new name - nothing else
+ * changes. Kept here rather than inlined in the TUI so this exact copy
+ * semantics stays unit-testable without a running TUI (see the file header):
+ * routing, discipline, description, and every head's role text, prompt and
+ * permission must all survive a clone unchanged.
  */
-export function roleIdFor(headId: string): string {
-  if (getRole(headId)) return headId
-  const stripped = headId.replace(/-[^-]+$/, "")
-  if (stripped !== headId && getRole(stripped)) return stripped
-  return headId
-}
-
-/**
- * Seeds a draft from an existing paradigm for cloning. The name is deliberately
- * left unset: install.ts would overwrite a file reusing a bundled preset name,
- * so the user must pick a new one and have it validated.
- */
-export function draftFromParadigm(paradigm: Paradigm): Draft {
-  const draft: Draft = { ...emptyDraft(), shape: "court" }
-  draft.heads[0] = {
-    role: KING_ROLE_ID,
-    model: paradigm.heads[paradigm.king]?.model,
-  }
-  let slot = 1
-  for (const [id, head] of Object.entries(paradigm.heads)) {
-    if (id === paradigm.king) continue
-    draft.heads[slot] = { role: roleIdFor(id), model: head.model }
-    slot += 1
-  }
-  return draft
+export function cloneParadigm(source: Paradigm, name: string): Paradigm {
+  return { ...source, name }
 }

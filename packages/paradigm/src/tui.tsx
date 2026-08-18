@@ -18,7 +18,8 @@ import { pickerOptions, statusLabel, switchNotice, type PickerOption } from "./p
 import { getRole, listRoles } from "./roles"
 import { modelOptions, type CandidateModel } from "./resolve"
 import {
-  draftFromParadigm,
+  canFinish,
+  cloneParadigm,
   emptyDraft,
   firstStep,
   nextStep,
@@ -126,7 +127,7 @@ function Craft(props: { api: TuiPluginApi }) {
   // needs no await and no loading state.
   const candidates = (): CandidateModel[] =>
     props.api.state.provider.flatMap((provider) =>
-      Object.values(provider.models).map((model) => model as unknown as CandidateModel),
+      Object.values(provider.models).map((model) => model as CandidateModel),
     )
 
   // Measured live under ConPTY 2026-08-18: a plain reactive <Show when={step()}
@@ -138,12 +139,23 @@ function Craft(props: { api: TuiPluginApi }) {
   const rerender = () => props.api.ui.dialog.replace(() => render())
 
   const advance = (answer: string) => {
-    const result = nextStep(draft(), step(), answer)
+    const before = step()
+    const result = nextStep(draft(), before, answer)
     setDraft(result.draft)
     setStep(result.step)
     if (result.step.kind === "done") {
       finish(result.draft)
       return
+    }
+    // nextStep refusing to move is only expected when "done" is answered
+    // before every head has a model. Surface the reason instead of silently
+    // repainting an identical dialog, so any future divergence is visible.
+    if (JSON.stringify(result.step) === JSON.stringify(before)) {
+      props.api.ui.toast({
+        variant: "warning",
+        title: "Paradigm",
+        message: "Every head needs a model before you can finish.",
+      })
     }
     rerender()
   }
@@ -237,10 +249,9 @@ function Craft(props: { api: TuiPluginApi }) {
       const rows = listRoles()
         .filter((role) => !role.mandatory)
         .map((role) => ({ title: role.title, value: role.id, description: role.summary }))
-      const done =
-        Object.keys(draft().heads).length >= 2
-          ? [{ title: "Done - no more heads", value: "done", description: "go to review" }]
-          : []
+      const done = canFinish(draft())
+        ? [{ title: "Done - no more heads", value: "done", description: "go to review" }]
+        : []
       return (
         <DialogSelect
           title={`New paradigm - head ${current.slot} role`}
@@ -295,7 +306,7 @@ function Craft(props: { api: TuiPluginApi }) {
     if (current.kind === "review") {
       const p = toParadigm(draft())
       const summary = Object.entries(p.heads)
-        .map(([id, head]) => `${id}: ${head.model}`)
+        .map(([id, head]) => `${id}: ${head.model}${head.permission ? " (read-only)" : ""}`)
         .join(", ")
       return (
         <DialogSelect
@@ -339,8 +350,11 @@ function Clone(props: { api: TuiPluginApi }) {
   const rerender = () => props.api.ui.dialog.replace(() => render())
 
   const finish = (chosen: Paradigm, name: string) => {
-    const draft = { ...draftFromParadigm(chosen), name }
-    const paradigm = toParadigm(draft)
+    // Previously this routed through draftFromParadigm/toParadigm, which only
+    // carries {role, model} per head and silently dropped routing, discipline,
+    // description, and every head's role text and prompt. cloneParadigm is a
+    // straight copy under a new name - nothing else changes.
+    const paradigm: Paradigm = cloneParadigm(chosen, name)
     // Same write-gate /craft uses: never let a paradigm parseParadigm would
     // reject reach disk, even though the source that seeded this draft was
     // itself already a valid paradigm.
@@ -351,6 +365,7 @@ function Clone(props: { api: TuiPluginApi }) {
         title: "Paradigm",
         message: result.errors.join("; "),
       })
+      rerender()
       return
     }
     props.api.ui.dialog.clear()
