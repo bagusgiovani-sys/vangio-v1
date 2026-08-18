@@ -117,7 +117,18 @@ That yields four roles, mapping 1:1 onto the four `needs` fields:
   one head at N, and they can be mixed. Maps 1:1 onto `task` + `background: true`.
 - **`needs` has exactly four fields:** `minContext`, `minOutput`, `tools`, `attachment`.
 - **Paid-vs-free is a paradigm-level `allowPaid: false`, not a need** — it is a wallet policy, not
-  a capability. Per F7 it **must fail closed**: treat unknown cost as paid, and say so.
+  a capability.
+
+  **CORRECTED 2026-08-18 — this originally said `allowPaid` "must fail closed": treat unknown
+  cost as paid. That is not implementable and has been reversed.** Per F7, absent cost data
+  normalises to `{input: 0, output: 0}`, so a genuinely free model and an unpriced one are
+  byte-identical by the time a plugin sees them. Failing closed would therefore reject **every
+  free model** — including every model this user actually runs on. The shipped `isFree()` treats
+  zero cost as free and carries an in-code comment explaining exactly why, which is the honest
+  trade: it fails *open*, so an unpriced model could survive a wallet filter meant to exclude it.
+  That risk is currently theoretical — no caller passes `allowPaid`, so the filter is inert.
+  Closing it properly needs the raw models.dev payload from before normalisation, which a plugin
+  cannot reach. Do not "fix" this back without that data source.
 
 **Hard-filter with override.** Model fits needs → fine. Fails needs *and* carries
 `needsOverride` → warning, runs. Fails needs with no override → validation error. Override
@@ -143,8 +154,11 @@ renamed. Hard rule #5 makes a cosmetic path rename a bad trade.
 
 The 2026-08-06 picker already does switch-and-display-active with zero upstream edits. Reuse it.
 
-Commands: `/paradigm` (exists, `slashName: "paradigm"`), `/paradigm new` (the Craft wizard),
-`/paradigm clone`. **`/paradigm edit` → `$EDITOR` is out of scope for v5** — spawning a child
+Commands **as shipped 2026-08-18**: `/paradigm` (switch the active one — pre-existing),
+`/craft` (the Craft wizard), `/clone` (copy one under a new name). The earlier plan wrote these
+as `/paradigm new` and `/paradigm clone`; flat names shipped instead, and were checked against
+all twenty existing slash registrations for collisions. **`/paradigm edit` → `$EDITOR` remains
+out of scope for v5** — spawning a child
 process from inside the TUI is a different risk class and deserves its own look.
 
 **Field-by-field editing of arbitrary heads is deliberately out of scope.** A general form builder

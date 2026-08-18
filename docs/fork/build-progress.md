@@ -108,10 +108,16 @@ VanGio v1 is shipped. This is the full product vision — each phase builds on t
 - Building on the Gryphon 3-head architecture proven in v1
 - No AI generation yet — just good defaults
 
-### v5 — Paradigm Customizer
-- [ ] User can tweak a preset: change a role's model, adjust routing rules, rename a head
-- Visual config editor in desktop app (or config schema for terminal users)
-- Still manual — but the UI supports it
+### v5 — Paradigm Craft — **SHIPPED 2026-08-18**
+- [x] `/craft` — a wizard: name → shape → a model per head, hard-filtered against the live
+      catalog by what each role actually needs. Writes `~/.config/vangio/paradigms/<name>.json`.
+- [x] `/clone` — copy any paradigm under a new name. This is the sanctioned way to customise a
+      bundled preset, since `install.ts` overwrites the six bundled filenames on every install.
+- [x] Failing models stay **visible** with the reason ("needs 128000 output, has 32000") and are
+      refused on selection — never silently dropped from the list.
+- [x] 105 tests in `packages/paradigm`, plus live ConPTY verification of both flows.
+- **Deliberately NOT built:** field-by-field editing of arbitrary heads, and `/paradigm edit` →
+  `$EDITOR`. Both are scoped out in the design spec. Edit a crafted paradigm by hand for now.
 - Power-user unlock: the bridge between "I use what you give me" and "I build my own"
 
 ### v6 — AI-Assisted Paradigm Builder
@@ -1050,10 +1056,14 @@ DONE-all-three-steps-ran              depth=0 open=false
   and `onConfirm(value)` (`packages/plugin/src/tui.ts:150-159`). The earlier note to "copy the
   `value` + `onConfirm` pattern from `dialog-session-rename.tsx`" is obsolete — the primitive is
   already in the plugin API.
-- **`DialogSelect` options carry a `disabled` flag** (`tui.ts:161-169`), which is exactly what the
-  resolver's hard-filter wants: a model that fails `needs` can be shown greyed with the reason in
-  `description`, rather than hidden. **Not verified:** whether `disabled` actually blocks selection.
-  The spike included a disabled option but selected an enabled one. Prove that before relying on it.
+- **`DialogSelect` options carry a `disabled` flag** (`tui.ts:161-169`).
+  **SUPERSEDED 2026-08-18 — do not use it for the hard filter.** This block assumed `disabled`
+  would show a model greyed with its reason. It does the opposite: `dialog-select.tsx:154-160`
+  drops every `disabled === true` option before the list is built, so the row is invisible and
+  unreachable — exactly the "why isn't mimo in the list" failure the design forbids. The shipped
+  wizard therefore **never sets `disabled` on a model row**; it keeps every row visible with the
+  reason in `description` and gates selection through a `blocked: Map<string, string>` consulted
+  in `onSelect`. Verified live under ConPTY.
 
 ### Harness lesson worth keeping
 

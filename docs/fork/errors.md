@@ -14,6 +14,16 @@
 **Files affected:** List of changed files
 ---
 
+## [2026-08-18 04:10] A reactive `<Show>` inside one `dialog.replace()` never repaints - the wizard looked frozen
+#[tui] #[solid] #[silent-failure] #[paradigm]
+**Context:** Building the Paradigm Craft wizard (v5). The design called for a multi-step dialog - name, shape, then a model per head - driven by a state machine, and rendered by ONE `api.ui.dialog.replace()` call wrapping a Solid `<Show when={step()} keyed>` that swaps in the component for the current step.
+**Error:** No error, no exception, no failed test. The wizard's internal state advanced correctly through every step, but the screen kept displaying the FIRST dialog forever. Under ConPTY it read as a completely frozen UI. Unit tests were all green because the state machine was never the problem.
+**Root cause:** The dialog host paints what it was handed at `replace()` time. A reactive swap *inside* that subtree does not cause the host to repaint - the framework has no reason to know the dialog's identity changed. `depth` stays at 1 either way, so nothing looks wrong from the outside.
+**Fix:** Drive every transition through its own explicit `api.ui.dialog.replace()` / re-render call, which is the mechanism already proven by the 2026-08-17 chained-dialog spike. The state-machine design itself was fine and shipped unchanged; only the painting was wrong.
+**Prevention:** **In this TUI, a step is painted explicitly or it is not painted at all.** Never render a multi-step flow by making one mounted component reactive on a step signal. This cost a live ConPTY debugging round to find, and would have been re-introduced verbatim into `/clone` - the plan's clone component used the same pattern - had the finding not been carried into that task's dispatch. v6 and v7 build more multi-step dialogs on this API; they inherit this rule. Also note the general lesson: a green unit suite says nothing about whether a TUI actually repaints. `--version` and `bun test` are both blind to it.
+**Files affected:** `packages/paradigm/src/tui.tsx`
+---
+
 ## [2026-08-17 18:40] `permission` on the king head is silently dropped by the compiler
 #[paradigm] #[silent-failure] #[craft]
 **Context:** Authoring the first batch of paradigm templates (`code-review`, `documenter`, `web-dev`, `researcher`) and deciding whether to lock the king out of edits during a review.
