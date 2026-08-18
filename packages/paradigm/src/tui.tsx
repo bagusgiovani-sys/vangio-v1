@@ -17,6 +17,7 @@ import { listParadigms, readActiveName, writeActiveName, writeParadigm } from ".
 import { pickerOptions, statusLabel, switchNotice, type PickerOption } from "./picker"
 import { getRole, listRoles } from "./roles"
 import { modelOptions, type CandidateModel } from "./resolve"
+import { loadCandidates, type CandidateSource, type SdkModel } from "./available"
 import {
   canFinish,
   cloneParadigm,
@@ -111,24 +112,40 @@ function Picker(props: { api: TuiPluginApi; onPick: (name: string) => void }) {
   )
 }
 
+/**
+ * GET /api/model is the only list that knows which providers actually have
+ * credentials (see ./available for the measurement). api.state.provider is the
+ * degraded fallback for when that call fails, and nothing else - it is every
+ * provider opencode.json DECLARES, key or no key.
+ */
+function candidateSource(api: TuiPluginApi): CandidateSource {
+  return {
+    available: async () => {
+      const result = await api.client.v2.model.list({}, { throwOnError: true })
+      return result.data.data satisfies SdkModel[]
+    },
+    configured: () =>
+      api.state.provider.flatMap((provider) =>
+        Object.values(provider.models).map((model) => model as CandidateModel),
+      ),
+  }
+}
+
 function Craft(props: { api: TuiPluginApi }) {
   const [draft, setDraft] = createSignal<Draft>(emptyDraft())
   const [step, setStep] = createSignal<Step>(firstStep())
   const [existing, setExisting] = createSignal<string[]>([])
   const [error, setError] = createSignal<string | undefined>(undefined)
+  // undefined means the answer has not arrived yet, which the model step has to
+  // paint - an empty list is a real answer (nothing on this machine has
+  // credentials) and must not read as "still loading".
+  const [candidates, setCandidates] = createSignal<CandidateModel[] | undefined>(undefined)
   const DialogSelect = props.api.ui.DialogSelect
   const DialogPrompt = props.api.ui.DialogPrompt
 
   onMount(() => {
     void listParadigms(PARADIGM_DIR).then(({ paradigms }) => setExisting(Object.keys(paradigms)))
   })
-
-  // api.state.provider is already loaded and synchronous, so the model step
-  // needs no await and no loading state.
-  const candidates = (): CandidateModel[] =>
-    props.api.state.provider.flatMap((provider) =>
-      Object.values(provider.models).map((model) => model as CandidateModel),
-    )
 
   // Measured live under ConPTY 2026-08-18: a plain reactive <Show when={step()}
   // keyed> inside one dialog.replace() call does NOT repaint when step()
@@ -137,6 +154,19 @@ function Craft(props: { api: TuiPluginApi }) {
   // design spec) is calling dialog.replace() again at every transition, so
   // that is what advance()/back()/the error path do here.
   const rerender = () => props.api.ui.dialog.replace(() => render())
+
+  onMount(() => {
+    void loadCandidates(candidateSource(props.api)).then((result) => {
+      setCandidates(result.models)
+      if (result.warning) {
+        props.api.ui.toast({ variant: "warning", title: "Paradigm", message: result.warning })
+      }
+      // Repaint ONLY when the user is already sitting on the model step waiting
+      // for this list. rerender() rebuilds the dialog from scratch, so doing it
+      // on the name step would throw away a half-typed name.
+      if (step().kind === "model") rerender()
+    })
+  })
 
   const advance = (answer: string) => {
     const before = step()
@@ -264,10 +294,33 @@ function Craft(props: { api: TuiPluginApi }) {
     if (current.kind === "model") {
       const head = draft().heads[current.slot]
       const role = head ? getRole(head.role) : undefined
+      const available = candidates()
+      // A localhost round trip started several keystrokes ago, so this is all
+      // but unreachable - but a step that paints nothing is a dead end, and in
+      // this TUI a step is painted explicitly or not at all.
+      if (available === undefined) {
+        return (
+          <DialogSelect
+            title="New paradigm - checking which models this machine can reach"
+            options={withBack([])}
+            onSelect={(option) => onRow(String(option.value))}
+          />
+        )
+      }
+      if (available.length === 0) {
+        return (
+          <DialogSelect
+            title="New paradigm - no model has credentials"
+            options={withBack([])}
+            placeholder="Run /connect to add a provider key, then start again"
+            onSelect={(option) => onRow(String(option.value))}
+          />
+        )
+      }
       const choices = modelOptions({
         needs: role?.needs ?? {},
         picks: role?.picks ?? [],
-        models: candidates(),
+        models: available,
       })
       // DialogSelectOption.disabled does not grey a row out - it drops it from
       // the list entirely (packages/tui/src/ui/dialog-select.tsx:154-160,
