@@ -40,7 +40,7 @@ already-loaded config until then.
 | Scope                         | Path                                                                                                                      |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | Project config                | `./opencode.json`, `./opencode.jsonc`, or `.vangio/opencode.json` (VanGio walks up from the cwd to the worktree root) |
-| Global config                 | `~/.config/vangio/opencode.json` (NOT `~/.vangio/`)                                                                   |
+| Global config                 | `~/.config/vangio/opencode.json` or `~/.config/vangio/opencode.jsonc` (NOT `~/.vangio/`)                               |
 | Project agents                | `.vangio/agent/<name>.md` or `.vangio/agents/<name>.md`                                                               |
 | Global agents                 | `~/.config/vangio/agent(s)/<name>.md`                                                                                   |
 | Project commands              | `.vangio/command/<name>.md` or `.vangio/commands/<name>.md`                                                           |
