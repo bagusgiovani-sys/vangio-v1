@@ -1,9 +1,11 @@
 # Gryphon — Paradigm Engine Design
 
-> **Status: APPROVED 2026-08-18. v5 is planned in
-> `docs/superpowers/plans/2026-08-18-paradigm-craft.md`** which covers v5 in full — both `/craft` and `/clone`.
-> Sections 1–4 are agreed. Four questions remain open (Q1, Q3, Q4, Q5); none blocks a plan for
-> Craft or the resolver, though **Q3 blocks Paradigm Shift stage one** and is awaiting the user.
+> **Status: v5 BUILT AND SHIPPED 2026-08-18.** `/craft` and `/clone` are implemented, tested
+> (107 tests) and live-verified under ConPTY. Plan:
+> `docs/superpowers/plans/2026-08-18-paradigm-craft.md`.
+> Sections 1–4 are agreed. **Two questions remain open (Q1, Q3)** — Q4 and Q5 were answered
+> during implementation and are recorded below. Neither open question blocks Craft or the
+> resolver, though **Q3 blocks Paradigm Shift stage one** and is awaiting the user.
 > Read the Verified Findings table before writing code — several findings overturn assumptions
 > made earlier in the same session, including two that correct already-approved sections.
 >
@@ -195,6 +197,18 @@ is Section 1's "checked at read time, retired ones dropped and logged once" with
 top and `depth` stays at 1, so transitions are already ours to drive. Building a stack on top would
 be inventing a second mechanism.
 
+> **CORRECTED 2026-08-18 — the design stands, its assumed render mechanism did not.** This section
+> originally implied the machine could be rendered by *one* `dialog.replace()` wrapping a reactive
+> component that swaps on the current step (a Solid `<Show when={step()} keyed>`). **That does not
+> repaint.** Proven live under ConPTY during implementation: the internal state advanced correctly
+> while the screen kept showing the previous dialog, so the wizard appeared frozen. The shipped
+> code drives **every** transition through an explicit `api.ui.dialog.replace()` / re-render call,
+> which is F9's already-proven mechanism. The state-machine design itself is unaffected — a draft
+> plus pure transitions is exactly what shipped. Only the painting changed.
+>
+> Consequence for later work: **v6 and v7 must not assume a reactive component can drive a
+> multi-step dialog.** Each step is painted explicitly or it is not painted at all.
+
 **Structure — mirroring the split that already exists** (`picker.ts` is pure and tested in
 `picker.test.ts`; `tui.tsx` only renders):
 
@@ -270,6 +284,23 @@ absence taxonomy is confirmed live rather than assumed: the `seer` model step li
 despite the box holding no key for any of them — "exists, no credentials" is real and common, not
 an edge case.
 
+**Q4 follow-up — we cannot currently DETECT credential state, and this is a real product gap.**
+Having established that uncredentialed models are offered, the obvious fix was to label them. That
+was attempted and abandoned on evidence. Tracing `packages/opencode/src/provider/provider.ts`:
+`Provider.key` is set only on the env/api-key branches and is **never** set for account-based auth,
+which is how OpenCode Zen — the user's primary working provider — authenticates; and
+`Provider.source` is unconditionally re-stamped `"config"` for any provider declared in the user's
+`opencode.json`, regardless of whether its env var actually resolves. That last point also explains
+the probe above: `anthropic` appeared because it is *declared* in this user's config (its entry is
+literally named "no key configured yet"), not because the API conceals credential state.
+
+Neither field is a trustworthy usable/unusable signal. A heuristic built on either would mislabel
+the user's actually-working free models as unusable — a worse failure than the one it fixes. So the
+code was deliberately left unchanged and the gap documented instead: **VanGio cannot presently tell
+the user which of their configured providers will actually work.** For a product whose whole claim
+is an honest answer about what can be done with the models you have, closing this is worth a
+dedicated look — most likely a cheap live probe per provider rather than catalog introspection.
+
 **Q5** (does `DialogSelect`'s `disabled` actually block selection?) — **yes, more than that: it
 hides the row entirely.** `packages/tui/src/ui/dialog-select.tsx`'s `filtered()` memo drops every
 option with `disabled === true` before building the navigable list (`grouped()`/`flat()`), so a
@@ -280,9 +311,18 @@ entries) shows only the fitting titles, in the same order as the resolver's own 
 occurrences anywhere of any of the disabled titles; (2) every `onSelect` observed across two full
 wizard runs carried `disabled=false` — there is no code path that reaches the handler with a
 disabled row. This is stronger than Section 4's stated design ("shown disabled with the reason,
-not hidden") — in practice a failing model is hidden, not shown-and-greyed. The wizard's own
-belt-and-braces guard (`if (row?.disabled) return`) is consequently unreachable but kept, since it
-is cheap and free of any hidden costs.
+not hidden") — used naively, a failing model is hidden rather than shown-and-greyed.
+
+**Resolution: Section 4's requirement was upheld and the code changed to meet it.** Hiding was
+rejected because this product's entire differentiation is an honest answer about what your models
+can actually do, and a candidate that silently vanishes is the opposite — the reason string
+("needs 128000 output, has 32000") teaches the user something an absent row cannot. Since the
+framework offers no greyed-but-visible state for option rows, the shipped wizard **never sets
+`disabled` on a model row at all.** Every candidate renders, its description carries either the
+`picks` rationale or the failure reason, and selection is gated by a `blocked: Map<string, string>`
+built alongside the rows and consulted in `onSelect`, which toasts the reason and refuses to
+advance. Live-verified 2026-08-18: a text-only model appeared on the `seer` step reading "does not
+accept image input", and pressing Enter on it raised the toast without advancing.
 
 **Q3 does not block this spec.** It belongs to Paradigm Shift stage one, which lives in the
 fallback spec; Craft and the resolver can be planned and built without it.
