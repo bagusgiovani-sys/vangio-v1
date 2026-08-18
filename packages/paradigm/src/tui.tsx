@@ -164,6 +164,13 @@ function Craft(props: { api: TuiPluginApi }) {
         title: "Paradigm",
         message: `Could not create paradigm: ${result.errors.join("; ")}`,
       })
+      // The wizard already moved step() to "done" before finish() was called
+      // (advance() sets it, then dispatches here). Nothing repainted the
+      // dialog for that transition, so without this the review dialog would
+      // be left on screen with step() pointing past it - repaint back to
+      // review so the user can go back and correct.
+      setStep({ kind: "review" })
+      rerender()
       return
     }
     props.api.ui.dialog.clear()
@@ -245,15 +252,26 @@ function Craft(props: { api: TuiPluginApi }) {
     if (current.kind === "model") {
       const head = draft().heads[current.slot]
       const role = head ? getRole(head.role) : undefined
-      const rows = modelOptions({
+      const choices = modelOptions({
         needs: role?.needs ?? {},
         picks: role?.picks ?? [],
         models: candidates(),
-      }).map((choice) => ({
+      })
+      // DialogSelectOption.disabled does not grey a row out - it drops it from
+      // the list entirely (packages/tui/src/ui/dialog-select.tsx:154-160,
+      // `filtered()` keeps only `disabled !== true`). Failing models must stay
+      // VISIBLE with the reason, so `disabled` is never fed from `choice` into
+      // the row here. `blocked` is the real gate: onSelect consults it and
+      // refuses the pick with a toast instead of the row ever disappearing.
+      const blocked = new Map(
+        choices
+          .filter((choice) => choice.disabled)
+          .map((choice) => [choice.model, choice.description ?? "This model does not meet the role's requirements."] as const),
+      )
+      const rows = choices.map((choice) => ({
         title: choice.title,
         value: choice.model,
         description: choice.description,
-        disabled: choice.disabled,
       }))
       return (
         <DialogSelect
@@ -261,13 +279,13 @@ function Craft(props: { api: TuiPluginApi }) {
           placeholder="Search models"
           options={withBack(rows)}
           onSelect={(option) => {
-            const row = rows.find((r) => r.value === String(option.value))
-            // Belt and braces: DialogSelect's own `disabled` filter already keeps
-            // these rows out of the selectable list entirely (verified live,
-            // 2026-08-18), so this branch should be unreachable - kept anyway,
-            // since it is cheap and this is the last line of defense.
-            if (row?.disabled) return
-            onRow(String(option.value))
+            const value = String(option.value)
+            const reason = blocked.get(value)
+            if (reason) {
+              props.api.ui.toast({ variant: "error", title: "Paradigm", message: reason })
+              return
+            }
+            onRow(value)
           }}
         />
       )
