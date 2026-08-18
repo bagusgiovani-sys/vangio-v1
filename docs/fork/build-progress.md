@@ -1141,3 +1141,85 @@ will ever be, and it only gets more expensive.
 - `gryphon` and `premium-gryphon` warriors were rebound to `nemotron-3.5-lightning-free` (262k
   output) earlier today; `mimo-v2.5-free` is now reserved for `seer` heads, being the only free
   model that accepts images.
+
+---
+
+## Session state — RESUME HERE (2026-08-18, evening) — supersedes the block above
+
+**Next action 1 is DONE and pushed.** Craft's model list no longer comes from the raw TUI
+provider state; it comes from `GET /api/model` (`catalog.model.available()`), the list the server
+has already filtered by credentials. Commit `ed99da81`, inside `packages/paradigm` only — still
+zero upstream-merge risk. 116 tests (230 assertions), typecheck clean, no new lint warnings.
+
+### What the measurement actually showed
+
+Ran the server and diffed the two endpoints on this machine, `ANTHROPIC_API_KEY` unset:
+
+| | `/config/providers` (old source) | `/api/model` (new source) |
+|---|---|---|
+| anthropic | 17 models | **0** — no key, correctly gone |
+| opencode (Zen) | 7 models | **27** — the full catalog |
+| zai / zhipu / zhipuai / *-coding-plan | present | present (all have credentials) |
+
+So the swap did two things, not one: it removed the keyless provider AND widened Zen from the 7
+models the provider state carried to the 27 the catalog knows.
+
+**The payloads are not the same shape**, which the earlier note did not anticipate — this needed
+an adapter (`packages/paradigm/src/available.ts`), not a one-line source swap:
+`capabilities.tools` vs `capabilities.toolcall`, an input modality LIST (`["text","image",...]`)
+vs a boolean per modality, and `cost` as an ARRAY of price tiers vs a single pair. `satisfies
+SdkModel[]` at the call site is the compile-time proof the real SDK type still fits.
+`zhipu/glm-4.7-flash` returns `cost: []`, which reads as free — the same reading
+`resolve.isFree()` already gives absent pricing.
+
+Verified live under ConPTY at "New paradigm - model for King": searching `kimi` shows
+**Kimi K2.5 Free** (in the catalog, absent from the provider state), searching `claude` shows
+**"No results found"** where the old source offered 17.
+
+### Worth knowing: the config's model note is now out of date
+
+`~/.config/vangio/opencode.json` still says mimo-v2.5-free is "the only free model that accepts
+images". The live Zen catalog has **five**: `kimi-k2.5-free` (262k/262k), `mimo-v2-omni-free`,
+`mimo-v2.5-free`, `minimax-m3-free`, `qwen3.6-plus-free`. The `seer` role is no longer pinned to
+one option, and `kimi-k2.5-free` in particular beats the current seer model on both limits. Worth
+a pass over the bundled presets — not started, no commit.
+
+### The next three things, in order
+
+1. **Decide Q3 — still the only thing blocking Paradigm Shift stage one, still awaiting a human.**
+   Unchanged from the block above: publish `SessionEvent.ModelSwitched` plus one conditional at
+   `prompt.ts:1141` so the loop prefers the session row. Durable, reuses existing machinery, costs
+   a THIRD upstream seam — which is why it is the user's call, and needs the fallback spec's
+   Global Constraints amended to allow that seam. **Do not start Shift stage one without it.**
+2. **Take the upstream merge, on a branch, never on `dev`.** ~5 weeks overdue at `999be62662`
+   (2026-08-12). Nothing since v5 made it worse; it only gets more expensive.
+3. **Re-check the bundled presets against the real catalog** (see the seer note above).
+
+### Still open, lower priority
+
+- **Q1 — is Zen's daily bucket per-model or shared?** Unobservable without a real 429; do not
+  force one. The `researcher` paradigm's three different Zen models remain the instrumentation.
+- **v6** — AI-assisted paradigm builder.
+
+### Rules this session paid for (both now in `.claude/skills/verify`)
+
+- **Boot is 65-70s to first paint on this machine, not 10-20s.** A 45s sleep typed the entire
+  harness into a screen that had not rendered, produced 22KB of blank frames, and read exactly
+  like "the plugin change broke boot". Poll for the first paint; read the log before concluding.
+- **Wait for each wizard step by forcing a repaint and reading THAT frame.** Grepping the raw
+  stream for a dialog title is the already-documented fragmentation trap wearing a different hat —
+  it reported "wizard never opened" while the wizard was open.
+- **Drive a wizard by the title on screen.** Craft is name → shape → **king's model** → head 1
+  role → head 1 model. There is no role step before the king's model; assuming one silently
+  probes the wrong screen.
+- **Never assert on text the search box echoes.** Counting "claude" after typing "claude" proves
+  nothing; count `Haiku`/`Opus`/`Sonnet` instead.
+
+### Environment left behind
+
+- Working tree clean, everything pushed to `origin/dev`. Active paradigm marker: `gryphon`.
+- `~/.config/vangio/paradigms/` holds exactly the six bundled presets — the ConPTY probe was
+  escaped before the review step, so it wrote nothing.
+- The installed plugin bundles were rebuilt from current source
+  (`bun packages/paradigm/script/install.ts gryphon`); they are snapshots, so re-run that after
+  any `packages/paradigm/src` change or the TUI keeps running the old code.

@@ -14,6 +14,16 @@
 **Files affected:** List of changed files
 ---
 
+## [2026-08-18 20:55] A 45s boot wait typed the whole Craft harness into a screen that had not rendered
+#[verification] #[tui] #[windows] #[false-negative]
+**Context:** Live-verifying the Craft wizard's new model source under ConPTY. The harness slept 45s for boot (the skill quoted a 10-20s first frame), then opened the palette, ran /craft, and read the model list.
+**Error:** Every captured frame was 22KB of pure whitespace. Zero text fragments in 80KB of stream. A piped `timeout 45 bun dev` produced a 109-byte log with no frame at all, which read exactly like "the plugin change broke the TUI at boot".
+**Root cause:** Nothing was broken. Boot on this machine takes 65-70s to first paint - measured twice, and corroborated by `~/.local/share/vangio/log/opencode.log`, where one run took 22s just from "creating instance" to "booting location services". The harness was typing into a screen that had not painted yet, so every keystroke went nowhere and every frame was blank. A second, quieter instance of the same mistake followed: waiting for the next step by grepping the raw stream for its title, which the skill already warns never to do - incremental repaints split a title across positioned writes, so the wizard HAD opened and the grep still timed out.
+**Fix:** Detect readiness, never assume it: poll for the first paint (up to 240s), and check every subsequent step by forcing a full repaint with `proc.resize()` and reading THAT frame, retrying a few times. Also drive the wizard by the title on screen rather than an assumed step order - the king's model step follows shape directly, with no role step in front of it, so a fixed Down/Enter script silently probed the wrong screen and returned meaningless counts.
+**Prevention:** A blank frame means "not ready yet" until the log says otherwise - read `~/.local/share/vangio/log/opencode.log` before concluding a change broke boot. Never sleep a fixed interval for this TUI, and never assert a step exists (or does not) from the raw stream. Assert on strings the search box cannot echo back: "kimi" typed into a filter proves nothing, the row text "Kimi K2.5 Free" does.
+**Files affected:** .claude/skills/verify/SKILL.md (boot time corrected; harness lives in the session scratchpad)
+---
+
 ## [2026-08-18 04:10] A reactive `<Show>` inside one `dialog.replace()` never repaints - the wizard looked frozen
 #[tui] #[solid] #[silent-failure] #[paradigm]
 **Context:** Building the Paradigm Craft wizard (v5). The design called for a multi-step dialog - name, shape, then a model per head - driven by a state machine, and rendered by ONE `api.ui.dialog.replace()` call wrapping a Solid `<Show when={step()} keyed>` that swaps in the component for the current step.
