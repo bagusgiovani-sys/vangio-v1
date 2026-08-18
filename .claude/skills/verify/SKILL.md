@@ -5,7 +5,7 @@ description: How to run and verify the VanGio TUI (opencode fork) from source �
 
 ## Launch
 
-- Full TUI from source: `bun dev` from repo root (= `bun run --cwd packages/opencode --conditions=browser src/index.ts`). **First frame takes 65–70s on this machine** — measured twice under ConPTY on 2026-08-18, not the 10–20s a warm cache suggests. Never sleep a fixed interval and start typing: poll for the first paint instead (allow 240s). A blank frame means "not booted yet", and `~/.local/share/vangio/log/opencode.log` tells you which phase it is in before you conclude anything is broken.
+- Full TUI from source: `bun dev` from repo root (= `bun run --cwd packages/opencode --conditions=browser src/index.ts`). **First frame takes 16–70s on this machine, and the spread is the point** — 65–70s measured twice under ConPTY on 2026-08-18 cold, then 16s the same night on a cache left warm by a full typecheck. Never sleep a fixed interval and start typing: poll for the first paint instead (allow 240s). A fixed wait tuned to either number is wrong at the other. A blank frame means "not booted yet", and `~/.local/share/vangio/log/opencode.log` tells you which phase it is in before you conclude anything is broken.
 - Static render check (ONE frame only): pipe it — `timeout 15 bun dev > out.log 2>&1` in Git Bash. opentui detects no TTY and suspends repainting after the first frame. Good for layout/text assertions, useless for animations or input.
 
 ## Animations / input (marquee, blink cursor, Tab cycling) — ConPTY harness

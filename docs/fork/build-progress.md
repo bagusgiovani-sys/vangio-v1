@@ -1223,3 +1223,90 @@ a pass over the bundled presets — not started, no commit.
 - The installed plugin bundles were rebuilt from current source
   (`bun packages/paradigm/script/install.ts gryphon`); they are snapshots, so re-run that after
   any `packages/paradigm/src` change or the TUI keeps running the old code.
+
+## Session state — RESUME HERE (2026-08-18, night) — supersedes the block above
+
+**Next action 2 is DONE and pushed.** The upstream merge landed on `dev` as `f219ad17d9`
+(fast-forward from `merge/upstream-2026-08-18`). Upstream at `9b0dd36cda`, 650 files,
++81927/-7327, ~20 days of upstream work. Second tracked merge; the first was 2026-07-29.
+
+### What it cost
+
+Two conflicts, both in files the fork had rebranded, both resolved by keeping VanGio's branding
+and taking upstream's change on top:
+
+- `packages/core/src/plugin/skill/customize-opencode.md` — upstream added the `.jsonc`
+  global-config path; the location stays `~/.config/vangio/`.
+- `packages/opencode/src/session/prompt/meta.txt` — upstream swapped the hardcoded model name for
+  a `{{MODEL_NAME}}` template; "You are VanGio" and the OpenCode attribution/feedback URL stay.
+
+**Only nine files were edited by both sides.** That is the number worth carrying forward — it is
+the real blast radius of a merge, and it is tiny. Compute it as the intersection of
+`git diff --name-only <merge-base> dev` with `git diff --name-only <merge-base> upstream/dev`;
+the two conflicts are in it, and the other seven auto-merged with every fork edit intact
+(`.vangio/plans` permission path, VanGio ACP strings, the Marquee agent description, the
+`scrollbar_visible` default, the permission-dialog strings, the `vangio` bin name). Checking
+those seven by hand took minutes and is the cheapest confidence in the whole process — a clean
+auto-merge is exactly where a fork edit dies quietly.
+
+`packages/paradigm` was untouched, and so were `catalog.ts` and `global.ts`.
+
+### Verification — all five gates green
+
+| Gate | Result |
+| --- | --- |
+| `bun install` | clean |
+| `bun typecheck` | 32/32 packages (at `--concurrency=3`; see errors.md for why) |
+| Per-package tests | paradigm, codemode, ui, session-ui, llm, app(unit 722) all clean; core 1081/1096, tui 190/194, opencode 3268/3365 |
+| ConPTY boot gate | paints in 16s, status row `Build · DeepSeek V4 Flash (free)`, Tab cycle Build→Plan→Build, no gryphon, zero ERROR lines in the boot log |
+| `.vangio` marker test | passes — `.vangio/opencode.json` still wins over global config |
+
+**No failure was caused by the merge.** Every failing test file is byte-identical to pre-merge
+`dev`, and the one failure in a file the merge *did* touch (a compaction abort-latency bound,
+391ms against a <250ms assertion) passes 55/55 in isolation — it missed only because three other
+suites were running. The 7 core git failures are all the 5s timeout wall: 17/17 pass at
+`--timeout 30000`.
+
+### The finding that matters more than the merge
+
+**~22 tests have been red since the Phase 8 rebrand, in three packages.** They are upstream's
+tests asserting upstream's app name against code the fork correctly renamed — `<tmp>/vangio`,
+`.vangio/opencode.jsonc`, `vangio -s`, `` `vangio models` ``, a `VanGio` notification title. Full
+entry in errors.md. Nothing is broken; the *tests* are stale. But a permanently-red suite is how
+a real regression hides, and this merge is the proof: 49 red tests took real work to clear as
+noise, and that cost repeats at every future merge until they are fixed.
+
+### The next three things, in order
+
+1. **Decide Q3 — still the only thing blocking Paradigm Shift stage one, still awaiting a human.**
+   Unchanged and now the oldest open item: publish `SessionEvent.ModelSwitched` plus one
+   conditional at `prompt.ts:1141` so the loop prefers the session row. Durable, reuses existing
+   machinery, costs a THIRD upstream seam — which is why it is the user's call, and needs the
+   fallback spec's Global Constraints amended to allow that seam. **Do not start Shift stage one
+   without it.**
+2. **Fix the ~22 rebrand-stale tests.** Mechanical, one commit (or one per package), and it buys
+   back a trustworthy suite before the next merge rather than after it.
+3. **Re-check the bundled presets against the real catalog** — carried over: the config still
+   calls mimo-v2.5-free "the only free model that accepts images" and the live Zen catalog has
+   five, with `kimi-k2.5-free` beating the current `seer` model on both limits.
+
+### Still open, lower priority
+
+- **Q1 — is Zen's daily bucket per-model or shared?** Unobservable without a real 429; do not
+  force one. The `researcher` paradigm's three different Zen models remain the instrumentation.
+- **v6** — AI-assisted paradigm builder.
+
+### Two upstream changes to know about
+
+- **Zen's console moved** to `https://opencode.ai/console` (was `console.opencode.ai`). Existing
+  `auth.json` credentials are unaffected; this only matters on a re-auth.
+- **`config/parse.ts` no longer throws on unrecognized top-level config keys** — upstream switched
+  to `onExcessProperty: "ignore"`. A typo'd key in `opencode.json` now fails silently instead of
+  telling you. Worth remembering the next time a config setting "does nothing".
+
+### Environment left behind
+
+- Working tree clean, `dev` pushed to `origin/dev` at `f219ad17d9`. Active paradigm: `gryphon`.
+- `merge/upstream-2026-08-18` still exists locally and is now identical to `dev`; safe to delete.
+- Boot time is NOT a constant — 16s warm, 65–70s cold, both measured on 2026-08-18. The verify
+  skill has been corrected; poll for first paint, never sleep a fixed interval.

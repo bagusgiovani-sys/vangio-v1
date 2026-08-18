@@ -14,6 +14,26 @@
 **Files affected:** List of changed files
 ---
 
+## [2026-08-18 23:10] ~22 upstream tests have been red since the rebrand — the fork is right, the tests are stale
+#[rebranding] #[testing] #[technical-debt] #[merge]
+**Context:** Verifying the 2026-08-18 upstream merge. Per-package suites reported 8 failures in `core`, 3 in `tui`, and 38 in `opencode`, which looked at first like the merge had broken something substantial.
+**Error:** Assertions of this shape, in three packages: `Expected: "C:\Users\kodec\AppData\Local\Temp\opencode"` / `Received: "...\Temp\vangio"`; `ENOENT: no such file or directory, open '...\.opencode\opencode.jsonc'`; `Expected to contain: "opencode -s ses_123"` against a received `"vangio -s ses_123"`; `Try: \`opencode models\`` against `Try: \`vangio models\``; and a notification title `"opencode"` against `"VanGio"`.
+**Root cause:** Not the merge. Every one of these tests is upstream's, asserting upstream's app name against code the fork correctly rebranded back in Phase 8 — `Global.Path.tmp` (`<tmp>/vangio`), `plugin/install.ts:337` (`.vangio`), `util/presentation.ts` (`vangio -s`), `cli/error.ts` (`vangio models`), the TUI attention title. The rebrand fixed the *code* and left the *tests* asserting the old name, so they have been failing since. Proof it predates the merge: every failing test file, and every source file under test, is byte-identical to `dev` before the merge (`git diff --cached HEAD -- <file>` empty for all of them). The largest single cluster is 14 `plugin.install.task` tests plus 3 `plugin.install.concurrent`, all reading `.opencode/opencode.jsonc` where install now writes `.vangio/`.
+**Fix:** None yet — recorded, not repaired. The repair is mechanical (point each assertion at the fork's name) but it is ~22 tests across `core`, `tui`, and `opencode`, and it is its own commit, not something to bury inside a merge.
+**Prevention:** **A rename is not done when the code is renamed — it is done when the tests that assert the old name are renamed too.** This is the same failure family as the 2026-07-18 path rebrand, one layer up: there the missed spots were silent at runtime, here they are loud but were mistaken for merge damage and could just as easily have been dismissed as "expected noise" forever. A permanently-red suite is worse than no suite, because the next real regression hides inside the noise. Any future rebrand ships its test updates in the same commit.
+**Files affected:** None (finding only) — `packages/core/test/global.test.ts`, `packages/tui/test/{app-lifecycle,util/presentation}.test.*`, `packages/opencode/test/{cli/error,plugin/install,plugin/install-concurrency,cli/cmd/tui/attention,cli/help/help-snapshots}.test.ts`
+---
+
+## [2026-08-18 22:10] `bun typecheck` reported two package failures that were tsgo crashing, not type errors
+#[verification] #[windows] #[false-negative] #[merge]
+**Context:** Running the typecheck gate over the 650-file upstream merge, from the repo root, at turbo's default concurrency on this 16GB machine.
+**Error:** `ERROR @opencode-ai/sdk-next#typecheck: ... exited (2)` and the same for `@opencode-ai/stats-core` — `Tasks: 13 successful, 32 total ... Failed: 2`. Buried above it in the log was a Go runtime stack dump (`sync.(*WaitGroup).Go.func1()`, `runtime.goexit`), not a single TypeScript diagnostic.
+**Root cause:** `tsgo` crashed under memory pressure from 32 typecheck tasks running at once. It reported no type error because it found none — it died before finishing. Both packages typecheck clean when run on their own (`cd packages/sdk-next && bun run typecheck` → exit 0), and the full sweep passes 32/32 at `--concurrency=3`.
+**Fix:** Re-ran as `bun turbo typecheck --concurrency=3`: 32 successful, 32 total, exit 0.
+**Prevention:** On this machine, a typecheck "failure" with **no diagnostic line** is a crash, not a type error — check for a Go stack dump before believing it, and re-run the named package alone to confirm. Use `--concurrency=3` for full-repo sweeps here. Note also that piping turbo through `| tail` swallows its exit code (the pipeline returns tail's status), which is how a failed run first appeared to "exit 0" — capture to a file and echo `$?` instead.
+**Files affected:** None (environment finding)
+---
+
 ## [2026-08-18 20:55] A 45s boot wait typed the whole Craft harness into a screen that had not rendered
 #[verification] #[tui] #[windows] #[false-negative]
 **Context:** Live-verifying the Craft wizard's new model source under ConPTY. The harness slept 45s for boot (the skill quoted a 10-20s first frame), then opened the palette, ran /craft, and read the model list.
