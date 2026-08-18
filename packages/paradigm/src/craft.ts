@@ -197,3 +197,37 @@ export function toParadigm(draft: Draft): Paradigm {
     discipline: {},
   }
 }
+
+/**
+ * Recovers a catalog role from a head id. Our own toParadigm writes "scout-1"
+ * when a role repeats, and hand-written paradigms use ids like "scout-a", so a
+ * single trailing "-segment" is stripped when that yields a known role. An id
+ * that matches nothing is returned unchanged rather than guessed at - the model
+ * step then filters with empty needs, which is honest about not knowing.
+ */
+export function roleIdFor(headId: string): string {
+  if (getRole(headId)) return headId
+  const stripped = headId.replace(/-[^-]+$/, "")
+  if (stripped !== headId && getRole(stripped)) return stripped
+  return headId
+}
+
+/**
+ * Seeds a draft from an existing paradigm for cloning. The name is deliberately
+ * left unset: install.ts would overwrite a file reusing a bundled preset name,
+ * so the user must pick a new one and have it validated.
+ */
+export function draftFromParadigm(paradigm: Paradigm): Draft {
+  const draft: Draft = { ...emptyDraft(), shape: "court" }
+  draft.heads[0] = {
+    role: KING_ROLE_ID,
+    model: paradigm.heads[paradigm.king]?.model,
+  }
+  let slot = 1
+  for (const [id, head] of Object.entries(paradigm.heads)) {
+    if (id === paradigm.king) continue
+    draft.heads[slot] = { role: roleIdFor(id), model: head.model }
+    slot += 1
+  }
+  return draft
+}

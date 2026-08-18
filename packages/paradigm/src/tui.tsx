@@ -18,6 +18,7 @@ import { pickerOptions, statusLabel, switchNotice, type PickerOption } from "./p
 import { getRole, listRoles } from "./roles"
 import { modelOptions, type CandidateModel } from "./resolve"
 import {
+  draftFromParadigm,
   emptyDraft,
   firstStep,
   nextStep,
@@ -27,7 +28,7 @@ import {
   type Draft,
   type Step,
 } from "./craft"
-import { parseParadigm } from "./schema"
+import { parseParadigm, type Paradigm } from "./schema"
 
 const id = "vangio-paradigm-tui"
 
@@ -311,6 +312,103 @@ function Craft(props: { api: TuiPluginApi }) {
   return render()
 }
 
+/**
+ * Clone reuses the wizard's write path but not its multi-step machine: there
+ * are only two dialogs (pick a source, then name the copy), so they are
+ * driven by the same explicit dialog.replace()-per-transition pattern proven
+ * in Craft above, rather than a reactive <Show> (see the comment on Craft's
+ * `rerender`).
+ */
+function Clone(props: { api: TuiPluginApi }) {
+  const [source, setSource] = createSignal<Paradigm | undefined>(undefined)
+  const [options, setOptions] = createSignal<PickerOption[]>([])
+  const [existing, setExisting] = createSignal<string[]>([])
+  const [error, setError] = createSignal<string | undefined>(undefined)
+  const [all, setAll] = createSignal<Record<string, Paradigm>>({})
+  const DialogSelect = props.api.ui.DialogSelect
+  const DialogPrompt = props.api.ui.DialogPrompt
+
+  onMount(() => {
+    void listParadigms(PARADIGM_DIR).then(({ paradigms }) => {
+      setAll(paradigms)
+      setExisting(Object.keys(paradigms))
+      setOptions(pickerOptions({ paradigms }))
+    })
+  })
+
+  const rerender = () => props.api.ui.dialog.replace(() => render())
+
+  const finish = (chosen: Paradigm, name: string) => {
+    const draft = { ...draftFromParadigm(chosen), name }
+    const paradigm = toParadigm(draft)
+    // Same write-gate /craft uses: never let a paradigm parseParadigm would
+    // reject reach disk, even though the source that seeded this draft was
+    // itself already a valid paradigm.
+    const result = parseParadigm(paradigm)
+    if (!result.ok) {
+      props.api.ui.toast({
+        variant: "error",
+        title: "Paradigm",
+        message: result.errors.join("; "),
+      })
+      return
+    }
+    props.api.ui.dialog.clear()
+    void writeParadigm(PARADIGM_DIR, paradigm)
+      .then(() => {
+        props.api.ui.toast({
+          title: "Paradigm",
+          message: `Cloned "${chosen.name}" to "${paradigm.name}". Use /paradigm to switch - it applies when you restart VanGio.`,
+        })
+      })
+      .catch((err: unknown) => {
+        props.api.ui.toast({
+          variant: "error",
+          title: "Paradigm",
+          message: `Could not write paradigm: ${err instanceof Error ? err.message : String(err)}`,
+        })
+      })
+  }
+
+  function render() {
+    const chosen = source()
+
+    if (!chosen) {
+      return (
+        <DialogSelect
+          title="Clone a paradigm - pick the source"
+          placeholder="Search paradigms"
+          options={options()}
+          onSelect={(option) => {
+            setSource(all()[String(option.value)])
+            rerender()
+          }}
+        />
+      )
+    }
+
+    return (
+      <DialogPrompt
+        title={`Clone "${chosen.name}" - new name`}
+        placeholder="lowercase, numbers and hyphens"
+        description={() => <text>{error() ?? "The copy gets its own file."}</text>}
+        onConfirm={(value) => {
+          const problem = validateName(value, existing())
+          if (problem) {
+            setError(problem)
+            rerender()
+            return
+          }
+          setError(undefined)
+          finish(chosen, value.trim())
+        }}
+      />
+    )
+  }
+
+  return render()
+}
+
 const tui: TuiPlugin = async (api) => {
   // What this session actually booted with. Held separately from the marker so a
   // switch made here can be shown as pending instead of overwriting the truth.
@@ -354,8 +452,23 @@ const tui: TuiPlugin = async (api) => {
           api.ui.dialog.replace(() => <Craft api={api} />)
         },
       },
+      {
+        name: "paradigm.clone",
+        title: "Clone paradigm",
+        desc: "Copy an existing paradigm under a new name",
+        category: "VanGio",
+        namespace: "palette",
+        slashName: "clone",
+        run() {
+          api.ui.dialog.replace(() => <Clone api={api} />)
+        },
+      },
     ],
-    bindings: api.tuiConfig.keybinds.gather("paradigm.palette", ["paradigm.list", "paradigm.craft"]),
+    bindings: api.tuiConfig.keybinds.gather("paradigm.palette", [
+      "paradigm.list",
+      "paradigm.craft",
+      "paradigm.clone",
+    ]),
   })
 }
 

@@ -1,5 +1,18 @@
 import { describe, expect, test } from "bun:test"
-import { validateName, BUNDLED_NAMES, emptyDraft, firstStep, nextStep, stepBack, toParadigm, type Draft, type Step } from "../src/craft"
+import {
+  validateName,
+  BUNDLED_NAMES,
+  emptyDraft,
+  firstStep,
+  nextStep,
+  stepBack,
+  toParadigm,
+  draftFromParadigm,
+  roleIdFor,
+  type Draft,
+  type Step,
+} from "../src/craft"
+import type { Paradigm } from "../src/schema"
 
 describe("validateName", () => {
   test("accepts a simple lowercase name", () => {
@@ -260,5 +273,71 @@ describe("wizard completeness guard", () => {
     // stepBack from review should go to model step of slot 3
     const back = stepBack(draft, step)
     expect(back).toEqual({ kind: "model", slot: 3 })
+  })
+})
+
+describe("roleIdFor", () => {
+  test("returns a head id that is already a known role", () => {
+    expect(roleIdFor("warrior")).toBe("warrior")
+    expect(roleIdFor("king")).toBe("king")
+  })
+
+  test("strips a suffix to recover the role", () => {
+    expect(roleIdFor("scout-a")).toBe("scout")
+    expect(roleIdFor("scout-2")).toBe("scout")
+  })
+
+  test("leaves an unrecognised id alone rather than guessing", () => {
+    expect(roleIdFor("bishop")).toBe("bishop")
+  })
+})
+
+describe("draftFromParadigm", () => {
+  const source: Paradigm = {
+    name: "researcher",
+    description: "three scouts",
+    king: "king",
+    heads: {
+      king: { model: "opencode/ultra", role: "split and synthesise" },
+      "scout-a": { model: "opencode/hy3", role: "one thread", permission: { edit: "deny" } },
+      "scout-b": { model: "opencode/big-pickle", role: "one thread" },
+    },
+    routing: ["fan out -> @scout-a"],
+    discipline: { self: "be brief" },
+  }
+
+  test("puts the king at slot 0", () => {
+    const draft = draftFromParadigm(source)
+    expect(draft.heads[0]?.role).toBe("king")
+    expect(draft.heads[0]?.model).toBe("opencode/ultra")
+  })
+
+  test("carries every other head with its role recovered and model intact", () => {
+    const draft = draftFromParadigm(source)
+    const roles = Object.values(draft.heads).map((h) => h.role)
+    expect(roles.filter((r) => r === "scout").length).toBe(2)
+    const models = Object.values(draft.heads).map((h) => h.model)
+    expect(models).toContain("opencode/hy3")
+    expect(models).toContain("opencode/big-pickle")
+  })
+
+  test("does NOT carry the name - the user must choose a new one", () => {
+    expect(draftFromParadigm(source).name).toBeUndefined()
+  })
+
+  test("defaults the shape to court, since today's schema cannot express a legion", () => {
+    expect(draftFromParadigm(source).shape).toBe("court")
+  })
+
+  test("a cloned draft round-trips through toParadigm into a valid paradigm", async () => {
+    const { parseParadigm } = await import("../src/schema")
+    const draft = { ...draftFromParadigm(source), name: "my-copy" }
+    const result = parseParadigm(toParadigm(draft))
+    expect(result.ok).toBe(true)
+  })
+
+  test("a clone of a three-head paradigm keeps three heads", () => {
+    const draft = { ...draftFromParadigm(source), name: "my-copy" }
+    expect(Object.keys(toParadigm(draft).heads).length).toBe(3)
   })
 })
