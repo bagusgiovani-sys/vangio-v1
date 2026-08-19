@@ -17,6 +17,15 @@ description: How to run and verify the VanGio TUI (opencode fork) from source �
 - ConPTY re-renders from its own screen buffer, so chunk ordering/timing is approximate — assert on trends (offsets advancing, text present), not exact frame sequences.
 - Exit: send `\x03` (Ctrl+C) once or twice, then `proc.kill()`.
 
+## Tests
+
+- Per package, always: `cd packages/<name> && bun test`. Root `bun test` is deliberately blocked.
+- **`core` and `tui` finish in one run (~207s and ~10s). `opencode` does not** — three separate attempts were killed before completing on 2026-08-19. Run it in directory chunks; `test/cli test/plugin test/config test/util test/project` is 939 tests across 93 files in 399s, which is about the largest chunk that fits.
+- **Two different clocks produce red lines, and `--timeout` only fixes one.** Bun's per-test default is 5s and that class clears at `--timeout 30000` (`test/agent` went 48 pass/1 fail → 49/0 on the flag alone, changing nothing else). But `test/lib/effect.ts` carries its own readiness deadline at lines 173-175, so `file HttpApi > serves search endpoints` fails at 5694ms no matter what bun is told.
+- **Read the duration before you read the failure.** A time at almost exactly the timeout value (`5000.90ms`, `30007.09ms`) is a deadline, not a defect. A time well under the budget means an internal deadline fired and raising `--timeout` will not help. A time far past it is a genuine hang.
+- **Pipe a long run to a file, not through `grep`.** `bun test | grep ...` buffers, so a run that gets killed leaves *nothing* to read. `bun test > run.log 2>&1` keeps everything up to the kill, which is how the server-cluster failures were identified at all.
+- Before renaming any assertion that says `opencode`, read the source it asserts against. Several are correct: `core/test/config/config.test.ts` must keep `.opencode` because `core/src/config.ts` still hardcodes it (lines 181/189/195), and npm scopes, provider IDs, `opencode.ai` URLs, outbound user-agent headers and the `.git/opencode` cache file are all upstream's real identity.
+
 ## Gotchas
 
 - Agent Tab-cycle order is alphabetical, and config agents interleave with built-ins. **Since the paradigm layer shipped (2026-08-06) the cycle is Build → Plan only** — Gryphon is no longer an agent; it is a paradigm applied *under* whichever mode is active, and its heads are subagents (`@warrior`, `@scout`) which never enter the cycle. If Gryphon reappears in the Tab cycle, the paradigm plugin failed to load (silently — see errors.md).

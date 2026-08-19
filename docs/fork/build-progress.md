@@ -1310,3 +1310,99 @@ noise, and that cost repeats at every future merge until they are fixed.
 - `merge/upstream-2026-08-18` still exists locally and is now identical to `dev`; safe to delete.
 - Boot time is NOT a constant — 16s warm, 65–70s cold, both measured on 2026-08-18. The verify
   skill has been corrected; poll for first paint, never sleep a fixed interval.
+
+## Session state — RESUME HERE (2026-08-19) — supersedes the block above
+
+**Next action 2 is DONE and pushed.** The rebrand-stale test debt is paid, in three commits on
+`dev`: `56c0463a55` (the 22 recorded), `aba131378a` (a Windows separator assertion), and
+`c1d9d62e20` (two the merge audit had missed). No source file was touched — every change is a
+test assertion or a snapshot.
+
+### The audit undercounted, and the reason generalises
+
+The 22 reproduced exactly as recorded. A directory sweep afterwards found two more of identical
+shape: `acp/initialize-auth.test.ts` expecting `agentInfo.name` "OpenCode" against
+`acp/service.ts:133` returning "VanGio", and `cli/mcp-add.test.ts` reading back
+`.config/opencode/opencode.json` where the fork writes `.config/vangio/`.
+
+**The shape of the failure disguised the cause.** A rebrand miss surfaces as a string diff in
+some tests and as an `ENOENT` in others, and only the diff-shaped ones got counted — the
+`mcp-add` failure looked exactly like a subprocess flake. A static sweep of all three test trees
+for brand-shaped assertions now confirms none remain.
+
+### What was deliberately NOT renamed — this is the reusable half
+
+Four families of `opencode` literal are upstream's real identity and must stay: npm scopes and
+package names, the `opencode` provider/integration ID, `opencode.ai` URLs and outbound
+user-agent/referrer headers, and internal identifiers (`opencode-login`, `opencode.default`, the
+brew formula, the `.git/opencode` project cache file).
+
+**Two tests look stale and are actually correct.** `packages/core/test/config/config.test.ts`
+asserts `.opencode` because `packages/core/src/config.ts` still hardcodes it at lines 181/189/195
+— that is the documented v1→v2 config migration risk, and rewriting the test would have hidden
+it. `packages/core/test/ripgrep.test.ts` uses `.opencode` as arbitrary hidden-file fixture data.
+The question is never "does this say opencode" but "does the code under test say vangio".
+
+### Verification
+
+| Package | Result |
+| --- | --- |
+| `core` | **1089 pass / 0 fail** across 1096 tests — fully green |
+| `tui` | **193 pass / 1 skip / 0 fail** across 194 tests — fully green |
+| `opencode` | cli+plugin+config+util+project chunk: 939 tests / 93 files, green after the 3 fixes. Server cluster still red — see below. Not branding. |
+
+### The opencode suite will not finish in one run here
+
+Three full-suite attempts were killed before completing. It completes in directory chunks
+(cli/plugin/config/util/project = 939 tests in 399s). Two clocks matter and one flag does not fix
+both: bun's 5s per-test default clears with `--timeout 30000` (`test/agent` went 48/1 → 49/0 on
+the flag alone), but `test/lib/effect.ts` carries its own readiness deadline at lines 173-175, so
+`file HttpApi > serves search endpoints` fails at 5694ms regardless of what bun is told.
+
+**A duration printed at almost exactly the timeout value is a deadline, not a defect.** A
+duration well under the budget means an internal deadline fired and the flag is irrelevant.
+
+**One genuine hang, newly identified:** `HttpApi instance context middleware > falls back to the
+raw directory when URI decoding fails` times out at 30007ms under `--timeout 30000`. That is not
+a slow machine. Not caused by this session — every edit here was test-only and in other files.
+
+### Two code-side rebrand gaps found, deliberately not touched
+
+Both are source changes, not test debt, and one may be intentional under the never-strip-OpenCode
+-attribution rule — so they are the user's call:
+
+- **The TUI exit banner still spells OPENCODE in ASCII art.** `packages/tui/src/util/
+  presentation.ts` lines 1-4 draw `OPEN` + `CODE`, while the `Continue` line directly beneath it
+  now reads `vangio -s`. The `run` splash already shows a VANGIO banner, so the two disagree.
+- **11 help-text descriptions still say "opencode"** — "run opencode with a message", "upgrade
+  opencode to the latest version", "starts a headless opencode server", and the
+  `OPENCODE_SERVER_USERNAME` env var. The regenerated snapshot now locks these in as *expected*,
+  so changing them later means regenerating it again. Renaming the env var would need a migration
+  under the storage-path rule.
+
+### The next three things, in order
+
+1. **Decide Q3 — unchanged, still the only thing blocking Paradigm Shift stage one, still the
+   oldest open item and still awaiting a human.** Publish `SessionEvent.ModelSwitched` plus one
+   conditional at `prompt.ts:1141` so the loop prefers the session row. Costs a THIRD upstream
+   seam, which is why it is the user's call and needs the fallback spec's Global Constraints
+   amended. **Do not start Shift stage one without it.**
+2. **Re-check the bundled presets against the real catalog** — carried over unchanged: the config
+   still calls mimo-v2.5-free "the only free model that accepts images" and the live Zen catalog
+   has five, with `kimi-k2.5-free` beating the current `seer` model on both limits.
+3. **Chase the one real server hang** (`falls back to the raw directory when URI decoding fails`).
+   Now that the suite has no branding noise left, a red line finally means something — which was
+   the whole point of paying the debt.
+
+### Still open, lower priority
+
+- **Q1 — is Zen's daily bucket per-model or shared?** Unobservable without a real 429; do not
+  force one. The `researcher` paradigm's three different Zen models remain the instrumentation.
+- **v6** — AI-assisted paradigm builder.
+
+### Environment left behind
+
+- Working tree clean, `dev` pushed to `origin/dev` at `c1d9d62e20`. Active paradigm: `gryphon`.
+- No source file changed this session — tests and snapshots only, plus these docs.
+- `merge/upstream-2026-08-18` still exists locally and is identical to the pre-session `dev`;
+  still safe to delete.

@@ -14,6 +14,36 @@
 **Files affected:** List of changed files
 ---
 
+## [2026-08-19 12:32] The opencode suite cannot be run in one pass on this machine, and two server tests fail past a 30s timeout
+#[verification] #[windows] #[performance] #[testing]
+**Context:** Trying to state whether `packages/opencode` is green after the branding repair, the way `core` and `tui` could be stated.
+**Error:** Three separate full-suite attempts were killed before finishing. Run in directory chunks it completes: `test/cli test/plugin test/config test/util test/project` is 939 tests across 93 files in 399s. The `test/server` chunk then produced failures that a raised timeout does NOT clear — `HttpApi instance context middleware > falls back to the raw directory when URI decoding fails` timed out at 30007ms under `--timeout 30000`, and `file HttpApi > serves search endpoints` failed at 5694ms with `file search index was not ready`.
+**Root cause:** Two different clocks, which is why one flag does not fix both. Bun's own per-test timeout defaults to 5s, and that class does clear at `--timeout 30000` — `test/agent` went from 48 pass / 1 fail to 49 pass / 0 fail purely on the flag. But `test/lib/effect.ts` carries its *own* readiness deadline (line 173-175, `Effect.timeoutOrElse`), so a slow file-search index fails on the helper's budget no matter what bun is told. And the instance-context test exceeds 30s outright, which is not a slow machine, it is a hang.
+**Fix:** None applied — recorded. These are not branding and were not caused by the test-only edits of this session (which touched unrelated files in cli, plugin, core and tui).
+**Prevention:** **Do not claim `packages/opencode` is green from a single `bun test` run — it will not finish here.** Run it in directory chunks, and use `--timeout 30000` to separate the bun-timeout class from real failures before reading anything into a red line. A duration printed at almost exactly the timeout value (`5000.90ms`, `30007.09ms`) is the tell that you are reading a deadline, not a defect; a duration well under it (`5694ms` against a 30s budget) means an internal deadline fired and the flag is irrelevant.
+**Files affected:** None (verification finding)
+---
+
+## [2026-08-19 12:20] The rebrand-stale test debt is paid — and the audit that found it undercounted by two
+#[rebranding] #[testing] #[technical-debt] #[merge]
+**Context:** Executing next action 2 from the 2026-08-18 night session: repair the ~22 tests that have asserted upstream's app name since the Phase 8 rebrand.
+**Error:** The 22 reproduced exactly as recorded (1 core, 2 tui, 5+17 opencode). But a directory sweep of the cli and plugin suites afterwards found two more of the same shape that the merge audit had missed: `acp/initialize-auth.test.ts` expecting `agentInfo.name` "OpenCode" against `acp/service.ts:133` returning "VanGio", and `cli/mcp-add.test.ts` reading back `.config/opencode/opencode.json` when the fork writes `.config/vangio/`.
+**Root cause:** The audit enumerated the failures it saw in a merge-verification run, and that run's per-package summary lumped subprocess tests in with genuine flakes. `mcp-add` in particular fails as an `ENOENT` on a missing file rather than as a string diff, so it reads like a subprocess flake instead of branding debt. The lesson is that *the shape of the failure disguises the cause*: a rebrand miss surfaces as a diff in some tests and as a file-not-found in others, and only the diff-shaped ones get counted.
+**Fix:** Three commits — `56c0463a55` (the 22), `aba131378a` (an unrelated Windows separator assertion), `c1d9d62e20` (the two the audit missed). A static sweep of all three test trees for brand-shaped assertions then confirmed none remain. Equally important, four families of `opencode` literal were deliberately left alone because they are upstream's real identity, not fork branding: npm scopes and package names, the `opencode` provider/integration ID, `opencode.ai` URLs and outbound user-agent/referrer headers, and internal identifiers (`opencode-login`, `opencode.default`, the brew formula, the `.git/opencode` project cache file).
+**Prevention:** **Two tests look stale and are actually correct — never "fix" them.** `packages/core/test/config/config.test.ts` asserts `.opencode` because `packages/core/src/config.ts` still hardcodes it at lines 181/189/195; that is the documented v1-to-v2 config migration risk, and rewriting the test would hide it. `packages/core/test/ripgrep.test.ts` uses `.opencode` as arbitrary hidden-file fixture data. Before renaming any assertion, read the source it asserts against — the question is never "does this say opencode" but "does the code under test say vangio".
+**Files affected:** `packages/core/test/global.test.ts`, `packages/tui/test/app-lifecycle.test.tsx`, `packages/tui/test/util/presentation.test.ts`, `packages/tui/test/runtime.test.tsx`, `packages/opencode/test/cli/error.test.ts`, `packages/opencode/test/cli/cmd/tui/attention.test.ts`, `packages/opencode/test/cli/acp/initialize-auth.test.ts`, `packages/opencode/test/cli/mcp-add.test.ts`, `packages/opencode/test/cli/help/__snapshots__/help-snapshots.test.ts.snap`, `packages/opencode/test/plugin/install.test.ts`, `packages/opencode/test/plugin/install-concurrency.test.ts`
+---
+
+## [2026-08-19 12:14] A test asserted a POSIX path separator and had therefore never passed on Windows
+#[testing] #[windows] #[technical-debt]
+**Context:** Running the full tui suite to confirm the branding repair, expecting the two known failures to be the only ones.
+**Error:** `expect(abbreviateHome("/home/test/project", "/home/test")).toBe("~/project")` — `Expected: "~/project"` / `Received: "~\project"`.
+**Root cause:** Not branding, and not a bug. `abbreviateHome` returns `"~" + path.sep + relative` (`packages/tui/src/runtime.tsx:8`), which is correct — it renders a native path for display. The assertion hardcoded a forward slash, so it passes on CI and fails on every Windows run. The other three assertions in the same test survive because `path.relative` returns a `..\`-prefixed result for the out-of-home cases and the guard catches it regardless of separator.
+**Fix:** `aba131378a` — assert `"~" + path.sep + "project"`, mirroring the implementation. tui then went to 193 pass / 1 skip / 0 fail.
+**Prevention:** This hid inside the branding noise for the same reason the branding noise hid inside the merge noise — a suite with known-red tests cannot distinguish a new failure from an old one. It is also a reminder that upstream's tests encode upstream's platform: a fork developing on Windows inherits POSIX assumptions that upstream never has to notice.
+**Files affected:** `packages/tui/test/runtime.test.tsx`
+---
+
 ## [2026-08-18 23:10] ~22 upstream tests have been red since the rebrand — the fork is right, the tests are stale
 #[rebranding] #[testing] #[technical-debt] #[merge]
 **Context:** Verifying the 2026-08-18 upstream merge. Per-package suites reported 8 failures in `core`, 3 in `tui`, and 38 in `opencode`, which looked at first like the merge had broken something substantial.
