@@ -1574,3 +1574,57 @@ snapshot timing class. Typecheck 32/32 clean.
   hand: `switched-model.test.ts` keeps passing whether or not the seam is still wired, so a green
   suite is not evidence the feature survived.
 - No server left running; the test session was aborted rather than left burning free quota.
+
+---
+
+## Session state — RESUME HERE (2026-08-20, stage one in progress)
+
+**Three of stage one's four pieces are built and pushed. The fourth is blocked on one design
+decision.** Q3's durable half shipped earlier today; what follows is everything that *publishes*
+a swap.
+
+| Piece | Commit | State |
+| --- | --- | --- |
+| Schema: `needs`, `fallback`, `shift.auto` | `01850167b0` | done, 133 paradigm tests green |
+| `StaticResolver` | `4a435d077e` | done, pure, 18 tests |
+| Retry hook (the whole upstream diff on that seam) | `d48b483929` | done, 6 tests |
+| Wiring the three together | — | **blocked, see below** |
+
+### The blocker: the declaration has no channel to the seam
+
+`compileParadigm` emits `AgentEntry` — `mode`, `model`, `description`, `prompt`, `permission`.
+Those are agent-config keys OpenCode already understands. **`needs` and `fallback` are not among
+them and have nowhere to go**, so the retry seam cannot learn what a head's chain is. The spec
+never addresses this; it assumes resolution happens somewhere that can see both the paradigm and
+the registry, and no such place exists yet.
+
+Worth knowing before choosing: upstream's `config/parse.ts` now uses `onExcessProperty: "ignore"`,
+so inventing an agent-config key would be dropped **silently** rather than rejected — the failure
+would look like "fallback just doesn't work" with no error anywhere.
+
+**Recommendation: have the session layer read the active paradigm directly.** Both inputs are
+already on disk and stable — `~/.local/share/vangio/paradigm-active` and
+`~/.config/vangio/paradigms/<name>.json` — and `parseParadigm` already exists to read them. That
+adds a fork→fork dependency (`packages/opencode` → `packages/paradigm`) and zero upstream
+coupling, invents no storage path, and keeps one source of truth. Mapping the current turn to a
+head is derivable: the agent name matches a head id for subagents, and the primaries (`build`,
+`plan`) are the king.
+
+The alternatives are worse. A new agent-config key needs an upstream schema change — a fourth
+seam — to avoid the silent-drop trap. A side-channel file the plugin writes and the session reads
+is a second source of truth plus a new storage path, which by rule 5 drags a migration along.
+
+### The next three things, in order
+
+1. **Decide the channel above, then wire the four pieces.** The wiring itself also needs
+   session-scoped state — the `exhausted` set and the swap count — which has no home yet;
+   `SessionRunState` is the obvious candidate.
+2. **`auto: false` — the paradigm-shift path.** Per the spec this needs no new mechanism: it is
+   the existing picker plus a trigger.
+3. **Chase the one real server hang** — unchanged, still the oldest untouched item.
+
+### Environment left behind
+
+- Working tree clean, `dev` pushed to `origin/dev` at `d48b483929`. Active paradigm: `gryphon`.
+- Nothing calls `Fallback.resolveStatic` or the retry hook yet — both are dead code until the
+  wiring lands, deliberately, and both are fully tested so the wiring has something to trust.
