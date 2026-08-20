@@ -1973,3 +1973,54 @@ already reach the thing you want to trigger.
 - Working tree clean, `dev` pushed to `origin/dev`. Active paradigm: `gryphon`.
 - Three upstream seams: `retry.ts`, `processor.ts`, `prompt.ts`. All three are named in the
   fallback spec's Global Constraints.
+
+---
+
+## Session state — RESUME HERE (2026-08-20, end) — the last recorded red line is closed
+
+**It was never a server bug.** `HttpApi instance context middleware > falls back to the raw
+directory when URI decoding fails` had been red since 2026-08-19 and was recorded as "one genuine
+hang". It is a **non-hermetic test**: it routes to a *relative* directory, which resolves against
+`process.cwd()` and lands inside this repository, so config discovery finds the repo's own
+`.opencode/opencode.jsonc` and `plugin.init()` tries to load the npm plugin it declares. That
+plugin is not installed, so plugin init reaches for the network and never returns — `boot` never
+settles, the `Deferred` in `InstanceStore.load` is never completed, and the request hangs until
+the runner kills it at exactly the timeout.
+
+Fixed in `6b59487b7f` with one line: `pure: true` in the test's runtime flags. **20 pass / 0 fail**
+across the three server tests that build a workspace layer, with the repo config left untouched.
+
+### How it was found, since the method generalises
+
+Three rounds of print-statement bisection down the call chain — middleware → `InstanceStore.load`
+→ `boot` → `bootstrap.run` — until the last line that printed was `config.get done` and
+`plugin.init done` never followed. **When a duration is exactly the timeout, stop reading the
+failure and start bisecting.** It had sat unexplained for a day; the bisection took three runs.
+
+Two red herrings died on the way, both of which the test's own name had encouraged: the
+percent-escapes are irrelevant (a plain `zzz-plain-probe` hangs identically) and so is whether the
+directory exists (creating it changed nothing).
+
+### One product problem found and deliberately NOT fixed
+
+**`plugin.init()` has no timeout.** A declared plugin that cannot be resolved wedges instance boot
+forever — no error, no log, nothing. `bootstrap.ts` guards the six later services with
+`Effect.catchCause`, but `config.get()` and `plugin.init()` are unguarded, and `catchCause` would
+not help a hang anyway. The fix belongs in `plugin/index.ts`, which is upstream and **not one of
+the three seams this fork is allowed to touch**, so it is recorded in errors.md for the user to
+decide rather than taken unilaterally. Worth re-checking at the next upstream merge.
+
+### The next three things, in order
+
+1. **Take the upstream merge.** Now the top item: the last one was 2026-08-18, three seams
+   (`retry.ts`, `processor.ts`, `prompt.ts`) need re-checking by hand, and **the tests pass
+   whether or not those seams are still wired** — so a merge that quietly unhooks one looks green.
+2. **Decide on the `plugin.init()` timeout** above — a fourth seam, in upstream plugin code.
+3. **Q1 — Zen's daily bucket, per-model or shared.** Still needs a real 429; every degradation
+   path now logs what it tried, so the first genuine wall answers it.
+
+### Environment left behind
+
+- Working tree clean, `dev` pushed to `origin/dev`. Active paradigm: `gryphon`.
+- `.opencode/opencode.jsonc` is untouched — the plugin declaration was removed only to prove
+  causation and was restored immediately.
