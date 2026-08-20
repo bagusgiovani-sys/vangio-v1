@@ -5,16 +5,28 @@
   "heads": {
     "king": {
       "model": "opencode/nemotron-3-ultra-free",
-      "role": "hold the entire diff at once, judge what actually matters, reject noise"
+      "role": "hold the entire diff at once, judge what actually matters, reject noise",
+      "needs": {
+        "tools": true
+      }
     },
     "scout": {
-      "model": "opencode/laguna-s-2.1-free",
+      "model": "opencode/hy3-free",
       "role": "read the code around a change - callers, tests, prior art - and report what the diff does not show",
-      "permission": { "edit": "deny" }
+      "needs": {
+        "tools": true
+      },
+      "permission": {
+        "edit": "deny"
+      }
     },
     "warrior": {
       "model": "opencode/nemotron-3.5-lightning-free",
-      "role": "write the fix for a finding the king has already confirmed - exact file, exact change"
+      "role": "write the fix for a finding the king has already confirmed - exact file, exact change",
+      "needs": {
+        "minOutput": 100000,
+        "tools": true
+      }
     }
   },
   "routing": [

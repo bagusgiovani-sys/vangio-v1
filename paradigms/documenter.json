@@ -5,16 +5,28 @@
   "heads": {
     "king": {
       "model": "opencode/nemotron-3-ultra-free",
-      "role": "decide the structure, the audience and what to leave out, then review what comes back for accuracy"
+      "role": "decide the structure, the audience and what to leave out, then review what comes back for accuracy",
+      "needs": {
+        "tools": true
+      }
     },
     "warrior": {
       "model": "opencode/nemotron-3.5-lightning-free",
-      "role": "write whole documents in one pass - prose that reads, not bullet soup"
+      "role": "write whole documents in one pass - prose that reads, not bullet soup",
+      "needs": {
+        "minOutput": 100000,
+        "tools": true
+      }
     },
     "scout": {
       "model": "opencode/hy3-free",
       "role": "pull facts out of the codebase - signatures, defaults, actual behaviour, not intended behaviour",
-      "permission": { "edit": "deny" }
+      "needs": {
+        "tools": true
+      },
+      "permission": {
+        "edit": "deny"
+      }
     }
   },
   "routing": [

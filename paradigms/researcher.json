@@ -5,22 +5,40 @@
   "heads": {
     "king": {
       "model": "opencode/nemotron-3-ultra-free",
-      "role": "split the question into independent threads, then synthesise three reports into one answer"
+      "role": "split the question into independent threads, then synthesise three reports into one answer",
+      "needs": {
+        "tools": true
+      }
     },
     "scout-a": {
       "model": "opencode/hy3-free",
       "role": "answer one independent thread of the question and report only what was found",
-      "permission": { "edit": "deny" }
+      "needs": {
+        "tools": true
+      },
+      "permission": {
+        "edit": "deny"
+      }
     },
     "scout-b": {
       "model": "opencode/big-pickle",
       "role": "answer one independent thread of the question and report only what was found",
-      "permission": { "edit": "deny" }
+      "needs": {
+        "tools": true
+      },
+      "permission": {
+        "edit": "deny"
+      }
     },
     "scout-c": {
-      "model": "opencode/laguna-s-2.1-free",
+      "model": "opencode/deepseek-v4-flash-free",
       "role": "answer one independent thread of the question and report only what was found",
-      "permission": { "edit": "deny" }
+      "needs": {
+        "tools": true
+      },
+      "permission": {
+        "edit": "deny"
+      }
     }
   },
   "routing": [

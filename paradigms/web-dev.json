@@ -5,21 +5,39 @@
   "heads": {
     "king": {
       "model": "opencode/nemotron-3-ultra-free",
-      "role": "decide layout, component boundaries and UX; hold the design system in context"
+      "role": "decide layout, component boundaries and UX; hold the design system in context",
+      "needs": {
+        "tools": true
+      }
     },
     "warrior": {
       "model": "opencode/nemotron-3.5-lightning-free",
-      "role": "implement components and pages fully - markup, styles and state in one pass"
+      "role": "implement components and pages fully - markup, styles and state in one pass",
+      "needs": {
+        "minOutput": 100000,
+        "tools": true
+      }
     },
     "scout": {
       "model": "opencode/hy3-free",
       "role": "find where a component, token or style is already defined before anything new is written",
-      "permission": { "edit": "deny" }
+      "needs": {
+        "tools": true
+      },
+      "permission": {
+        "edit": "deny"
+      }
     },
     "seer": {
       "model": "opencode/mimo-v2.5-free",
       "role": "look at an image - mockup, screenshot, design export - and describe precisely what is in it",
-      "permission": { "edit": "deny" }
+      "needs": {
+        "tools": true,
+        "attachment": true
+      },
+      "permission": {
+        "edit": "deny"
+      }
     }
   },
   "routing": [

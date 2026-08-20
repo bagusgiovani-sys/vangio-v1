@@ -5,16 +5,28 @@
   "heads": {
     "king": {
       "model": "anthropic/claude-sonnet-5",
-      "role": "plan, decide, implement carefully, review critically"
+      "role": "plan, decide, implement carefully, review critically",
+      "needs": {
+        "tools": true
+      }
     },
     "warrior": {
       "model": "opencode/nemotron-3.5-lightning-free",
-      "role": "implement fully-specified chunks - exact files, changes, and verification steps"
+      "role": "implement fully-specified chunks - exact files, changes, and verification steps",
+      "needs": {
+        "minOutput": 100000,
+        "tools": true
+      }
     },
     "scout": {
-      "model": "opencode/laguna-s-2.1-free",
+      "model": "opencode/hy3-free",
       "role": "fast factual lookups - where is X defined, which file does Y",
-      "permission": { "edit": "deny" }
+      "needs": {
+        "tools": true
+      },
+      "permission": {
+        "edit": "deny"
+      }
     }
   },
   "routing": [

@@ -299,7 +299,7 @@ is emitted, persisted and rendered today; publishing the event gets the announce
   would produce. Deliberately not special-cased — the resolver is specified to skip ids the
   registry cannot resolve (see Architecture), so a bad id should never reach the row.
 
-## Current free roster (re-measured 2026-08-20)
+## Current free roster (re-measured 2026-08-20, evening)
 
 The seven Zen models a fallback chain may actually name. All support tool calls. Only
 `mimo-v2.5-free` accepts images.
@@ -308,7 +308,7 @@ The seven Zen models a fallback chain may actually name. All support tool calls.
 |---|---|---|---|
 | `nemotron-3-ultra-free` | 1,000,000 | 128,000 | no |
 | `nemotron-3.5-lightning-free` | 262,144 | 262,144 | no |
-| `laguna-s-2.1-free` | 256,000 | 32,000 | no |
+| `muse-spark-1.2-contributor-free` | 1,048,576 | 131,072 | **yes** |
 | `deepseek-v4-flash-free` | 200,000 | 128,000 | no |
 | `mimo-v2.5-free` | 200,000 | 32,000 | **yes** |
 | `big-pickle` | 200,000 | 32,000 | no |
@@ -322,4 +322,7 @@ that fell back to it would swap one dead model for another. Twenty of the twenty
 on "does the registry resolve it"** — and F6's warning stands with a sharper edge: the catalog
 listing a model, with capabilities and a price, is not evidence it can be run. Send it one prompt.
 
-Treat this table as perishable (F6). Re-check it at every upstream merge.
+**This table lost a row four hours after it was written.** `laguna-s-2.1-free` was in the morning
+version, went `status: deprecated` the same day, and took four presets' scout binding down with
+it. "Perishable" is not a figure of speech here and "re-check at every merge" is too slow — the
+right defence is `needs`, which describes the role and never rots, not a pinned id that does.

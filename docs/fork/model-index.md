@@ -47,10 +47,10 @@ Roles are what a schemata head *does*. What each role actually needs from a mode
 |---|---|---|---|
 | king | `opencode/nemotron-3-ultra-free` | `opencode/deepseek-v4-flash-free` | 1M context vs 200k |
 | coder | `opencode/nemotron-3.5-lightning-free` | `zhipu/glm-4.7-flash` | 262k output is the best free ceiling anywhere |
-| reviewer | `opencode/laguna-s-2.1-free` | `opencode/hy3-free` | 256k / 190k context, 32k / 64k out |
+| reviewer | `opencode/hy3-free` | `opencode/big-pickle` | 190k / 200k context, 64k / 32k out |
 | researcher | `opencode/hy3-free` | `opencode/big-pickle` | no genuinely tiny free model survives — see Staleness |
 | documenter | `opencode/nemotron-3.5-lightning-free` | `zhipu/glm-4.7-flash` | both 131k+ output |
-| vision | `opencode/mimo-v2.5-free` | — | **the only free model on this page that accepts images** |
+| vision | `opencode/mimo-v2.5-free` | `opencode/muse-spark-1.2-contributor-free` | the only two free Zen models that accept images; the second is newer, far larger, and a contributor tier |
 
 ### With an NVIDIA key (recommended)
 
@@ -67,15 +67,20 @@ Roles are what a schemata head *does*. What each role actually needs from a mode
 
 ## 3. Provider detail
 
-### OpenCode Zen — 7 free models (live endpoint, 2026-08-17)
+### OpenCode Zen — 7 free models (live provider state, re-measured 2026-08-20)
 
-All support tool calls. All flagged `reasoning`. Only one accepts images.
+All support tool calls. Two accept images.
+
+**`laguna-s-2.1-free` was in this table this morning and is gone by evening.** It flipped to
+`status: deprecated` in models.dev, which deletes it from the runtime registry, and it was bound
+as the scout in four presets including the active one. `muse-spark-1.2-contributor-free` arrived
+in the same refresh. Seven models both times — a different seven. Assume this table is wrong.
 
 | Model | Context | Output | Images |
 |---|---|---|---|
 | `nemotron-3-ultra-free` | 1,000,000 | 128,000 | no |
 | `nemotron-3.5-lightning-free` | 262,144 | 262,144 | no |
-| `laguna-s-2.1-free` | 256,000 | 32,000 | no |
+| `muse-spark-1.2-contributor-free` | 1,048,576 | 131,072 | **yes** |
 | `deepseek-v4-flash-free` | 200,000 | 128,000 | no |
 | `mimo-v2.5-free` | 200,000 | 32,000 | **yes** |
 | `big-pickle` | 200,000 | 32,000 | no |
@@ -85,9 +90,9 @@ All support tool calls. All flagged `reasoning`. Only one accepts images.
 are the right number. The other 20 are `status: "deprecated"`, which `provider.ts:1663-1664`
 deletes from the runtime registry — they can be listed, priced and described, and they cannot be
 run. Re-measured 2026-08-20; `kimi-k2.5-free`, `mimo-v2-omni-free`, `minimax-m3-free` and
-`qwen3.6-plus-free` are all in that group, which is why `mimo-v2.5-free` is still the only free
-Zen model that accepts images *and* answers. Before adopting anything a catalog offers, send it
-one prompt.
+`qwen3.6-plus-free` are all in that group. Before adopting anything a catalog offers, send it one
+prompt — that check is what caught `kimi-k2.5-free` in the morning and `laguna-s-2.1-free` by
+evening.
 
 **Limit shape:** per-IP daily counter, no quota header ever reaches the client. Whether the bucket
 is per-model or shared across all default-limit free models is **still unresolved** (Q1 in the
