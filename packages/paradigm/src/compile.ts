@@ -22,11 +22,19 @@ export type AgentEntry = {
   options?: Record<string, unknown>
 }
 
-/** Only present when the head actually declares something - never an empty bag. */
-function headOptions(head: Head): Record<string, unknown> | undefined {
+/**
+ * Only present when the head actually declares something - never an empty bag.
+ *
+ * `shiftAuto` rides along only when the paradigm explicitly turns auto-swap
+ * OFF. Default-on is the reading everywhere else (schema.shiftAuto), so
+ * emitting it when true would put a bag on every entry of every existing
+ * paradigm to say nothing.
+ */
+function headOptions(head: Head, paradigm: Paradigm): Record<string, unknown> | undefined {
   const options: Record<string, unknown> = {}
   if (head.needs) options["needs"] = head.needs
   if (head.fallback) options["fallback"] = head.fallback
+  if (paradigm.shift?.auto === false) options["shiftAuto"] = false
   return Object.keys(options).length > 0 ? options : undefined
 }
 
@@ -64,7 +72,7 @@ function subagentEntry(id: string, head: Head, paradigm: Paradigm): AgentEntry {
   }
   if (head.prompt) entry.prompt = head.prompt
   if (head.permission) entry.permission = head.permission
-  const options = headOptions(head)
+  const options = headOptions(head, paradigm)
   if (options) entry.options = options
   return entry
 }
@@ -85,7 +93,7 @@ export function compileParadigm(
 
   const doctrine = renderDoctrine(paradigm)
   // The king becomes every primary, so its declaration has to reach all of them.
-  const kingOptions = headOptions(king)
+  const kingOptions = headOptions(king, paradigm)
   for (const primary of options.primaries ?? DEFAULT_PRIMARIES) {
     result[primary] = { model: king.model, prompt: doctrine }
     if (kingOptions) result[primary]!.options = kingOptions

@@ -5,6 +5,7 @@ import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { Cause, Deferred, Effect, Exit, Layer, Context, Scope, Schema } from "effect"
 import * as Stream from "effect/Stream"
 import { Agent } from "@/agent/agent"
+import { FallbackSwap } from "./fallback-swap"
 import { Config } from "@/config/config"
 import { Permission } from "@/permission"
 import { Plugin } from "@/plugin"
@@ -18,7 +19,7 @@ import type { SessionID } from "./schema"
 import { SessionRetry } from "./retry"
 import { SessionStatus } from "./status"
 import { SessionSummary } from "./summary"
-import type { Provider } from "@/provider/provider"
+import { Provider } from "@/provider/provider"
 import { Question } from "@/question"
 import { errorMessage } from "@/util/error"
 import { isRecord } from "@/util/record"
@@ -94,6 +95,8 @@ const layer = Layer.effect(
     const image = yield* Image.Service
     const events = yield* EventV2Bridge.Service
     const database = yield* Database.Service
+    // VanGio: the fallback resolver needs the registry to find a substitute.
+    const provider = yield* Provider.Service
 
     const create = Effect.fn("SessionProcessor.create")(function* (input: Input) {
       // Pre-capture snapshot before the LLM stream starts. The AI SDK
@@ -661,6 +664,15 @@ const layer = Layer.effect(
               SessionRetry.policy({
                 provider: input.model.providerID,
                 parse,
+                // VanGio: degrade the head instead of showing the Go upsell.
+                swap: FallbackSwap.hook({
+                  sessionID: ctx.sessionID,
+                  agentName: ctx.assistantMessage.agent,
+                  streamInput,
+                  agents,
+                  provider,
+                  events,
+                }),
                 set: (info) => {
                   return status.set(ctx.sessionID, {
                     type: "retry",
@@ -712,6 +724,7 @@ export const node = LayerNode.make({
     Image.node,
     EventV2Bridge.node,
     Database.node,
+    Provider.node,
   ],
 })
 

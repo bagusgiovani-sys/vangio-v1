@@ -109,3 +109,16 @@ describe("compileParadigm fallback declaration", () => {
     for (const entry of Object.values(out)) expect(entry.options).toBeUndefined()
   })
 })
+
+describe("compileParadigm shift toggle", () => {
+  test("carries an explicit auto:false to every head so the seam can honour it", () => {
+    const out = compileParadigm({ ...gryphon, shift: { auto: false } })
+    expect(out["build"]!.options).toEqual({ shiftAuto: false })
+    expect(out["warrior"]!.options).toEqual({ shiftAuto: false })
+  })
+
+  test("stays silent when auto is on, which is the default everywhere else", () => {
+    const out = compileParadigm({ ...gryphon, shift: { auto: true } })
+    expect(out["build"]!.options).toBeUndefined()
+  })
+})
