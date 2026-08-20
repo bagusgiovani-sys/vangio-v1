@@ -133,4 +133,62 @@ describe("loadCandidates", () => {
     expect(result.models).toEqual([])
     expect(result.warning).toBeUndefined()
   })
+
+  // Measured 2026-08-20 against a live /api/model: 20 of the 27 Zen models it
+  // returns carry status "deprecated", and provider.ts:1664 DELETES exactly
+  // those from the runtime registry - unconditionally, no flag reopens them.
+  // Reproduced end to end: the catalog lists kimi-k2.5-free, and
+  // `vangio run -m opencode/kimi-k2.5-free` dies on ProviderModelNotFoundError
+  // reported to the user as "Unexpected server error". A model the wizard
+  // offers has to be one the loop can actually instantiate.
+  test("drops a deprecated model, which the runtime deletes from its registry", async () => {
+    const result = await loadCandidates({
+      available: async () => [zen, sdkModel({ id: "kimi-k2.5-free", status: "deprecated" })],
+      configured,
+    })
+    expect(result.models.map((model) => model.id)).toEqual(["deepseek-v4-flash-free"])
+  })
+
+  // provider.ts:1663 keeps alpha models only behind enableExperimentalModels,
+  // a runtime flag this package has no way to read. Offering one it cannot
+  // vouch for is the same failure wearing a different status.
+  test("drops an alpha model, which needs a runtime flag this package cannot read", async () => {
+    const result = await loadCandidates({
+      available: async () => [zen, sdkModel({ id: "some-alpha", status: "alpha" })],
+      configured,
+    })
+    expect(result.models.map((model) => model.id)).toEqual(["deepseek-v4-flash-free"])
+  })
+
+  test("keeps an active model", async () => {
+    const result = await loadCandidates({
+      available: async () => [sdkModel({ id: "mimo-v2.5-free", status: "active" })],
+      configured,
+    })
+    expect(result.models.map((model) => model.id)).toEqual(["mimo-v2.5-free"])
+  })
+
+  // An older server answers without the field at all. provider.ts:1250 reads
+  // an absent status as "active", so mirroring that keeps this filter from
+  // emptying the wizard against a server that simply never mentions status.
+  test("treats a missing status as runnable, matching the server's own default", async () => {
+    const result = await loadCandidates({
+      available: async () => [zen],
+      configured,
+    })
+    expect(result.models.map((model) => model.id)).toEqual(["deepseek-v4-flash-free"])
+  })
+
+  // The fallback list comes from provider state, which the runtime has already
+  // filtered by the same rule, so there is no status to read there and nothing
+  // to drop. Filtering must not reach into the degraded path and empty it.
+  test("leaves the degraded fallback list alone", async () => {
+    const result = await loadCandidates({
+      available: async () => {
+        throw new Error("connect ECONNREFUSED")
+      },
+      configured,
+    })
+    expect(result.models.map((model) => model.id)).toEqual(["claude-sonnet-4-20250514"])
+  })
 })

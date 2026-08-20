@@ -11,8 +11,13 @@
  * Measured against a live server 2026-08-18 with ANTHROPIC_API_KEY unset:
  * /config/providers listed anthropic with 17 models, /api/model listed none of
  * them. Same run, opencode went the other way - 7 models in the provider state
- * against 27 from the catalog - so this is not only a filter, it is also the
- * fuller list.
+ * against 27 from the catalog.
+ *
+ * That second number was read as "the fuller list" and it is not. Re-measured
+ * 2026-08-20: the extra 20 are all status "deprecated", which the runtime
+ * refuses to instantiate, so the provider state's 7 were the runnable set all
+ * along. The catalog is still the right source - it is the only one that knows
+ * about credentials - but it has to be filtered on the way in. See isRunnable.
  *
  * The two payloads are NOT the same shape, which is why this file exists:
  * capabilities.tools vs capabilities.toolcall, an input MODALITY LIST vs a
@@ -33,6 +38,31 @@ export type SdkModel = {
   limit: { context: number; output: number }
   capabilities: { tools: boolean; input: string[] }
   cost: Array<{ tier?: { type: string; size: number }; input: number; output: number }>
+  /**
+   * Optional because an older server may answer without it, and because
+   * provider.ts:1250 itself reads an absent status as "active".
+   */
+  status?: string
+}
+
+/**
+ * Reachable is not the same question as runnable, and /api/model only answers
+ * the first one. CatalogV2.model.available() filters on credentials and
+ * `enabled` and never looks at `status` (packages/core/src/catalog.ts:210),
+ * while the runtime registry DELETES models by status before the loop can ever
+ * instantiate one: deprecated unconditionally, alpha unless the
+ * enableExperimentalModels flag is set (provider.ts:1663-1664). Nothing this
+ * package can read tells it whether that flag is on, so "active" is the only
+ * status it can honestly vouch for.
+ *
+ * Measured 2026-08-20 against a live /api/model: 27 Zen models came back, 20 of
+ * them deprecated. Picking one in the wizard produced a paradigm that died at
+ * first prompt - `vangio run -m opencode/kimi-k2.5-free` raises
+ * ProviderModelNotFoundError, which reaches the user as the unhelpful
+ * "Unexpected server error. Check server logs for details."
+ */
+export function isRunnable(model: SdkModel): boolean {
+  return (model.status ?? "active") === "active"
 }
 
 /**
@@ -83,7 +113,7 @@ export type CandidateList = {
 export async function loadCandidates(source: CandidateSource): Promise<CandidateList> {
   try {
     const models = await source.available()
-    return { models: models.map(toCandidate) }
+    return { models: models.filter(isRunnable).map(toCandidate) }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
     return {
