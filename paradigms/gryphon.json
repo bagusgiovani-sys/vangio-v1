@@ -1,6 +1,6 @@
 {
   "name": "gryphon",
-  "description": "One beast with three heads. A strong model reasons, a cheaper model implements, the cheapest looks things up.",
+  "description": "A hybrid, not a committee. Eagle's eye to see the whole problem, lion's strength to do the work, wings to go and look - each part doing only what it is best at, so the expensive model is never spent on cheap work.",
   "king": "king",
   "heads": {
     "king": {

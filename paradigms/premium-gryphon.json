@@ -1,6 +1,6 @@
 {
   "name": "premium-gryphon",
-  "description": "Gryphon with a paid king. Identical team, routing and discipline - only the head that reasons is stronger, and its tokens cost real money.",
+  "description": "Gryphon with a paid mind. Identical body, routing and discipline - only the part that reasons is stronger, and its tokens cost real money.",
   "king": "king",
   "heads": {
     "king": {
