@@ -56,3 +56,46 @@ describe("applyParadigm", () => {
     expect(cfg.agent.warrior.mode).toBe("subagent")
   })
 })
+
+// The clobber: `{ ...entry, ...existing }` is a SHALLOW spread, so a user who
+// sets agent.build.options in opencode.json for any unrelated reason replaces
+// the paradigm's options wholesale and the fallback chain silently disappears.
+// Verified against remeda/JS semantics before the fix:
+//   { ...{options:{fallback:['a']}}, ...{options:{other:1}} } -> {options:{other:1}}
+// The same function already special-cases `prompt` for exactly this reason.
+describe("applyParadigm options merge", () => {
+  const declared: Paradigm = {
+    ...gryphon,
+    heads: {
+      ...gryphon.heads,
+      king: { ...gryphon.heads.king!, fallback: ["m/spare"], needs: { minOutput: 1000 } },
+    },
+  }
+  const declaredDeps = { paradigms: { gryphon: declared }, errors: [] as string[], active: "gryphon" }
+
+  test("keeps the paradigm's fallback when the user sets unrelated options", async () => {
+    const cfg: any = { agent: { build: { options: { reasoningEffort: "high" } } } }
+    await applyParadigm(cfg, declaredDeps)
+    expect(cfg.agent.build.options.fallback).toEqual(["m/spare"])
+    expect(cfg.agent.build.options.reasoningEffort).toBe("high")
+  })
+
+  test("lets the user override one declared key without dropping the rest", async () => {
+    const cfg: any = { agent: { build: { options: { fallback: ["m/mine"] } } } }
+    await applyParadigm(cfg, declaredDeps)
+    expect(cfg.agent.build.options.fallback).toEqual(["m/mine"])
+    expect(cfg.agent.build.options.needs).toEqual({ minOutput: 1000 })
+  })
+
+  test("does not invent an options bag where neither side has one", async () => {
+    const cfg: any = { agent: {} }
+    await applyParadigm(cfg, deps)
+    expect(cfg.agent.build.options).toBeUndefined()
+  })
+
+  test("still lets user config win on the scalar keys it always won on", async () => {
+    const cfg: any = { agent: { build: { model: "m/user-choice" } } }
+    await applyParadigm(cfg, declaredDeps)
+    expect(cfg.agent.build.model).toBe("m/user-choice")
+  })
+})

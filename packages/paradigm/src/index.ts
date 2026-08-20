@@ -31,6 +31,14 @@ export async function applyParadigm(cfg: any, deps: ApplyDeps): Promise<void> {
     if (entry.prompt) {
       merged["prompt"] = existing.prompt ? `${existing.prompt}\n\n${entry.prompt}` : entry.prompt
     }
+    // `...existing` is a SHALLOW spread, so a user who sets agent.<id>.options
+    // for any unrelated reason replaces the paradigm's bag wholesale and the
+    // fallback chain disappears with no error at all. Merge key-by-key instead,
+    // user still winning per key - the same treatment `prompt` gets above, and
+    // for the same reason.
+    if (entry.options || existing.options) {
+      merged["options"] = { ...entry.options, ...existing.options }
+    }
     cfg.agent[id] = merged
   }
 }

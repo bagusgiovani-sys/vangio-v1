@@ -6,6 +6,28 @@ export type AgentEntry = {
   description?: string
   prompt?: string
   permission?: Record<string, unknown>
+  /**
+   * How a head's fallback declaration reaches the session layer.
+   *
+   * `Agent.Info.options` is already `Record<string, unknown>` and already flows
+   * from config to runtime, so the chain travels WITH the agent it belongs to -
+   * always consistent with whatever compiled at boot, and the session layer
+   * never has to learn what a paradigm is.
+   *
+   * Written explicitly rather than leaning on the config schema's unknown-key
+   * sweep (`core/src/v1/config/agent.ts:62-66`): that sweep is a DECODE
+   * transform and this plugin's config hook fires after decode, so a bare
+   * `fallback` key on the entry would never be swept anywhere.
+   */
+  options?: Record<string, unknown>
+}
+
+/** Only present when the head actually declares something - never an empty bag. */
+function headOptions(head: Head): Record<string, unknown> | undefined {
+  const options: Record<string, unknown> = {}
+  if (head.needs) options["needs"] = head.needs
+  if (head.fallback) options["fallback"] = head.fallback
+  return Object.keys(options).length > 0 ? options : undefined
 }
 
 export const DEFAULT_PRIMARIES = ["build", "plan"]
@@ -42,6 +64,8 @@ function subagentEntry(id: string, head: Head, paradigm: Paradigm): AgentEntry {
   }
   if (head.prompt) entry.prompt = head.prompt
   if (head.permission) entry.permission = head.permission
+  const options = headOptions(head)
+  if (options) entry.options = options
   return entry
 }
 
@@ -60,8 +84,11 @@ export function compileParadigm(
   if (!king) return result
 
   const doctrine = renderDoctrine(paradigm)
+  // The king becomes every primary, so its declaration has to reach all of them.
+  const kingOptions = headOptions(king)
   for (const primary of options.primaries ?? DEFAULT_PRIMARIES) {
     result[primary] = { model: king.model, prompt: doctrine }
+    if (kingOptions) result[primary]!.options = kingOptions
   }
 
   return result
