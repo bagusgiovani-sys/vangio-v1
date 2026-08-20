@@ -14,6 +14,16 @@
 **Files affected:** List of changed files
 ---
 
+## [2026-08-20 17:10] Bounded plugin loading, the fourth upstream seam
+#[plugins] #[robustness] #[upstream-seam] #[fixed]
+**Context:** Acting on the finding recorded at 16:25 — `plugin.init()` had no timeout, so a declared-but-unresolvable plugin wedged instance boot permanently. User approved a fourth seam.
+**Error:** Bisected inside `plugin.init()` to place the boundary rather than guess: `waitForDependencies()` **completes**, and `PluginLoader.loadExternal()` **never returns**. Reproduced against this repo's own `opencode-mem` declaration, which is not installed, so loading reaches for the registry and hangs. Boot never finishes → `InstanceStore.load` awaits a Deferred that is never completed → every request to that directory hangs forever, with no error, no log and no timeout.
+**Root cause:** Upstream bounds nothing in that call. `bootstrap.ts` wraps its six later services in `Effect.catchCause`, but that guards *failures*, and this is a *hang* — nothing to catch.
+**Fix:** `Effect.timeout` around `loadExternal` only, in `packages/opencode/src/plugin/index.ts`. Past the budget the instance boots without the plugin, logs it, and publishes a `Session.Event.Error` through the existing `publishPluginError` so the user is told which plugins were skipped and why. Budget is 60s — generous because a genuine first install over a slow link is real work — overridable with `VANGIO_PLUGIN_LOAD_TIMEOUT_MS`. **Proven live**: with plugins enabled and `VANGIO_PLUGIN_LOAD_TIMEOUT_MS=3000`, the test that previously hung its full 30s now passes, because boot completes without the plugin. 44 insertions, 2 deletions.
+**Prevention:** **The fork now has FOUR upstream seams** — `retry.ts`, `processor.ts`, `prompt.ts` and `plugin/index.ts` — and this one differs from the other three in a way that matters at merge time: the others are *load-bearing* (unwire them and the fallback silently stops working), whereas this one is *protective* (unwire it and everything works fine until the day a plugin registry is slow). It will not be missed by any test or by any normal use. Re-check it by hand at every merge alongside the others; the marker to grep for is `PLUGIN_LOAD_TIMEOUT`.
+**Files affected:** packages/opencode/src/plugin/index.ts
+---
+
 ## [2026-08-20 16:05] Ran two heavy test suites at once and nearly recorded the contention as a merge regression
 #[verification] #[false-conclusion] #[testing]
 **Context:** Auditing the 2026-08-20 upstream merge. Started the `core` suite in the background, then immediately ran the `tui` suite in the foreground to save time.

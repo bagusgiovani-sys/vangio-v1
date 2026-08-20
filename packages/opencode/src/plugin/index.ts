@@ -21,7 +21,7 @@ import { AzureAuthPlugin } from "./azure"
 import { DigitalOceanAuthPlugin } from "./digitalocean"
 import { XaiAuthPlugin } from "./xai"
 import { SnowflakeCortexAuthPlugin } from "./snowflake-cortex"
-import { Effect, Layer, Context } from "effect"
+import { Duration, Effect, Layer, Context } from "effect"
 import { EffectBridge } from "@/effect/bridge"
 import { InstanceState } from "@/effect/instance-state"
 import { errorMessage } from "@/util/error"
@@ -122,6 +122,19 @@ async function applyPlugin(load: PluginLoader.Loaded, input: PluginInput, hooks:
   }
 }
 
+/**
+ * VanGio: how long external plugin resolution may take before the instance
+ * gives up on it and boots anyway. Generous, because a genuine first-time
+ * install over a slow link is legitimate work; finite, because upstream has no
+ * bound here at all and an unreachable registry otherwise wedges the instance
+ * permanently. Override with VANGIO_PLUGIN_LOAD_TIMEOUT_MS.
+ */
+const PLUGIN_LOAD_TIMEOUT_MS = (() => {
+  const raw = Number.parseInt(process.env["VANGIO_PLUGIN_LOAD_TIMEOUT_MS"] ?? "", 10)
+  return Number.isFinite(raw) && raw > 0 ? raw : 60_000
+})()
+const PLUGIN_LOAD_TIMEOUT = Duration.millis(PLUGIN_LOAD_TIMEOUT_MS)
+
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -181,7 +194,23 @@ const layer = Layer.effect(
         }
         if (plugins.length) yield* config.waitForDependencies()
 
-        const loaded = yield* Effect.promise(() =>
+        // VanGio: bound external plugin loading.
+        //
+        // loadExternal() resolves, installs and imports each declared plugin,
+        // and none of that is bounded upstream. A plugin that is declared but
+        // not installed sends it to the registry, and if that hangs, so does
+        // this - InstanceBootstrap.run never returns, InstanceStore.load awaits
+        // a Deferred that is never completed, and EVERY request routed to that
+        // directory hangs forever with no error, no log and no timeout.
+        // Reproduced 2026-08-20 against this repo's own `opencode-mem`
+        // declaration; the last line to print was waitForDependencies, and
+        // loadExternal never came back.
+        //
+        // A slow first install is legitimate, so the budget is generous. What
+        // is not legitimate is waiting on it forever, so past the budget the
+        // instance boots without the plugin and says so.
+        const loaded = yield* Effect.timeout(
+          Effect.promise(() =>
           PluginLoader.loadExternal({
             items: plugins,
             kind: "server",
@@ -213,6 +242,19 @@ const layer = Layer.effect(
               },
             },
           }),
+          ),
+          PLUGIN_LOAD_TIMEOUT,
+        ).pipe(
+          Effect.tapError(() =>
+            Effect.sync(() => {
+              const names = plugins.map((item) => item.spec).join(", ")
+              publishPluginError(
+                `Plugins timed out after ${PLUGIN_LOAD_TIMEOUT_MS / 1000}s and were skipped: ${names}. Install them ahead of time, or remove them from config.`,
+              )
+            }),
+          ),
+          Effect.tapError(() => Effect.logError("plugin load timed out", { plugins: plugins.map((i) => i.spec) })),
+          Effect.orElseSucceed((): PluginLoader.Loaded[] => []),
         )
         for (const load of loaded) {
           if (!load) continue
