@@ -294,3 +294,75 @@ describe("FallbackSwap.terminalMessage for a retirement", () => {
     expect(message).not.toContain("resets")
   })
 })
+
+// A model that simply does not work, with no reason anyone can parse.
+// Measured 2026-08-20: zhipuai-coding-plan/glm-4.7 answers every request with
+// 余额不足或无可用资源包 (no balance). Upstream calls that retryable, so it
+// burned six attempts across 74 seconds and died. Counting repeats catches it
+// without needing to understand a word of it.
+describe("FallbackSwap.hook on a model that just keeps failing", () => {
+  const noReason = { reason: undefined, error: {} as any }
+
+  test("gives an unexplained failure real retries before giving up on it", async () => {
+    const { hook, streamInput } = harness({})
+    expect(await Effect.runPromise(hook({ ...noReason, attempt: 1 }))).toBeUndefined()
+    expect(await Effect.runPromise(hook({ ...noReason, attempt: 2 }))).toBeUndefined()
+    expect(streamInput.model.id).toBe("deepseek-v4-flash-free")
+  })
+
+  test("swaps once the retries have clearly stopped helping", async () => {
+    const { hook, streamInput } = harness({})
+    const out = await Effect.runPromise(hook({ ...noReason, attempt: 3 }))
+    expect(out?.swapped).toBe(true)
+    expect(streamInput.model.id).toBe("nemotron-3.5-lightning-free")
+  })
+
+  // One model failing is a MODEL problem. Writing off its provider here would
+  // discard the other six Zen models over a single blip.
+  test("keeps trusting the provider after a single model fails", async () => {
+    const { hook, streamInput } = harness({
+      from: "zhipuai-coding-plan/glm-4.7",
+      catalog: [model("zhipuai-coding-plan/glm-5.2"), model("opencode/hy3-free")],
+    })
+    await Effect.runPromise(hook({ ...noReason, attempt: 3 }))
+    expect(streamInput.model.providerID).toBe("zhipuai-coding-plan")
+    expect(streamInput.model.id).toBe("glm-5.2")
+  })
+
+  // Two different models failing the same way is a PROVIDER problem - which is
+  // exactly what no balance and a bad key look like from here.
+  test("writes the provider off once a second of its models fails the same way", async () => {
+    const { hook, streamInput } = harness({
+      from: "zhipuai-coding-plan/glm-4.7",
+      catalog: [
+        model("zhipuai-coding-plan/glm-5.2"),
+        model("zhipuai-coding-plan/glm-5.3"),
+        model("opencode/hy3-free"),
+      ],
+    })
+    await Effect.runPromise(hook({ ...noReason, attempt: 3 }))
+    expect(streamInput.model.providerID).toBe("zhipuai-coding-plan")
+    await Effect.runPromise(hook({ ...noReason, attempt: 4 }))
+    expect(streamInput.model.providerID).toBe("opencode")
+  })
+
+  // A wall is self-identifying, so it must not have to fail three times first.
+  test("still swaps a declared wall on the very first attempt", async () => {
+    const { hook, streamInput } = harness({})
+    const out = await Effect.runPromise(hook({ reason: "free_tier_limit", attempt: 1, error: {} as any }))
+    expect(out?.swapped).toBe(true)
+    expect(streamInput.model.id).toBe("nemotron-3.5-lightning-free")
+  })
+
+  // A rate limit is about the wall, not the account - writing off the whole
+  // provider there would throw away every other model on it for no reason.
+  test("does not write off a provider merely for rate-limiting us", async () => {
+    const { hook, streamInput } = harness({
+      from: "opencode/deepseek-v4-flash-free",
+      catalog: [model("opencode/hy3-free")],
+    })
+    const out = await Effect.runPromise(hook({ reason: "free_tier_limit", attempt: 1, error: {} as any }))
+    expect(out?.swapped).toBe(true)
+    expect(streamInput.model.providerID).toBe("opencode")
+  })
+})

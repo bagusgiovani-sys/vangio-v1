@@ -75,7 +75,7 @@ export namespace Fallback {
 
   export type Skip = {
     entry: string
-    why: "malformed" | "exhausted" | "unresolvable" | "needs"
+    why: "malformed" | "exhausted" | "unresolvable" | "needs" | "provider-exhausted"
   }
 
   export type Attempt<M> = {
@@ -140,6 +140,12 @@ export namespace Fallback {
     chain: readonly string[]
     needs?: Needs
     exhausted: ReadonlySet<string>
+    /**
+     * Providers that have proved they cannot serve THIS session at all - no
+     * balance, bad key, an outage. Every model behind one is unreachable, so
+     * walking to its sibling is just a slower way to fail.
+     */
+    exhaustedProviders?: ReadonlySet<string>
     swapsUsed: number
     cap?: number
     lookup: (providerID: string, modelID: string) => M | undefined
@@ -159,6 +165,10 @@ export namespace Fallback {
       }
       if (entry === dead || input.exhausted.has(entry)) {
         skipped.push({ entry, why: "exhausted" })
+        continue
+      }
+      if (input.exhaustedProviders?.has(parts.providerID)) {
+        skipped.push({ entry, why: "provider-exhausted" })
         continue
       }
       const model = input.lookup(parts.providerID, parts.modelID)
@@ -234,6 +244,7 @@ export namespace Fallback {
     reason: Reason
     needs?: Needs
     exhausted: ReadonlySet<string>
+    exhaustedProviders?: ReadonlySet<string>
     catalog: () => readonly M[]
     allowPaid?: boolean
   }): Resolution<M> | undefined {
@@ -241,6 +252,7 @@ export namespace Fallback {
     const usable = input.catalog().filter((model) => {
       const id = ref(model)
       if (id === dead || input.exhausted.has(id)) return false
+      if (input.exhaustedProviders?.has(model.providerID)) return false
       if (!input.allowPaid && !isFree(model)) return false
       return satisfies(model, input.needs)
     })
@@ -275,6 +287,7 @@ export namespace Fallback {
     chain: readonly string[] | undefined
     needs?: Needs
     exhausted: ReadonlySet<string>
+    exhaustedProviders?: ReadonlySet<string>
     swapsUsed: number
     cap?: number
     lookup: (providerID: string, modelID: string) => M | undefined

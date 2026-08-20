@@ -38,6 +38,24 @@ export namespace FallbackSwap {
   const ELIGIBLE = new Set(["free_tier_limit", "account_rate_limit"])
 
   /**
+   * How many identical failures before a model is treated as simply not
+   * working, whatever it claims the reason is.
+   *
+   * Measured 2026-08-20: `zhipuai-coding-plan/glm-4.7` answers every request
+   * with `余额不足或无可用资源包` - no balance. Upstream classifies that as
+   * retryable, so it burned all six attempts over 74 seconds and then died,
+   * having never had any chance of succeeding.
+   *
+   * Detecting that by parsing the error is a trap: the message is in Chinese,
+   * carries no useful status code, and every provider words it differently, so
+   * a pattern list would start incomplete and rot from there. Counting repeats
+   * needs no vocabulary at all - if two honest retries did not help, a third
+   * will not either, and moving to another model is strictly better than
+   * spending the rest of the budget on the same wall.
+   */
+  const PERSIST_AFTER = 3
+
+  /**
    * Sentinel for "the paradigm asked to be consulted, so nothing was attempted",
    * which is different from "nothing could be found". Never shown to anyone.
    */
@@ -108,7 +126,13 @@ export namespace FallbackSwap {
     return `${head} hit its free-tier limit and could not be degraded (${attempted}). The limit resets at 00:00 UTC, about ${hours}h from now.`
   }
 
-  type SessionState = { exhausted: Set<string>; swaps: number }
+  type SessionState = {
+    exhausted: Set<string>
+    exhaustedProviders: Set<string>
+    /** Models that failed repeatedly for no stated reason - see escalation below. */
+    persistentlyFailed: Set<string>
+    swaps: number
+  }
 
   // Session-scoped, because `exhausted` has to outlive a single assistant
   // message - the whole failure mode is a chain being walked across a turn.
@@ -120,7 +144,12 @@ export namespace FallbackSwap {
   function stateFor(sessionID: string): SessionState {
     const existing = tracked.get(sessionID)
     if (existing) return existing
-    const created: SessionState = { exhausted: new Set(), swaps: 0 }
+    const created: SessionState = {
+      exhausted: new Set(),
+      exhaustedProviders: new Set(),
+      persistentlyFailed: new Set(),
+      swaps: 0,
+    }
     tracked.set(sessionID, created)
     // Map preserves insertion order, so the oldest key is the first one.
     if (tracked.size > MAX_TRACKED) {
@@ -161,6 +190,7 @@ export namespace FallbackSwap {
     deps: Services,
     reason: Fallback.Reason,
     failed: Fallback.Ref,
+    opts: { exhaustProvider?: boolean } = {},
   ): Effect.Effect<{ model: Provider.Model | undefined; note: string }> {
     return Effect.gen(function* () {
       const agent = yield* deps.agents.get(deps.agentName).pipe(Effect.orElseSucceed(() => undefined))
@@ -171,6 +201,19 @@ export namespace FallbackSwap {
       if (!declared.auto) return { model: undefined, note: DECLINED }
 
       const state = stateFor(deps.sessionID)
+      // Escalate on evidence, not on the first sign of trouble. ONE model
+      // failing repeatedly is a model problem, and writing off its provider
+      // would throw away the other six Zen models over a single blip. TWO
+      // different models on the same provider failing the same way is a
+      // provider problem - which is what no balance and a bad key both look
+      // like from here.
+      if (opts.exhaustProvider) {
+        state.persistentlyFailed.add(failed.providerID + "/" + failed.id)
+        const casualties = [...state.persistentlyFailed].filter((entry) =>
+          entry.startsWith(failed.providerID + "/"),
+        ).length
+        if (casualties >= 2) state.exhaustedProviders.add(failed.providerID)
+      }
 
       const providers = yield* deps.provider.list().pipe(Effect.orElseSucceed(() => ({}) as Record<string, unknown>))
         const catalog: Provider.Model[] = []
@@ -186,6 +229,7 @@ export namespace FallbackSwap {
           chain: declared.fallback,
           needs: declared.needs,
           exhausted: state.exhausted,
+          exhaustedProviders: state.exhaustedProviders,
           swapsUsed: state.swaps,
           lookup: (providerID, modelID) => byRef.get(providerID + "/" + modelID),
           catalog: () => catalog,
@@ -249,8 +293,19 @@ export namespace FallbackSwap {
   ): SessionRetry.SwapHook {
     return (info) =>
       Effect.gen(function* () {
-        if (!info.reason || !ELIGIBLE.has(info.reason)) return undefined
-        const out = yield* degrade(deps, info.reason as Fallback.Reason, deps.streamInput.model)
+        const walled = !!info.reason && ELIGIBLE.has(info.reason)
+        // A wall is known immediately. Anything else has to earn a swap by
+        // failing repeatedly, so genuine transient errors still get their
+        // retries.
+        const persistent = !walled && info.attempt >= PERSIST_AFTER
+        if (!walled && !persistent) return undefined
+
+        const out = yield* degrade(deps, walled ? (info.reason as Fallback.Reason) : "model_gone", deps.streamInput.model, {
+          // A model that keeps failing for no stated reason has usually taken
+          // its whole provider down with it - no balance and a bad key are both
+          // account-wide - so trying its sibling is a slower way to fail.
+          exhaustProvider: persistent,
+        })
         if (out.note === DECLINED) return undefined
         if (!out.model) return { swapped: false, message: out.note }
         deps.streamInput.model = out.model
