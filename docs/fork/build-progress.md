@@ -1406,3 +1406,86 @@ Both are source changes, not test debt, and one may be intentional under the nev
 - No source file changed this session — tests and snapshots only, plus these docs.
 - `merge/upstream-2026-08-18` still exists locally and is identical to the pre-session `dev`;
   still safe to delete.
+
+---
+
+## Session state — RESUME HERE (2026-08-20) — supersedes the block above
+
+**Next action 2 is DONE, and its premise was wrong.** The bundled presets were re-checked against
+a live catalog. **Not one of them needs rebinding** — every model all six presets bind is still
+present and still runnable. What the check actually found was a bug in the wizard that offers
+those models, fixed in `8945e1be75`.
+
+### The recorded recommendation would have shipped a broken preset
+
+The 2026-08-18 note said the Zen catalog has five free image models and that `kimi-k2.5-free`
+beats the current `seer` on both limits. Both halves are false in the only sense that matters.
+`vangio run -m opencode/kimi-k2.5-free` does not answer — it raises `ProviderModelNotFoundError`,
+which the user sees as a bare "Unexpected server error. Check server logs for details."
+
+**Reachable is not runnable, and `/api/model` only answers the first question.**
+`CatalogV2.model.available()` filters on credentials and `enabled` and never reads `status`
+(`core/src/catalog.ts:210`). The provider registry does: `provider.ts:1663-1664` deletes
+`deprecated` unconditionally and `alpha` without the experimental flag. Of the 27 Zen models the
+catalog returns, **20 are deprecated**, and the 7 active ones are *exactly* the 7 the old
+provider-state source carried. So "27 vs 7" was never the catalog being fuller — it was the same
+runnable list plus 20 models nothing can start.
+
+Four of the five "image models" are in the deprecated 20. `mimo-v2.5-free` is still the only free
+Zen model that both sees images and runs, so `web-dev`'s seer binding and the config's model note
+were correct all along. The one genuinely new option is **`zhipuai-coding-plan/glm-5v-turbo`**
+(200k/131k, active, free on the plan) — a 4x better output ceiling than mimo for a seer, but on
+the single-concurrent Zhipu contract, so it must never back a parallel head. Left unbound; the
+user's call.
+
+### What shipped
+
+`isRunnable()` in `packages/paradigm/src/available.ts`, applied in `loadCandidates()`. Absent
+status reads as active, matching `provider.ts:1250`'s own default, so an older server that never
+mentions status does not empty the wizard. 121 paradigm tests (235 assertions) green, typecheck
+32/32 clean.
+
+**Verified live under ConPTY**, not just in unit tests, at "New paradigm - model for King":
+`kimi` → **No results found** — the exact inverse of the 2026-08-18 probe, which recorded
+"searching `kimi` shows Kimi K2.5 Free" as the *proof the swap worked*. `nemotron` → the two
+active rows, no deprecated Super. `mimo` → `MiMo-V2.5` alone, with Omni, V2 Flash and V2 Pro
+gone. That last probe is the sharp one: same prefix, one active and three deprecated, so it can
+only pass if the filter reads each model's own status.
+
+### The reusable lesson
+
+**Never adopt a model because a catalog describes it well.** The kimi entry had a plausible name,
+262k/262k limits, `image` in its modality list and a zero cost — everything needed to justify a
+rebind, and none of it meant the loop could start it. One prompt through the model is the cheapest
+possible check and it is not optional. The same trap generalises to any list a user picks from:
+the failure lands far from the pick, at first prompt, wearing a generic `UnknownError`.
+
+### The next three things, in order
+
+1. **Decide Q3 — unchanged, still the only thing blocking Paradigm Shift stage one, still the
+   oldest open item and still awaiting a human.** Publish `SessionEvent.ModelSwitched` plus one
+   conditional at `prompt.ts:1141` so the loop prefers the session row. Costs a THIRD upstream
+   seam, which is why it is the user's call and needs the fallback spec's Global Constraints
+   amended. **Do not start Shift stage one without it.** (Incidentally `prompt.ts:1141` is the
+   exact frame the kimi stack trace passed through — the seam is real and already load-bearing.)
+2. **Chase the one real server hang** — `HttpApi instance context middleware > falls back to the
+   raw directory when URI decoding fails`, 30007ms under `--timeout 30000`. Carried over: the
+   suite has no branding noise left, so a red line finally means something.
+3. **Decide the seer question** — leave `web-dev` on `mimo-v2.5-free` (32k output, free, Zen) or
+   move it to `zhipuai-coding-plan/glm-5v-turbo` (131k output, single-concurrent). Only affects
+   `web-dev`; no other preset has a seer.
+
+### Still open, lower priority
+
+- **Q1 — is Zen's daily bucket per-model or shared?** Unobservable without a real 429; do not
+  force one. The `researcher` paradigm's three different Zen models remain the instrumentation.
+- **v6** — AI-assisted paradigm builder.
+
+### Environment left behind
+
+- Working tree clean, `dev` pushed to `origin/dev`. Active paradigm: `gryphon`, plugin snapshot
+  reinstalled from source after the fix (`bun packages/paradigm/script/install.ts gryphon`).
+- Boot measured at **21s** this session — a third value alongside 16s warm and 65-70s cold, which
+  is the argument for polling for first paint rather than sleeping any fixed interval.
+- `merge/upstream-2026-08-18` still exists locally and is identical to the pre-2026-08-19 `dev`;
+  still safe to delete.

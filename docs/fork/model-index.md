@@ -81,6 +81,14 @@ All support tool calls. All flagged `reasoning`. Only one accepts images.
 | `big-pickle` | 200,000 | 32,000 | no |
 | `hy3-free` | 190,000 | 64,000 | no |
 
+**Why 7 and not 27.** `GET /api/model` lists 27 Zen models and this table lists 7, and the seven
+are the right number. The other 20 are `status: "deprecated"`, which `provider.ts:1663-1664`
+deletes from the runtime registry — they can be listed, priced and described, and they cannot be
+run. Re-measured 2026-08-20; `kimi-k2.5-free`, `mimo-v2-omni-free`, `minimax-m3-free` and
+`qwen3.6-plus-free` are all in that group, which is why `mimo-v2.5-free` is still the only free
+Zen model that accepts images *and* answers. Before adopting anything a catalog offers, send it
+one prompt.
+
 **Limit shape:** per-IP daily counter, no quota header ever reaches the client. Whether the bucket
 is per-model or shared across all default-limit free models is **still unresolved** (Q1 in the
 fallback spec). If it is shared, running six heads in parallel on Zen drains one budget six times
