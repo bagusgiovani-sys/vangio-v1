@@ -2024,3 +2024,57 @@ decide rather than taken unilaterally. Worth re-checking at the next upstream me
 - Working tree clean, `dev` pushed to `origin/dev`. Active paradigm: `gryphon`.
 - `.opencode/opencode.jsonc` is untouched — the plugin declaration was removed only to prove
   causation and was restored immediately.
+
+---
+
+## Session state — RESUME HERE (2026-08-20, merge done) — upstream merged, all three seams intact
+
+**`dev` is level with `upstream/dev`** (behind: 0). 37 upstream commits, 140 files,
++9758/-2856, merged on `merge/upstream-2026-08-20` per the branch rule and fast-forwarded in.
+**Zero conflicts.**
+
+### The seams survived, and were checked by hand rather than by test
+
+The tests pass whether or not the seams are wired, so each was verified by reading the merged file:
+
+| Seam | Check |
+| --- | --- |
+| `retry.ts` | `swap?: SwapHook` on `policy`, called before the delay, `swap?.swapped` picks the wait |
+| `processor.ts` | `Provider.Service` bound, `swap: FallbackSwap.hook({…})` passed, `Provider.node` in deps |
+| `prompt.ts` | baseline read, `SwitchedModel.switched` at the model resolution, `lastUser.agent` passed to `getModel`, `variant: chosen.variant`, `rescueRetired` in the error path |
+| F2's premise | `llm.stream(streamInput)` still INSIDE the effect `Effect.retry` wraps |
+
+**Upstream touched exactly one seam file** and only to add a retryable-message pattern
+(`try again later|currently at capacity`), nowhere near `policy()`.
+
+Then the stronger check: the fallback was exercised **live** after the merge —
+`run -m opencode/laguna-s-2.1-free` still degrades to `nemotron-3.5-lightning-free` and answers.
+Code being present is not the same as code still being reached.
+
+### Verification
+
+`core` **1091/0** · `tui` **193/0** (twice) · `paradigm` **150/0** · fallback + seam tests
+**102/0** · typecheck **32/32** · two live runs green.
+
+### A measurement error worth not repeating
+
+The first TUI runs came back 189/4 and then 185/8, and "the merge broke the TUI" was one sentence
+from being written into this file. **The `core` suite was running in the background at the time.**
+Two heavy suites on a 16GB CPU-only machine make frame-predicate tests tip over at random — which
+is why the failure SET changed between runs, the tell that separates contention from regression.
+Alone: 193/0. The `core` figure was contaminated the same way (1088/3 → 1091/0). Full entry in
+errors.md. **Never run two suites at once here.**
+
+### The next three things, in order
+
+1. **Decide on the `plugin.init()` timeout** — a fourth seam, in upstream plugin code. A declared
+   plugin that cannot resolve wedges instance boot forever with no error. Still the user's call.
+2. **Q1 — Zen's daily bucket, per-model or shared.** Needs a real 429; every degradation path now
+   logs what it tried, so the first genuine wall answers it.
+3. **v6** — AI-assisted paradigm builder, untouched since it was first noted.
+
+### Environment left behind
+
+- Working tree clean. Active paradigm: `gryphon`. `merge/upstream-2026-08-20` can be deleted; it
+  is identical to `dev`.
+- Next merge is due roughly 2026-09-20. Re-read the seam table above before starting it.

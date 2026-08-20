@@ -14,6 +14,16 @@
 **Files affected:** List of changed files
 ---
 
+## [2026-08-20 16:05] Ran two heavy test suites at once and nearly recorded the contention as a merge regression
+#[verification] #[false-conclusion] #[testing]
+**Context:** Auditing the 2026-08-20 upstream merge. Started the `core` suite in the background, then immediately ran the `tui` suite in the foreground to save time.
+**Error:** `tui` came back **189 pass / 4 fail**, then **185 / 8** — against a recorded baseline of 193 / 0. Two runs, different failure sets each time (`DiffViewerFileTree`, `SIGHUP`, `app.exit`, diff-viewer routing). The conclusion forming was "the merge broke the TUI", and it was about to go into the merge audit as a finding.
+**Root cause:** The `core` suite was still running in the background the whole time. Both suites are heavy, this machine is 16GB and CPU-only, and the TUI tests assert on frame predicates with timeouts — so under contention the timing-sensitive ones tip over, and *which* ones tip over is random. Isolating one of them (`diff-viewer-file-tree.test.tsx` alone) gave 3 pass / 0 fail immediately, which is what exposed it. Re-run alone, twice: **193 / 0 both times.** The `core` result gathered in the same window was contaminated identically — 1088 / 3 under contention, **1091 / 0** run alone.
+**Fix:** Nothing to fix in the code; the merge was clean. The measurement was wrong, not the tree.
+**Prevention:** **Never run two suites concurrently on this machine, and never in the background behind another.** A varying failure SET across runs is the tell for contention rather than regression — a real regression fails the same tests every time. And before attributing any red line to a change, run the file alone: it costs seconds and it settled this in one command. This is the second false conclusion today from a single observation (see the 15:05 entry on the Zhipu balance); both would have been caught by one repeat measurement.
+**Files affected:** None (measurement error)
+---
+
 ## [2026-08-20 16:20] The "server hang" was this repo's own config wedging a non-hermetic test
 #[testing] #[verification] #[plugins] #[windows]
 **Context:** Chasing the last recorded red line — `HttpApi instance context middleware > falls back to the raw directory when URI decoding fails`, timing out at 30007ms under `--timeout 30000`, open since 2026-08-19.
