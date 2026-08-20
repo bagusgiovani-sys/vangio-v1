@@ -57,6 +57,14 @@ export namespace Fallback {
     cost?: { input: number; output: number }
   }
 
+  /**
+   * Enough to identify the model that died. Deliberately NOT a Judgeable: a
+   * retired model cannot be resolved into one, and the resolver only ever reads
+   * the identity (to refuse handing it back) and the provider (to prefer
+   * leaving it). Asking for more would force callers to invent it.
+   */
+  export type Ref = { id: string; providerID: string }
+
   export type Resolution<M> = {
     model: M
     /** "derived" means nobody declared this - the failsafe picked it. */
@@ -127,7 +135,7 @@ export namespace Fallback {
 
   export function resolveStatic<M extends Judgeable>(input: {
     head: string
-    failed: Judgeable
+    failed: Ref
     reason: Reason
     chain: readonly string[]
     needs?: Needs
@@ -202,9 +210,27 @@ export namespace Fallback {
    *  3. Model id, ascending - so the same catalog always yields the same
    *     answer and a test can pin it.
    */
+  /**
+   * Whether leaving the current provider is worth preferring.
+   *
+   * ONLY for rate limits. F3 says a Zen daily limit may be one bucket shared by
+   * every default-limit free model, so the next model on the same provider can
+   * hit the identical wall - the wall is a property of the provider, not the
+   * model.
+   *
+   * A RETIREMENT is the opposite: it says nothing whatsoever about the
+   * provider, whose credentials are known to work. Preferring to leave it there
+   * is not just unmotivated, it is actively worse - measured 2026-08-20, that
+   * rule moved a retired Zen model onto a Zhipu coding plan with no balance,
+   * trading a dead model for a dead account.
+   */
+  function preferElsewhere(reason: Reason): boolean {
+    return reason !== "model_gone"
+  }
+
   export function resolveDerived<M extends Judgeable>(input: {
     head: string
-    failed: Judgeable
+    failed: Ref
     reason: Reason
     needs?: Needs
     exhausted: ReadonlySet<string>
@@ -220,10 +246,13 @@ export namespace Fallback {
     })
     if (usable.length === 0) return undefined
 
+    const elsewhere = preferElsewhere(input.reason)
     const best = [...usable].sort((a, b) => {
-      const aElsewhere = a.providerID !== input.failed.providerID
-      const bElsewhere = b.providerID !== input.failed.providerID
-      if (aElsewhere !== bElsewhere) return aElsewhere ? -1 : 1
+      // For a retirement this flips: staying on the provider that already works
+      // beats wandering onto one that merely has a key on file.
+      const aPreferred = (a.providerID !== input.failed.providerID) === elsewhere
+      const bPreferred = (b.providerID !== input.failed.providerID) === elsewhere
+      if (aPreferred !== bPreferred) return aPreferred ? -1 : 1
       if (a.limit.output !== b.limit.output) return b.limit.output - a.limit.output
       return a.id.localeCompare(b.id)
     })[0]!
@@ -241,7 +270,7 @@ export namespace Fallback {
    */
   export function resolve<M extends Judgeable>(input: {
     head: string
-    failed: Judgeable
+    failed: Ref
     reason: Reason
     chain: readonly string[] | undefined
     needs?: Needs

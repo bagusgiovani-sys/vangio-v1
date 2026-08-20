@@ -54,6 +54,7 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 import { eq } from "drizzle-orm"
 import { SessionTable } from "@opencode-ai/core/session/sql"
 import { SwitchedModel } from "./switched-model"
+import { FallbackSwap } from "./fallback-swap"
 import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@opencode-ai/llm"
@@ -596,11 +597,30 @@ const layer = Layer.effect(
       providerID: ProviderV2.ID,
       modelID: ModelV2.ID,
       sessionID: SessionID,
+      // VanGio: naming the head opts this call into degrading a retired model
+      // rather than dying on it - see ./fallback-swap. Callers that must not
+      // silently change model (title generation, an explicit user choice)
+      // simply do not pass it.
+      head?: string,
     ) {
       const exit = yield* provider.getModel(providerID, modelID).pipe(Effect.exit)
       if (Exit.isSuccess(exit)) return exit.value
       const err = Cause.squash(exit.cause)
       if (Provider.ModelNotFoundError.isInstance(err)) {
+        // VanGio: a retirement never reaches the retry policy, because
+        // ModelNotFoundError is not retryable. This is the only place it can be
+        // caught while the head is still known.
+        if (head) {
+          const rescued = yield* FallbackSwap.rescueRetired({
+            sessionID,
+            agentName: head,
+            failed: { id: modelID, providerID },
+            agents,
+            provider,
+            events,
+          })
+          if (rescued) return rescued
+        }
         const hint = err.suggestions?.length ? ` Did you mean: ${err.suggestions.join(", ")}?` : ""
         yield* events.publish(Session.Event.Error, {
           sessionID,
@@ -1144,7 +1164,7 @@ const layer = Layer.effect(
           // VanGio: a swap published mid-turn beats the model this turn was sent with.
           const chosen =
             SwitchedModel.switched(modelAtTurnStart, yield* SwitchedModel.read(db, sessionID)) ?? lastUser.model
-          const model = yield* getModel(chosen.providerID, chosen.modelID, sessionID)
+          const model = yield* getModel(chosen.providerID, chosen.modelID, sessionID, lastUser.agent)
           const task = tasks.pop()
 
           if (task?.type === "subtask") {

@@ -37,6 +37,12 @@ export namespace FallbackSwap {
   /** Reasons that mean "this model will not serve you", as opposed to "try again". */
   const ELIGIBLE = new Set(["free_tier_limit", "account_rate_limit"])
 
+  /**
+   * Sentinel for "the paradigm asked to be consulted, so nothing was attempted",
+   * which is different from "nothing could be found". Never shown to anyone.
+   */
+  const DECLINED = "vangio:declined"
+
   export type Declaration = {
     needs?: Fallback.Needs
     fallback?: string[]
@@ -89,10 +95,16 @@ export namespace FallbackSwap {
     return next
   }
 
-  export function terminalMessage(head: string, tried: number, now: number): string {
+  export function terminalMessage(head: string, tried: number, now: number, reason: Fallback.Reason = "free_tier_limit"): string {
+    const attempted = tried > 0 ? `${tried} substitute${tried === 1 ? "" : "s"} tried` : "no usable substitute found"
+    // A retirement does not reset - saying "resets at 00:00 UTC" would be a
+    // straightforward lie, and the user would sit waiting for a model that is
+    // never coming back.
+    if (reason === "model_gone") {
+      return `${head} is bound to a model that no longer exists, and could not be degraded (${attempted}). Rebind it in the paradigm.`
+    }
     const reset = resetsAt(now)
     const hours = Math.max(1, Math.round((reset.getTime() - now) / 3_600_000))
-    const attempted = tried > 0 ? `${tried} substitute${tried === 1 ? "" : "s"} tried` : "no usable substitute found"
     return `${head} hit its free-tier limit and could not be degraded (${attempted}). The limit resets at 00:00 UTC, about ${hours}h from now.`
   }
 
@@ -127,30 +139,40 @@ export namespace FallbackSwap {
     tracked.clear()
   }
 
-  export function hook(deps: {
+  export type Services = {
     sessionID: SessionID
     agentName: string
-    /** Mutated in place - this IS the F2 mechanism, not a copy of it. */
-    streamInput: { model: Provider.Model }
     agents: Agent.Interface
     provider: Provider.Interface
     events: { publish: EventV2.Interface["publish"] }
-  }): SessionRetry.SwapHook {
-    return (info) =>
-      Effect.gen(function* () {
-        if (!info.reason || !ELIGIBLE.has(info.reason)) return undefined
+  }
 
-        const agent = yield* deps.agents.get(deps.agentName).pipe(Effect.orElseSucceed(() => undefined))
-        const declared = readDeclaration(agent?.options)
-        // auto:false means the user asked to be consulted rather than degraded.
-        // Declining here leaves upstream's behaviour intact, which is the
-        // honest thing to do until the picker trigger exists.
-        if (!declared.auto) return undefined
+  /**
+   * The whole degradation, minus what the caller does with the answer.
+   *
+   * Both entry points below run this: a rate limit arriving through the retry
+   * policy, and a retirement arriving through model resolution. They differ
+   * only in the reason they carry and in what they do with the substitute -
+   * the declaration, the registry, the resolver, the bookkeeping and the
+   * durable announcement are identical, and duplicating them would be how the
+   * two paths quietly drift apart.
+   */
+  function degrade(
+    deps: Services,
+    reason: Fallback.Reason,
+    failed: Fallback.Ref,
+  ): Effect.Effect<{ model: Provider.Model | undefined; note: string }> {
+    return Effect.gen(function* () {
+      const agent = yield* deps.agents.get(deps.agentName).pipe(Effect.orElseSucceed(() => undefined))
+      const declared = readDeclaration(agent?.options)
+      // auto:false means the user asked to be consulted rather than degraded.
+      // Declining leaves upstream's behaviour intact, which is the honest thing
+      // to do until the picker trigger exists.
+      if (!declared.auto) return { model: undefined, note: DECLINED }
 
-        const state = stateFor(deps.sessionID)
-        const failed = deps.streamInput.model
+      const state = stateFor(deps.sessionID)
 
-        const providers = yield* deps.provider.list().pipe(Effect.orElseSucceed(() => ({}) as Record<string, unknown>))
+      const providers = yield* deps.provider.list().pipe(Effect.orElseSucceed(() => ({}) as Record<string, unknown>))
         const catalog: Provider.Model[] = []
         for (const entry of Object.values(providers) as Array<{ models?: Record<string, Provider.Model> }>) {
           for (const model of Object.values(entry.models ?? {})) catalog.push(model)
@@ -160,7 +182,7 @@ export namespace FallbackSwap {
         const attempt = Fallback.resolve<Provider.Model>({
           head: deps.agentName,
           failed,
-          reason: info.reason as Fallback.Reason,
+          reason,
           chain: declared.fallback,
           needs: declared.needs,
           exhausted: state.exhausted,
@@ -185,19 +207,15 @@ export namespace FallbackSwap {
             capped: attempt.capped ?? false,
             derivedBecause: attempt.derivedBecause,
           })
-          // Still an outcome, not undefined: it suppresses the Go upsell and
-          // puts VanGio's own terminal message in its place.
           return {
-            swapped: false,
-            message: terminalMessage(deps.agentName, attempt.skipped.length, yield* Clock.currentTimeMillis),
+            model: undefined,
+            note: terminalMessage(deps.agentName, attempt.skipped.length, yield* Clock.currentTimeMillis, reason),
           }
         }
 
         const next = attempt.resolution.model
         state.exhausted.add(failed.providerID + "/" + failed.id)
         state.swaps += 1
-        // F2: the next attempt re-reads this object.
-        deps.streamInput.model = next
 
         // Q3: and this is what makes it outlive the attempt, the step, and a
         // restart - the loop prefers the session row once it moves mid-turn.
@@ -218,7 +236,48 @@ export namespace FallbackSwap {
           source: attempt.resolution.source,
         })
 
-        return { swapped: true, message: attempt.resolution.note }
+        return { model: next, note: attempt.resolution.note }
       })
+  }
+
+  /**
+   * Retry-policy entry point: a rate limit. Installs the substitute by mutating
+   * `streamInput.model`, which is the F2 mechanism itself rather than a copy.
+   */
+  export function hook(
+    deps: Services & { streamInput: { model: Provider.Model } },
+  ): SessionRetry.SwapHook {
+    return (info) =>
+      Effect.gen(function* () {
+        if (!info.reason || !ELIGIBLE.has(info.reason)) return undefined
+        const out = yield* degrade(deps, info.reason as Fallback.Reason, deps.streamInput.model)
+        if (out.note === DECLINED) return undefined
+        if (!out.model) return { swapped: false, message: out.note }
+        deps.streamInput.model = out.model
+        return { swapped: true, message: out.note }
+      })
+  }
+
+  /**
+   * Model-resolution entry point: a RETIREMENT.
+   *
+   * This path exists because the retry policy never sees one. A retired model
+   * fails at `provider.getModel` with ProviderModelNotFoundError, which is not
+   * retryable, so it dies before any retry decision is made - the head is
+   * killed rather than degraded, and the user gets a bare "Unexpected server
+   * error". Measured twice on 2026-08-20 alone (kimi-k2.5-free, then
+   * laguna-s-2.1-free mid-session), which makes retirement the more common of
+   * the two failures this feature is supposed to survive.
+   *
+   * Returns undefined to mean "carry on dying" - the caller keeps its existing
+   * error path untouched when nothing can be rescued.
+   */
+  export function rescueRetired(
+    deps: Services & { failed: Fallback.Ref },
+  ): Effect.Effect<Provider.Model | undefined> {
+    return Effect.gen(function* () {
+      const out = yield* degrade(deps, "model_gone", deps.failed)
+      return out.model
+    })
   }
 }

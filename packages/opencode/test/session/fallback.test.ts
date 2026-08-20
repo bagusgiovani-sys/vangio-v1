@@ -371,3 +371,46 @@ describe("Fallback.resolve - declared first, derived as the failsafe", () => {
     expect(note).toContain("not declared")
   })
 })
+
+// Added after a live run on 2026-08-20 traded a retired Zen model for a Zhipu
+// coding plan with no balance. "Prefer a different provider" is motivated
+// entirely by F3's shared-bucket risk, which is a property of a RATE LIMIT. A
+// retirement says nothing about the provider, whose credentials demonstrably
+// work, so leaving it is unmotivated and empirically worse.
+describe("Fallback provider preference depends on why the model died", () => {
+  const zenSpare = model("opencode/hy3-free")
+  const elsewhere = model("zhipuai-coding-plan/glm-4.7")
+
+  test("a rate limit leaves the provider that walled us", () => {
+    const out = Fallback.resolveDerived<Fake>({
+      head: "king",
+      failed,
+      reason: "free_tier_limit",
+      exhausted: new Set(),
+      catalog: () => [zenSpare, elsewhere],
+    })
+    expect(out?.model.providerID).toBe("zhipuai-coding-plan")
+  })
+
+  test("a retirement stays on the provider that still works", () => {
+    const out = Fallback.resolveDerived<Fake>({
+      head: "king",
+      failed,
+      reason: "model_gone",
+      exhausted: new Set(),
+      catalog: () => [elsewhere, zenSpare],
+    })
+    expect(out?.model.providerID).toBe("opencode")
+  })
+
+  test("a retirement still leaves the provider when it has nothing else to offer", () => {
+    const out = Fallback.resolveDerived<Fake>({
+      head: "king",
+      failed,
+      reason: "model_gone",
+      exhausted: new Set(),
+      catalog: () => [elsewhere],
+    })
+    expect(out?.model.providerID).toBe("zhipuai-coding-plan")
+  })
+})

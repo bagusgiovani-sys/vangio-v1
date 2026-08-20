@@ -219,3 +219,78 @@ describe("FallbackSwap.hook", () => {
     expect(streamInput.model.id).toBe(settled)
   })
 })
+
+// The retirement path. This is the failure that actually happens: measured
+// twice on 2026-08-20 alone, while the 429 the feature was designed around has
+// never once been observed. It cannot ride the retry policy, because
+// ProviderModelNotFoundError is not retryable and dies before any retry
+// decision exists - hence a second entry point on the same machinery.
+describe("FallbackSwap.rescueRetired", () => {
+  function rescue(opts: { options?: Record<string, unknown>; catalog?: ReturnType<typeof model>[] }) {
+    const published: any[] = []
+    const catalog = opts.catalog ?? [model("opencode/hy3-free")]
+    const models: Record<string, any> = {}
+    for (const m of catalog) {
+      models[m.providerID] = models[m.providerID] ?? { models: {} }
+      models[m.providerID].models[m.id] = m
+    }
+    return {
+      published,
+      run: () =>
+        Effect.runPromise(
+          FallbackSwap.rescueRetired({
+            sessionID: ("ses_" + Math.random().toString(36).slice(2)) as any,
+            agentName: "scout",
+            failed: { id: "laguna-s-2.1-free", providerID: "opencode" },
+            agents: { get: () => Effect.succeed({ options: opts.options ?? {} }) } as any,
+            provider: { list: () => Effect.succeed(models) } as any,
+            events: { publish: (_d: unknown, data: unknown) => Effect.sync(() => void published.push(data)) } as any,
+          }),
+        ),
+    }
+  }
+
+  test("returns a live substitute for a model that no longer exists", async () => {
+    const { run } = rescue({})
+    const rescued = await run()
+    expect(String(rescued?.id)).toBe("hy3-free")
+  })
+
+  test("makes the rescue durable so the loop does not re-resolve the dead model", async () => {
+    const { run, published } = rescue({})
+    await run()
+    expect(published).toHaveLength(1)
+    expect(published[0].model.id).toBe("hy3-free")
+  })
+
+  test("returns undefined when nothing can replace it, leaving the caller to die", async () => {
+    const { run, published } = rescue({ catalog: [] })
+    expect(await run()).toBeUndefined()
+    expect(published).toHaveLength(0)
+  })
+
+  test("respects a head that asked to be consulted instead of degraded", async () => {
+    const { run, published } = rescue({ options: { shiftAuto: false } })
+    expect(await run()).toBeUndefined()
+    expect(published).toHaveLength(0)
+  })
+
+  test("honours the head's needs when rescuing, not just any live model", async () => {
+    const { run } = rescue({
+      options: { needs: { attachment: true } },
+      catalog: [model("opencode/blind"), model("opencode/seeing", { capabilities: { toolcall: true, attachment: true } })],
+    })
+    expect(String((await run())?.id)).toBe("seeing")
+  })
+})
+
+describe("FallbackSwap.terminalMessage for a retirement", () => {
+  // "The limit resets at 00:00 UTC" would be a plain lie about a retired
+  // model - the user would wait for something that is never coming back.
+  test("does not promise a reset that will never come", () => {
+    const message = FallbackSwap.terminalMessage("scout", 1, Date.now(), "model_gone")
+    expect(message).toContain("no longer exists")
+    expect(message).toContain("Rebind")
+    expect(message).not.toContain("resets")
+  })
+})
