@@ -218,3 +218,156 @@ describe("Fallback.resolveStatic", () => {
     expect(note).toContain("free tier limit")
   })
 })
+
+// ---------------------------------------------------------------------------
+// The failsafe. Decided 2026-08-20: when the declared chain yields nothing -
+// never declared, silently lost, or walked to the end - VanGio does not give
+// up and show a wall. It derives a substitute from what the registry actually
+// holds. This is what makes the feature work at all right now, because not one
+// of the six bundled presets declares a `fallback`.
+
+const zen = (id: string, over: Partial<Fallback.Judgeable> = {}) => model("opencode/" + id, over)
+
+function catalogue(...models: Fake[]) {
+  return () => models
+}
+
+function resolve(over: Partial<Parameters<typeof Fallback.resolve<Fake>>[0]> = {}) {
+  return Fallback.resolve<Fake>({
+    head: "king",
+    failed,
+    reason: "free_tier_limit",
+    chain: [],
+    exhausted: new Set<string>(),
+    swapsUsed: 0,
+    lookup: registry(),
+    catalog: catalogue(),
+    ...over,
+  })
+}
+
+describe("Fallback.resolve - declared first, derived as the failsafe", () => {
+  test("prefers a working declared entry and never touches the catalog", () => {
+    const declared = zen("nemotron-3-ultra-free")
+    const other = zen("hy3-free")
+    const out = resolve({
+      chain: ["opencode/nemotron-3-ultra-free"],
+      lookup: registry(declared),
+      catalog: catalogue(other),
+    })
+    expect(out.resolution?.model.id).toBe("nemotron-3-ultra-free")
+    expect(out.resolution?.source).toBe("static")
+  })
+
+  test("derives one when the head declares no chain at all", () => {
+    const spare = zen("hy3-free")
+    const out = resolve({ chain: [], catalog: catalogue(spare) })
+    expect(out.resolution?.model.id).toBe("hy3-free")
+    expect(out.resolution?.source).toBe("derived")
+    expect(out.derivedBecause).toBe("undeclared")
+  })
+
+  // The clobber failsafe: a chain that silently vanished looks exactly like one
+  // that was never written, and both must still degrade rather than wall.
+  test("derives one when the chain is missing entirely", () => {
+    const spare = zen("hy3-free")
+    const out = resolve({ chain: undefined, catalog: catalogue(spare) })
+    expect(out.resolution?.source).toBe("derived")
+    expect(out.derivedBecause).toBe("undeclared")
+  })
+
+  test("derives one when every declared entry was skipped", () => {
+    const spare = zen("hy3-free")
+    const out = resolve({
+      chain: ["opencode/kimi-k2.5-free"],
+      lookup: registry(),
+      catalog: catalogue(spare),
+    })
+    expect(out.resolution?.model.id).toBe("hy3-free")
+    expect(out.derivedBecause).toBe("exhausted")
+    // The declared skips are still reported - deriving must not hide staleness.
+    expect(out.skipped).toContainEqual({ entry: "opencode/kimi-k2.5-free", why: "unresolvable" })
+  })
+
+  test("never derives the model that just died, nor anything already burned", () => {
+    const burned = zen("hy3-free")
+    const out = resolve({
+      exhausted: new Set(["opencode/hy3-free"]),
+      catalog: catalogue(failed as Fake, burned),
+    })
+    expect(out.resolution).toBeUndefined()
+  })
+
+  test("only derives models that meet what the head needs", () => {
+    const small = zen("laguna-s-2.1-free", { limit: { output: 32_000 } })
+    const big = zen("nemotron-3.5-lightning-free", { limit: { output: 262_144 } })
+    const out = resolve({ needs: { minOutput: 100_000 }, catalog: catalogue(small, big) })
+    expect(out.resolution?.model.id).toBe("nemotron-3.5-lightning-free")
+  })
+
+  // Global Constraint: fallback targets are free unless the user opts in.
+  test("will not spend money on its own", () => {
+    const paid = model("anthropic/claude-sonnet-5", { cost: { input: 3, output: 15 } })
+    expect(resolve({ catalog: catalogue(paid) }).resolution).toBeUndefined()
+    expect(resolve({ catalog: catalogue(paid), allowPaid: true }).resolution?.model.id).toBe("claude-sonnet-5")
+  })
+
+  // Matches resolve.isFree()'s existing reading elsewhere in the fork: absent
+  // pricing is free, rather than a reason to crash or to refuse.
+  test("reads a model with no published price as free", () => {
+    const unpriced = zen("hy3-free")
+    expect(resolve({ catalog: catalogue(unpriced) }).resolution?.model.id).toBe("hy3-free")
+  })
+
+  // F3/Q1: a Zen daily limit may be ONE bucket shared by every default-limit
+  // free model, so the next Zen model can hit the same wall immediately.
+  // Leaving the walled provider is the safer first move.
+  test("prefers a different provider to the one that just hit a wall", () => {
+    const sameProvider = zen("nemotron-3.5-lightning-free", { limit: { output: 262_144 } })
+    const elsewhere = model("zhipu/glm-4.7-flash", { limit: { output: 131_072 } })
+    const out = resolve({ catalog: catalogue(sameProvider, elsewhere) })
+    expect(out.resolution?.model.providerID).toBe("zhipu")
+  })
+
+  test("falls back to the same provider when nowhere else can serve", () => {
+    const sameProvider = zen("nemotron-3.5-lightning-free")
+    const out = resolve({ catalog: catalogue(sameProvider) })
+    expect(out.resolution?.model.id).toBe("nemotron-3.5-lightning-free")
+  })
+
+  test("takes the largest output ceiling among equally good providers", () => {
+    const small = model("zhipu/a", { limit: { output: 32_000 } })
+    const large = model("zhipu/b", { limit: { output: 131_072 } })
+    const out = resolve({ catalog: catalogue(small, large) })
+    expect(out.resolution?.model.id).toBe("b")
+  })
+
+  test("breaks a dead tie deterministically rather than by catalog order", () => {
+    const first = model("zhipu/b")
+    const second = model("zhipu/a")
+    expect(resolve({ catalog: catalogue(first, second) }).resolution?.model.id).toBe("a")
+    expect(resolve({ catalog: catalogue(second, first) }).resolution?.model.id).toBe("a")
+  })
+
+  test("gives up honestly when the catalog holds nothing usable", () => {
+    const out = resolve({ catalog: catalogue() })
+    expect(out.resolution).toBeUndefined()
+    expect(out.derivedBecause).toBe("undeclared")
+  })
+
+  test("respects the swap cap before deriving anything", () => {
+    const spare = zen("hy3-free")
+    const out = resolve({ swapsUsed: Fallback.SWAP_CAP, catalog: catalogue(spare) })
+    expect(out.resolution).toBeUndefined()
+    expect(out.capped).toBe(true)
+  })
+
+  // Honest provenance: the transcript should not imply the user chose this.
+  test("says in the note that the substitute was not declared", () => {
+    const spare = zen("hy3-free")
+    const note = resolve({ catalog: catalogue(spare) }).resolution!.note
+    expect(note).toContain("king")
+    expect(note).toContain("hy3-free")
+    expect(note).toContain("not declared")
+  })
+})

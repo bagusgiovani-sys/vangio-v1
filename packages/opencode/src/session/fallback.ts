@@ -49,11 +49,18 @@ export namespace Fallback {
     providerID: string
     limit: { output: number }
     capabilities: { toolcall: boolean; attachment: boolean }
+    /**
+     * Absent means models.dev published no price, which the fork already reads
+     * as free everywhere else (see resolve.isFree()'s KNOWN GAP note). Keep
+     * that reading rather than refusing to consider the model.
+     */
+    cost?: { input: number; output: number }
   }
 
   export type Resolution<M> = {
     model: M
-    source: "static"
+    /** "derived" means nobody declared this - the failsafe picked it. */
+    source: "static" | "derived"
     /** Human-readable, rendered on the model-switched divider. */
     note: string
   }
@@ -69,6 +76,12 @@ export namespace Fallback {
     skipped: Skip[]
     /** Set when the session has already spent its swaps. */
     capped?: boolean
+    /**
+     * Why the declared chain was not used. "undeclared" covers both a head that
+     * never had one and a head whose chain was lost on its way here - those are
+     * indistinguishable from inside, which is exactly why the failsafe exists.
+     */
+    derivedBecause?: "undeclared" | "exhausted"
   }
 
   /**
@@ -160,5 +173,96 @@ export namespace Fallback {
     }
 
     return { skipped }
+  }
+
+  function isFree(model: Judgeable): boolean {
+    if (!model.cost) return true
+    return model.cost.input === 0 && model.cost.output === 0
+  }
+
+  /**
+   * The failsafe: a substitute nobody declared, chosen from what the registry
+   * actually holds.
+   *
+   * This is not a nicety. Not one of the six bundled paradigms declares a
+   * `fallback`, so without this the whole feature would degrade nothing for
+   * anyone until every preset had been hand-edited. It is also the answer to a
+   * chain that went missing rather than being walked - the two are
+   * indistinguishable from here, and both should degrade rather than wall.
+   *
+   * Ordering, in priority order:
+   *
+   *  1. A DIFFERENT PROVIDER than the one that just failed. F3 says a Zen daily
+   *     limit may be one bucket shared by every default-limit free model, and
+   *     Q1 is still open, so the next Zen model may hit the identical wall on
+   *     its first attempt. Leaving the walled provider is the safer move, and
+   *     it stays the safer move whichever way Q1 lands.
+   *  2. The largest output ceiling. The spec is explicit that output, not
+   *     context, is what truncates real work.
+   *  3. Model id, ascending - so the same catalog always yields the same
+   *     answer and a test can pin it.
+   */
+  export function resolveDerived<M extends Judgeable>(input: {
+    head: string
+    failed: Judgeable
+    reason: Reason
+    needs?: Needs
+    exhausted: ReadonlySet<string>
+    catalog: () => readonly M[]
+    allowPaid?: boolean
+  }): Resolution<M> | undefined {
+    const dead = ref(input.failed)
+    const usable = input.catalog().filter((model) => {
+      const id = ref(model)
+      if (id === dead || input.exhausted.has(id)) return false
+      if (!input.allowPaid && !isFree(model)) return false
+      return satisfies(model, input.needs)
+    })
+    if (usable.length === 0) return undefined
+
+    const best = [...usable].sort((a, b) => {
+      const aElsewhere = a.providerID !== input.failed.providerID
+      const bElsewhere = b.providerID !== input.failed.providerID
+      if (aElsewhere !== bElsewhere) return aElsewhere ? -1 : 1
+      if (a.limit.output !== b.limit.output) return b.limit.output - a.limit.output
+      return a.id.localeCompare(b.id)
+    })[0]!
+
+    return {
+      model: best,
+      source: "derived",
+      note: `${input.head}: ${ref(best)} replaces ${dead} (${REASONS[input.reason]}; not declared, chosen from available models)`,
+    }
+  }
+
+  /**
+   * The whole protocol: honour what the head declared, and if that yields
+   * nothing, derive something rather than showing the user a wall.
+   */
+  export function resolve<M extends Judgeable>(input: {
+    head: string
+    failed: Judgeable
+    reason: Reason
+    chain: readonly string[] | undefined
+    needs?: Needs
+    exhausted: ReadonlySet<string>
+    swapsUsed: number
+    cap?: number
+    lookup: (providerID: string, modelID: string) => M | undefined
+    catalog: () => readonly M[]
+    allowPaid?: boolean
+  }): Attempt<M> {
+    const declared = resolveStatic({ ...input, chain: input.chain ?? [] })
+    if (declared.resolution || declared.capped) return declared
+
+    const derived = resolveDerived(input)
+    return {
+      ...declared,
+      resolution: derived,
+      // An empty chain and a fully-skipped one are different stories and the
+      // log should not conflate them: one is "you never declared a fallback",
+      // the other is "the one you declared is stale".
+      derivedBecause: declared.skipped.length > 0 ? "exhausted" : "undeclared",
+    }
   }
 }
