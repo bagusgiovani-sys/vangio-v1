@@ -1810,3 +1810,58 @@ does not handle has now happened twice in one day.
 - Working tree clean, `dev` pushed to `origin/dev` at `c0ec51e5b7`. Active paradigm: `gryphon`,
   snapshot reinstalled, `@scout` verified answering on its new model.
 - 150 paradigm tests, 85 session/fallback tests, typecheck 32/32.
+
+---
+
+## Session state — RESUME HERE (2026-08-20, late) — retirement path shipped and PROVEN LIVE
+
+**`model_gone` is wired, and unlike the rate-limit path it has a real end-to-end proof.**
+`vangio run -m opencode/laguna-s-2.1-free "..."` returned `UnknownError` this morning; it now
+degrades to `nemotron-3.5-lightning-free` and answers. Commit `f14ab276ea`.
+
+### It was not a fourth seam
+
+Reported as needing one, and that was wrong. `ProviderModelNotFoundError` surfaces in
+`SessionPrompt.getModel` (`prompt.ts:595`) — inside `prompt.ts`, which the spec's Global
+Constraints already allow. **Still three upstream seams.** Naming the head opts a call site into
+degrading; the callers that must not silently change model (title generation, an explicit user
+choice) simply do not pass it.
+
+Both entry points now run one shared `degrade()`, so the rate-limit and retirement paths cannot
+drift apart. `Fallback.Ref` replaced `Judgeable` for the model that died — a retired model cannot
+be resolved into a full one, and the resolver only ever reads its identity and provider anyway.
+
+### Two corrections the live run forced, and it took a live run to find either
+
+- **"Prefer a different provider" is only right for a rate limit.** It exists for F3's
+  shared-bucket risk, which is a property of the *provider's wall*. A retirement says nothing
+  about the provider, whose credentials demonstrably work. Applying it anyway moved a retired Zen
+  model onto `zhipuai-coding-plan/glm-4.7`, which answered
+  `余额不足或无可用资源包` — no balance. **A dead model was traded for a dead account.**
+- **A retirement never resets**, so the terminal message must not say "the limit resets at 00:00
+  UTC" and leave someone waiting for a model that is not coming back.
+
+### The finding underneath both: free ≠ usable ≠ reachable
+
+Three different questions, and only the first is in the catalog. `zhipuai-coding-plan/glm-4.7`
+prices at zero, has a configured key, is `status: active`, and **cannot serve a request**.
+`isFree()` and `provider.list()` both say yes. Nothing the client can read says no until the
+request fails. This is the same shape as the deprecated-but-listed problem from the morning, one
+layer further out, and it is the strongest argument yet that **the only real test of a model is
+sending it a prompt.**
+
+### The next three things, in order
+
+1. **Treat a provider-level failure as exhausting that provider for the session.** Right now a
+   substitute that fails for its own reason (no balance, bad key) just dies — the resolver is
+   never asked again, because that error is not retryable either. The machinery to do better
+   already exists; it needs the same treatment `model_gone` just got.
+2. **`auto: false` — the paradigm-shift path.** Unchanged: the picker plus a trigger.
+3. **Chase the one real server hang** — unchanged, still the oldest untouched item.
+
+### Environment left behind
+
+- Working tree clean, `dev` pushed to `origin/dev` at `f14ab276ea`. Active paradigm: `gryphon`.
+- 150 paradigm tests, 81 session/fallback tests, typecheck 32/32.
+- **Zhipu coding-plan accounts have no balance.** Any future fallback work should treat that
+  provider as configured-but-dead on this machine until the user says otherwise.
