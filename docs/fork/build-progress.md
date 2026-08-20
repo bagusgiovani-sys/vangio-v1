@@ -2078,3 +2078,54 @@ errors.md. **Never run two suites at once here.**
 - Working tree clean. Active paradigm: `gryphon`. `merge/upstream-2026-08-20` can be deleted; it
   is identical to `dev`.
 - Next merge is due roughly 2026-09-20. Re-read the seam table above before starting it.
+
+---
+
+## Session state — RESUME HERE (2026-08-20, plugin timeout) — FOUR upstream seams now
+
+**`plugin.init()` is bounded.** User approved the fourth seam. Commit `9f2a947c83`, 44 insertions
+and 2 deletions in `packages/opencode/src/plugin/index.ts`.
+
+### The boundary was placed by bisection, not by guessing
+
+Inside `plugin.init()`: `waitForDependencies()` **completes**, `PluginLoader.loadExternal()`
+**never returns**. So the timeout wraps `loadExternal` only, and nothing else changed. Past the
+budget the instance boots without the plugin, logs it, and publishes a `Session.Event.Error`
+through the existing `publishPluginError` naming what was skipped and why.
+
+Budget **60s**, overridable with `VANGIO_PLUGIN_LOAD_TIMEOUT_MS`. Generous on purpose: a genuine
+first install over a slow link is real work, and cutting that off would trade one bad failure for
+another.
+
+**Proven live** — with plugins enabled and the budget set to 3s, the instance-context test that
+previously hung its full 30s now passes, because boot completes without the plugin.
+
+### The seam table, now four rows — and the fourth is different
+
+| Seam | Kind | If a merge unwires it |
+| --- | --- | --- |
+| `retry.ts` | load-bearing | fallback stops swapping on a wall |
+| `processor.ts` | load-bearing | fallback never runs at all |
+| `prompt.ts` | load-bearing | swaps die at the step boundary; retirements kill the turn |
+| `plugin/index.ts` | **protective** | **nothing looks wrong until a registry is slow** |
+
+The first three fail visibly the next time they are exercised. **The fourth fails silently and
+indefinitely** — no test covers it, no normal use touches it, and it only matters on the day it
+matters. Grep `PLUGIN_LOAD_TIMEOUT` at every merge, and do not treat a green suite as evidence.
+
+### Verification
+
+`plugin` + `server` suites **181/0** · typecheck **32/32** · live smoke green · the timeout path
+itself exercised end to end.
+
+### The next three things, in order
+
+1. **Q1 — Zen's daily bucket, per-model or shared.** Needs a real 429. Every degradation path now
+   logs what it tried, so the first genuine wall answers it in one event. Do not force one.
+2. **v6** — AI-assisted paradigm builder, untouched since it was first noted.
+3. **Next upstream merge, roughly 2026-09-20.** Re-read the four-row seam table above first.
+
+### Environment left behind
+
+- Working tree clean, `dev` pushed to `origin/dev`. Active paradigm: `gryphon`.
+- `merge/upstream-2026-08-20` still exists locally and is contained in `dev`; safe to delete.
