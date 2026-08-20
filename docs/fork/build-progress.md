@@ -1759,3 +1759,54 @@ free model and record which also fail.
 - Upstream seams now number three — `retry.ts`, `processor.ts`, `prompt.ts`. All three are listed
   in the fallback spec's Global Constraints and all three must be re-checked by hand at each
   merge; the tests pass whether or not the seams are still wired.
+
+---
+
+## Session state — RESUME HERE (2026-08-20, evening) — supersedes the block above
+
+**A bound model died while this session was running, and it exposed the limit of what was just
+built.** `laguna-s-2.1-free` went `status: deprecated` in models.dev between the morning and the
+afternoon, taking `@scout` down in four presets including the active one. Rebound and pushed
+(`c0ec51e5b7`). `muse-spark-1.2-contributor-free` arrived in the same refresh — seven Zen models
+both times, a different seven.
+
+### The finding that matters more than the outage
+
+**Stage one survives a rate limit and does NOT survive a retirement — and retirement is the more
+common failure.** The fallback hangs off `SessionRetry.policy`, which only ever sees *retryable*
+errors. `ProviderModelNotFoundError` is not retryable: it dies at `getModel` before any retry
+decision exists, so the hook is never consulted. `Fallback.Reason` already declares `model_gone`
+and nothing emits it.
+
+That is the next piece of work, and it is worth more than the `auto: false` picker path that was
+previously next. The 429 this was built for has still never been observed once; the retirement it
+does not handle has now happened twice in one day.
+
+### Also done this round
+
+- **`needs` declared on every bundled head** — tools everywhere, output headroom for warriors,
+  attachments for the seer. The seer one closes a hazard the derived failsafe opened: degraded to
+  a text-only model, a seer does not error, it confidently describes an image it cannot see.
+- **No preset declares a `fallback` list, deliberately.** Capability requirements are durable;
+  model ids rot. Both ids in the new known-retired guard were written down as good picks hours or
+  days before they died.
+- Verified against real catalog data that a seer needing attachments resolves to
+  `zhipuai-coding-plan/glm-5v-turbo`, and a warrior needing 100k output to
+  `zhipuai-coding-plan/glm-4.7`. **The first attempt at that check was wrong** and picked
+  `openrouter/auto` — a provider with no key here — because it read the raw models.dev cache
+  instead of `provider.list()`, which returns only credentialed providers. Worth remembering: the
+  registry has two populations and only one of them can actually run.
+
+### The next three things, in order
+
+1. **Emit `model_gone` and route it to the fallback.** A retired model should degrade the head,
+   not kill the turn with an opaque `UnknownError`. Needs a seam at `getModel`, not at the retry
+   policy — which is a fourth upstream seam and therefore the user's call before starting.
+2. **`auto: false` — the paradigm-shift path.** Unchanged: the picker plus a trigger.
+3. **Chase the one real server hang** — unchanged, still the oldest untouched item.
+
+### Environment left behind
+
+- Working tree clean, `dev` pushed to `origin/dev` at `c0ec51e5b7`. Active paradigm: `gryphon`,
+  snapshot reinstalled, `@scout` verified answering on its new model.
+- 150 paradigm tests, 85 session/fallback tests, typecheck 32/32.
