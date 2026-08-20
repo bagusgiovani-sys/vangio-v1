@@ -14,6 +14,26 @@
 **Files affected:** List of changed files
 ---
 
+## [2026-08-20 16:20] The "server hang" was this repo's own config wedging a non-hermetic test
+#[testing] #[verification] #[plugins] #[windows]
+**Context:** Chasing the last recorded red line — `HttpApi instance context middleware > falls back to the raw directory when URI decoding fails`, timing out at 30007ms under `--timeout 30000`, open since 2026-08-19.
+**Error:** `bun test test/server/httpapi-instance-context.test.ts` → 8 pass, 1 fail at exactly 30000ms. A hard hang, not slowness: the HTTP request never returns.
+**Root cause:** Traced by instrumenting each boundary in turn — middleware → `InstanceStore.load` → `boot` → `bootstrap.run` — until the last line that printed was `config.get done` and `plugin.init done` never followed. **`plugin.init()` never returns**, so `boot` never settles, so the `Deferred` in `InstanceStore.load` is never completed, so the request hangs until the runner kills it. Why that directory: the test routes to a *relative* directory, which resolves against `process.cwd()` and therefore lands **inside this repository**. Config discovery walks up, finds the repo's own `.opencode/opencode.jsonc`, and that declares the npm plugin `opencode-mem`, which is **not installed** — so plugin init reaches for the network and hangs. Every other test in the file uses `tmpdirScoped`, outside the repo, which is why only this one failed. **The test's outcome depended on the developer's own repo configuration, not on the code under test.** Proven both directions: emptying the repo's `plugin` array turned the file green (9/0), restoring it brought the hang straight back. Two red herrings were discarded on the way — the percent-escapes in the test name are irrelevant (a plain `zzz-plain-probe` hangs identically), and so is whether the directory exists (creating it changed nothing).
+**Fix:** One line, test-only: `workspaceLayerWithRuntimeFlags({ experimentalWorkspaces: true, pure: true })`. `pure` short-circuits external plugin loading (`plugin/index.ts:179`), which none of these tests exercise. 9 pass / 0 fail with the repo config left exactly as it is.
+**Prevention:** **A test that boots a real instance against a relative directory is testing the developer's machine.** Any test booting an instance should either use a tmpdir or set `pure: true`; without one of those, project-config discovery reaches whatever happens to be above the working directory. More generally: when a duration is *exactly* the timeout, stop reading the failure and start bisecting the call chain with print statements — three rounds of instrumentation found this after it had sat unexplained for a day.
+**Files affected:** packages/opencode/test/server/httpapi-instance-context.test.ts
+---
+
+## [2026-08-20 16:25] Plugin initialization can hang instance boot forever, with no timeout and no error
+#[plugins] #[robustness] #[upstream] #[not-fixed]
+**Context:** Fallout from the entry above, recorded separately because it is a product problem rather than a test problem.
+**Error:** `plugin.init()` has no timeout. If a declared plugin cannot be resolved — not installed and the registry slow or unreachable — `InstanceBootstrap.run` never completes, `InstanceStore.load` awaits a `Deferred` that is never done, and **every request routed to that directory hangs forever**. No error, no log, no upsell, nothing: the instance is simply wedged.
+**Root cause:** `bootstrap.ts` wraps the six later services in `Effect.catchCause`, so their failures are logged and survivable, but `config.get()` and `plugin.init()` are unguarded — and `catchCause` would not help anyway, because this is a hang rather than a failure.
+**Fix:** **None applied.** The fix belongs in `packages/opencode/src/plugin/index.ts`, which is upstream code and not one of the three seams the fallback spec allows this fork to touch. Recorded for the user to decide: a bounded timeout around plugin resolution, degrading to "plugin unavailable, continuing without it", would turn a silent wedge into a warning.
+**Prevention:** Worth checking at the next upstream merge whether this has been fixed there. Meanwhile the practical guard is the one already applied: any test that boots an instance sets `pure: true` so it never depends on plugin resolution at all.
+**Files affected:** None (finding only)
+---
+
 ## [2026-08-20 15:05] Called a transient provider failure permanent, and wrote it into the record as fact
 #[verification] #[false-conclusion] #[models]
 **Context:** A live rescue moved a retired model onto `zhipuai-coding-plan/glm-4.7`, which answered `余额不足或无可用资源包,请充值。` — "insufficient balance or no resource package, please recharge."

@@ -42,7 +42,20 @@ const testStateLayer = Layer.effectDiscard(
   }),
 )
 
-const workspaceLayer = workspaceLayerWithRuntimeFlags({ experimentalWorkspaces: true })
+// `pure` is not incidental here. These tests boot REAL instances, and one of
+// them ("falls back to the raw directory") deliberately routes to a relative
+// directory, which resolves against process.cwd() and therefore lands INSIDE
+// this repository. Config discovery then walks up, finds the repo's own
+// `.opencode/opencode.jsonc`, and `plugin.init()` tries to load the npm plugin
+// it declares - which is not installed, so it reaches for the network and never
+// returns. The instance never boots, the Deferred in InstanceStore.load is never
+// completed, and the HTTP request hangs until the test runner kills it.
+//
+// That made the test's result depend on the developer's own repo config rather
+// than on the code under test. `pure` short-circuits external plugin loading
+// (plugin/index.ts:179), which none of these tests exercise, so they now test only
+// what they claim to.
+const workspaceLayer = workspaceLayerWithRuntimeFlags({ experimentalWorkspaces: true, pure: true })
 
 const it = testEffect(Layer.mergeAll(testStateLayer, NodeHttpServer.layerTest, NodeServices.layer, workspaceLayer))
 
