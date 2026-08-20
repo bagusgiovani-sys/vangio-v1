@@ -341,6 +341,31 @@ describe("cloneParadigm", () => {
     expect(clone.name).toBe("my-copy")
   })
 
+  // Same class of bug as the routing/discipline/prompt drop this suite was
+  // written for: a clone that loses a head's fallback chain silently disarms
+  // the free-tier degradation for every copy anyone makes.
+  test("preserves needs, fallback and the shift toggle", () => {
+    const withShift: Paradigm = {
+      ...source,
+      shift: { auto: false },
+      heads: {
+        ...source.heads,
+        king: {
+          ...source.heads.king!,
+          needs: { minOutput: 100000, tools: true },
+          fallback: ["opencode/nemotron-3.5-lightning-free", "opencode/nemotron-3-ultra-free"],
+        },
+      },
+    }
+    const clone = cloneParadigm(withShift, "my-copy")
+    expect(clone.shift).toEqual({ auto: false })
+    expect(clone.heads.king!.needs).toEqual({ minOutput: 100000, tools: true })
+    expect(clone.heads.king!.fallback).toEqual([
+      "opencode/nemotron-3.5-lightning-free",
+      "opencode/nemotron-3-ultra-free",
+    ])
+  })
+
   test("preserves routing and discipline verbatim", () => {
     const clone = cloneParadigm(source, "my-copy")
     expect(clone.routing).toEqual(source.routing)
