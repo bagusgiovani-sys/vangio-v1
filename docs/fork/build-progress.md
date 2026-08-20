@@ -1489,3 +1489,88 @@ the failure lands far from the pick, at first prompt, wearing a generic `Unknown
   is the argument for polling for first paint rather than sleeping any fixed interval.
 - `merge/upstream-2026-08-18` still exists locally and is identical to the pre-2026-08-19 `dev`;
   still safe to delete.
+
+---
+
+## Session state — RESUME HERE (2026-08-20, later) — supersedes the block above
+
+**Q3 is decided, built, verified live, and pushed. Paradigm Shift stage one is unblocked.**
+User decision: option (1). The Global Constraints in the fallback spec now name `prompt.ts` as a
+third allowed seam alongside `retry.ts` and `processor.ts`.
+
+### What the loop does now
+
+`runLoop` reads the session's model row once before its first step, and at each step prefers that
+row over `lastUser.model` **if and only if it moved since the turn began**. All of the logic is in
+a new fork file, `packages/opencode/src/session/switched-model.ts`; the upstream seam is an
+import, one baseline line, one conditional at the model resolution, and the assistant message's
+`variant` — which has to travel with the model it is paired against, or a swap leaves the old
+model's variant sitting on the new model's message.
+
+### The spec's own gate was wrong, and reading the DB is what caught it
+
+The recommendation said "consult `currentModel()` when the session row disagrees with
+`lastUser.model`". That reads `SessionTable.model` as a normally-empty override slot. It is not:
+`createUserMessage` writes it on **every** user message via `Session.setAgentModel`
+(prompt.ts:672-689). One `select` against `~/.local/share/vangio/opencode-local.db` settled it —
+every session carries a row, including three throwaway ones from earlier the same morning. Under
+the literal rule, an agent's configured model or any row left from a previous turn would have
+beaten the model the current turn was actually sent with, silently. Full entry in errors.md.
+
+### Verified live, through the real publish path
+
+`POST /api/session/:id/model` → `switchModel` → `ModelSwitched` → projector → row → the seam.
+One turn, sent on `deepseek-v4-flash-free`, switched mid-flight. Six assistant messages: the
+first on deepseek finishing `tool-calls`, then **five consecutive steps on
+`nemotron-3.5-lightning-free`**. F10's "the swap dies at the next tool-call round trip" is closed,
+and this is the end-to-end run the spec had listed as still owed. It did not need ConPTY — the
+HTTP API reaches everything the TUI would, so it is a script against `vangio serve`.
+
+### `test/session` is not deterministic here — always baseline against stashed changes
+
+Measured within one hour, on identical code where noted:
+
+| File | clean `dev` | with the seam |
+| --- | --- | --- |
+| `prompt.test.ts` | 40 pass / 4 fail | 41 pass / 3 fail (a strict subset) |
+| `compaction.test.ts` | 54 / 1 | 54 / 1 |
+| `revert-compact.test.ts` | 8 / 0 | 6 / 2, then 8 / 0 on a rerun |
+| `snapshot-tool-race.test.ts` | 0 / 1 | 0 / 1 |
+| `switched-model.test.ts` (new) | — | 8 / 0 |
+
+The `revert-compact` scare resolved on a cheaper check than repeated sampling: **the file contains
+zero references to `SessionPrompt`**, so the code changed here cannot reach it. It and
+`snapshot-tool-race` both drive `Snapshot.Service` against a git repo in a temp dir — the Windows
+snapshot timing class. Typecheck 32/32 clean.
+
+### The next three things, in order
+
+1. **Plan Paradigm Shift stage one — now unblocked.** What remains unbuilt is everything that
+   *publishes* a swap: the two schema fields (`needs`, `fallback`), the `StaticResolver`, and the
+   retry-seam wiring that calls `switchModel` on a `free_tier_limit`. Use
+   `superpowers:writing-plans`; the spec's Scope split is still accurate.
+2. **`StaticResolver` must filter on `status`, not just on "does the registry resolve it".**
+   Carried straight from this morning's other finding: `ling-3.0-tiny-free` was in the spec's
+   roster table and is `deprecated`, so a chain falling back to it swaps one dead model for
+   another. The table is corrected; the resolver requirement is written into the spec.
+3. **Chase the one real server hang** — `HttpApi instance context middleware > falls back to the
+   raw directory when URI decoding fails`, 30007ms under `--timeout 30000`. Unchanged, still the
+   oldest untouched item after Q3.
+
+### Still open, lower priority
+
+- **Q1 — is Zen's daily bucket per-model or shared?** Unobservable without a real 429; do not
+  force one. Now more pressing than before: if the bucket is shared, the Zen-only fallback chain
+  stage one is about to build is near-worthless, and the honest answer is fewer fallback targets
+  rather than a longer list.
+- **The seer question** — leave `web-dev` on `mimo-v2.5-free` (32k output) or move it to
+  `zhipuai-coding-plan/glm-5v-turbo` (131k output, single-concurrent). Still the user's call.
+- **v6** — AI-assisted paradigm builder.
+
+### Environment left behind
+
+- Working tree clean, `dev` pushed to `origin/dev`. Active paradigm: `gryphon`.
+- **A third upstream seam now exists.** At every merge, re-check `prompt.ts`'s model resolution by
+  hand: `switched-model.test.ts` keeps passing whether or not the seam is still wired, so a green
+  suite is not evidence the feature survived.
+- No server left running; the test session was aborted rather than left burning free quota.
