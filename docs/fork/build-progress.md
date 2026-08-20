@@ -1865,3 +1865,59 @@ sending it a prompt.**
 - 150 paradigm tests, 81 session/fallback tests, typecheck 32/32.
 - **Zhipu coding-plan accounts have no balance.** Any future fallback work should treat that
   provider as configured-but-dead on this machine until the user says otherwise.
+
+---
+
+## Session state — RESUME HERE (2026-08-20, latest) — includes a CORRECTION to the block above
+
+**Correction first.** The previous block says *"Zhipu coding-plan accounts have no balance… treat
+that provider as configured-but-dead"*, and states that `zhipuai-coding-plan/glm-4.7` **cannot**
+serve a request. **Both are wrong.** That model answered normally twenty minutes later, three
+runs out of three. The failure was transient — real and reproducible inside its window (six
+identical failures across 74 seconds) but not a property of the account. Entry in errors.md.
+
+The honest, narrower version is still worth keeping: a model can be free, credentialed and
+`status: active` and still fail *right now*, for long enough to exhaust the entire retry budget.
+That is a statement about availability at an instant, not about an account.
+
+### What shipped since the last block: `bb22284489`
+
+**A model that keeps failing for no stated reason now gets swapped instead of dying.** Upstream
+classified the Zhipu error as retryable, so it burned six attempts over 74 seconds and then died,
+having never had a chance of succeeding.
+
+**It is detected by counting, not by reading.** Parsing that error is a trap — Chinese text, no
+useful status code, every provider words it differently, so a pattern list starts incomplete and
+rots. If two honest retries did not help, a third will not either. A *declared* wall still swaps
+on attempt 1, so self-identifying failures do not have to fail three times first.
+
+**Provider write-off escalates on evidence.** One model failing repeatedly is a model problem, and
+writing off its provider would discard the other six Zen models over a blip. Two different models
+on one provider failing the same way is a provider problem — what no balance and a bad key both
+look like from here. **That restraint was vindicated within the hour by the correction above:**
+had it written the provider off on first contact, it would have acted on a belief that turned out
+to be false.
+
+### Verification
+
+- 33 fallback-swap tests, 36 fallback tests, typecheck 32/32.
+- Live: `run -m opencode/laguna-s-2.1-free` (a genuinely retired model) degrades to
+  `nemotron-3.5-lightning-free` and answers, where it returned `UnknownError` this morning.
+- Live: `run -m zhipuai-coding-plan/glm-4.7` answers on all four attempts made after the
+  transient window closed.
+
+### The next three things, in order
+
+1. **`auto: false` — the paradigm-shift path.** Now the largest unbuilt piece of the spec: the
+   hook stands aside when auto is off, which is honest but inert. Per the spec it needs no new
+   mechanism — the existing picker plus a trigger.
+2. **Chase the one real server hang** — unchanged, still the oldest untouched item.
+3. **Q1 remains open and is now cheaper to answer.** Every degradation path is instrumented and
+   logs what it tried; the next genuine Zen 429 will show whether siblings fall with it.
+
+### Environment left behind
+
+- Working tree clean, `dev` pushed to `origin/dev`. Active paradigm: `gryphon`.
+- **Do not treat any provider as permanently dead on one observation.** Re-check after a gap; the
+  rule "send it one prompt" needs a *second* prompt separated in time before anything is written
+  down as a standing fact.

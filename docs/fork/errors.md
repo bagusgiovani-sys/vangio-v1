@@ -14,6 +14,16 @@
 **Files affected:** List of changed files
 ---
 
+## [2026-08-20 15:05] Called a transient provider failure permanent, and wrote it into the record as fact
+#[verification] #[false-conclusion] #[models]
+**Context:** A live rescue moved a retired model onto `zhipuai-coding-plan/glm-4.7`, which answered `余额不足或无可用资源包,请充值。` — "insufficient balance or no resource package, please recharge."
+**Error:** No error in the code. The error was mine: I read one failing run as a permanent account state and recorded it as such — *"Zhipu coding-plan accounts have no balance. Any future fallback work should treat that provider as configured-but-dead on this machine"* — and built a claim on top of it, that a model can be free, credentialed and `status: active` and still **cannot** serve a request. Twenty minutes later the same model answered normally, three runs out of three.
+**Root cause:** One observation, treated as a property. The failure was real and reproducible *within its window* — six consecutive attempts across 74 seconds, all identical — which is exactly what a permanent condition looks like from inside a single run. What made it feel conclusive was the provider's own wording: "please recharge" reads as a settled account fact, not a temporary one, so the message was trusted instead of the behaviour. No second observation was taken before writing it down.
+**Fix:** Corrected in `build-progress.md`. The honest version is narrower and still useful: a model can be free, credentialed and active and still fail *right now*, for a stretch long enough to exhaust the whole retry budget. That is a statement about availability at an instant, not about an account.
+**Prevention:** **A provider's error text describes its own state, and it is not evidence about duration.** Before recording any "X is dead/broken/unavailable" as a standing fact, re-observe it after a gap — the same rule already applied to models (`send it one prompt`) extends to providers, and needs a *second* prompt separated in time. The near-miss underneath: this almost justified writing off a whole provider on first contact, and the conservative escalation shipped in `bb22284489` — two distinct models must fail before a provider is written off — is the only reason the wrong belief would not have become wrong behaviour.
+**Files affected:** docs/fork/build-progress.md (correction), packages/opencode/src/session/fallback-swap.ts (the escalation this vindicated)
+---
+
 ## [2026-08-20 14:10] A bound model was retired mid-session, and retirement does not reach the fallback that exists to survive it
 #[models] #[paradigm] #[architecture] #[verification]
 **Context:** Verifying, against real catalog data, that the newly-shipped derived fallback would find a substitute for `web-dev`'s seer.
