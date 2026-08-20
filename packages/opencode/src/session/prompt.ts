@@ -53,6 +53,7 @@ import { ModelV2 } from "@opencode-ai/core/model"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { eq } from "drizzle-orm"
 import { SessionTable } from "@opencode-ai/core/session/sql"
+import { SwitchedModel } from "./switched-model"
 import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@opencode-ai/llm"
@@ -1084,6 +1085,8 @@ const layer = Layer.effect(
         let structured: unknown
         let step = 0
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
+        // VanGio: baseline for the mid-turn model swap - see ./switched-model.
+        const modelAtTurnStart = yield* SwitchedModel.read(db, sessionID)
 
         while (true) {
           yield* status.set(sessionID, { type: "busy" })
@@ -1138,7 +1141,10 @@ const layer = Layer.effect(
               history: msgs,
             }).pipe(Effect.ignore, Effect.forkIn(scope))
 
-          const model = yield* getModel(lastUser.model.providerID, lastUser.model.modelID, sessionID)
+          // VanGio: a swap published mid-turn beats the model this turn was sent with.
+          const chosen =
+            SwitchedModel.switched(modelAtTurnStart, yield* SwitchedModel.read(db, sessionID)) ?? lastUser.model
+          const model = yield* getModel(chosen.providerID, chosen.modelID, sessionID)
           const task = tasks.pop()
 
           if (task?.type === "subtask") {
@@ -1189,7 +1195,9 @@ const layer = Layer.effect(
             role: "assistant",
             mode: agent.name,
             agent: agent.name,
-            variant: lastUser.model.variant,
+            // VanGio: `chosen`, not lastUser - modelID/providerID below already
+            // come from the swapped model, and the variant has to match them.
+            variant: chosen.variant,
             path: { cwd: ctx.directory, root: ctx.worktree },
             cost: 0,
             tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },

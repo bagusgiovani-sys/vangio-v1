@@ -1,9 +1,12 @@
 # Free-Tier Fallback — Design
 
-> **Status: DESIGN, not yet planned.** Q2 is now ANSWERED (see F2, F10) and Q1 is still open.
-> F2 is proven — but only for the span it actually covers, which is narrower than this document
-> originally assumed. Read F10 before writing a plan: a swap that is not also persisted reverts
-> on the next loop step.
+> **Status: DESIGN. Q2 and Q3 are ANSWERED; Q1 is still open.** F2 is proven, but only for the
+> span it actually covers, which is narrower than this document originally assumed — read F10
+> before writing a plan: a swap that is not also persisted reverts on the next loop step.
+> **Q3 was decided and built on 2026-08-20** (option 1, with one correction to how it is gated —
+> see Q3). The durable half now exists, so `auto: true` is unblocked and Shift stage one can be
+> planned. What remains unbuilt is everything that *publishes* a swap: the schema fields, the
+> `StaticResolver`, and the retry-seam wiring that calls `switchModel`.
 
 **Goal:** When a paradigm head's model hits its free-tier wall, VanGio Code performs a
 **paradigm shift** instead of showing OpenCode's "subscribe to Go" upsell. The head degrades to
@@ -46,8 +49,15 @@ one provider we can independently check. Build the static resolver; keep the int
 ## Global Constraints
 
 - **Patch, don't rewrite.** New behaviour lives in new files. The only upstream files this design
-  may touch are `retry.ts` and `processor.ts`, at the two seams named in F1 and F2, and the diff
-  must stay small enough to re-apply by hand at every upstream merge.
+  may touch are `retry.ts`, `processor.ts` and `prompt.ts`, at the three seams named in F1, F2 and
+  F10, and the diff must stay small enough to re-apply by hand at every upstream merge.
+  **The third seam was added 2026-08-20 by the Q3 decision** and is deliberately the narrowest of
+  the three: one import, one baseline read before the loop, one conditional at the model
+  resolution (`prompt.ts:1141`), and the variant on the assistant message that has to travel with
+  it. All of the logic lives in `packages/opencode/src/session/switched-model.ts`; the upstream
+  file gains no branching it does not already have. If a merge ever moves the model resolution,
+  `test/session/switched-model.test.ts` still passes while the feature silently dies — so treat
+  that seam, not the test, as the thing to re-check by hand.
 - **Session-scoped only.** The paradigm file on disk is never written by a fallback. A bad
   afternoon of 429s must not silently rewrite standing configuration.
 - **Honest provenance.** A model swap is always announced in the transcript. Silently changing
@@ -192,9 +202,21 @@ trigger.
   `Effect.retry` re-evaluating a closure, which is exactly what a unit test can pin down. Keep it
   — it is also the regression guard for the monthly upstream merge. If upstream ever hoists the
   model read above `Effect.retry`, this goes red instead of the feature silently dying.
-- **Still owed under ConPTY:** an end-to-end run proving the swap survives a *tool-call round
-  trip* (F10). That one genuinely cannot be a unit test, and it is only meaningful once Q3 is
-  decided and the durable half is implemented.
+- **DONE 2026-08-20 — the end-to-end run proving a swap survives a tool-call round trip** (F10).
+  It did not need ConPTY after all: the HTTP API reaches every part of the path the TUI would,
+  so the run is a script against `vangio serve` rather than a terminal harness. One turn on
+  `deepseek-v4-flash-free`, switched mid-flight through `POST /api/session/:id/model`, produced
+  six assistant messages — one on deepseek, five on `nemotron-3.5-lightning-free`. See Q3.
+- `SwitchedModel.switched` unit tests pin the gate itself: unchanged row, moved model, moved
+  provider, moved variant, first write onto an empty row, and `"default"`/absent variant read as
+  the same. Pure, in `packages/opencode/test/session/switched-model.test.ts`.
+- **A caveat for whoever runs the suite next:** `test/session` is not deterministic on this
+  machine. Measured the same day, clean `dev` gave `prompt.test.ts` 40 pass / 4 fail while the
+  patched tree gave 41 / 3, and `revert-compact.test.ts` went 8/0, then 6/2, then 8/0 on repeat
+  runs of identical code. Compare a *baseline on stashed changes* before reading anything into a
+  red line here, and check whether the file even references the code under test —
+  `revert-compact` and `snapshot-tool-race` never touch `SessionPrompt`; they are the Windows
+  git-snapshot timing class.
 
 ## Scope split
 
@@ -228,7 +250,8 @@ is emitted, persisted and rendered today; publishing the event gets the announce
   worth doing once the durable half of Q3 exists — there is nothing meaningful for it to observe
   until then.
 
-- **Q3 — NEW. How does a swap survive the loop-step boundary?** (F10/F11/F12.) F2 covers the
+- **Q3 — ANSWERED YES to option (1), 2026-08-20. How does a swap survive the loop-step
+  boundary?** (F10/F11/F12.) F2 covers the
   current step, `ModelSwitched` covers the next prompt, and the steps in between are covered by
   neither. Three candidates, none yet chosen:
   1. **Publish `ModelSwitched` and teach the loop to prefer it.** One extra line at prompt.ts:1141
@@ -248,20 +271,55 @@ is emitted, persisted and rendered today; publishing the event gets the announce
   far smaller than the `retry.ts` edits already budgeted. The Global Constraints section should
   be amended to name prompt.ts:1141 as an allowed seam.
 
-## Current free roster (2026-08-13)
+  **DECIDED 2026-08-20: option (1), built, and the Global Constraints are amended.**
+  `packages/opencode/src/session/switched-model.ts` holds the logic; `prompt.ts` gains an import,
+  a baseline read before the loop, the conditional, and the assistant message's `variant` (which
+  has to travel with the model it is paired against, or a swap leaves the old model's variant on
+  the new model's message).
 
-Capability data from models.dev, cross-checked against `zen.mdx` at upstream/dev. All eight
-support tool calls. Only `mimo-v2.5-free` accepts images.
+  **One correction to the recommendation above, and it matters.** "Consult `currentModel()` when
+  the session row disagrees with `lastUser.model`" is the wrong gate. It reads the row as a quiet
+  fallback slot that is normally empty, and it is not: `createUserMessage` writes it on *every*
+  user message via `Session.setAgentModel` (prompt.ts:672-689). Measured on this machine's DB,
+  every session carries one. Under the simple rule, a row holding an agent's configured model —
+  or anything left from an earlier turn — would beat the model the current turn was actually sent
+  with, silently, on a path with no test coverage. The gate that ships is **"changed since this
+  turn began"**: the loop reads the row once before its first step and only defers to a row that
+  moved after that. That also makes the feature's intent exact, because a mid-turn move is
+  precisely the event worth honouring.
+
+  **Proven live, 2026-08-20**, which is the end-to-end run the Testing section lists as still
+  owed. One turn, sent on `deepseek-v4-flash-free`, switched mid-flight via the real publish path
+  (`POST /api/session/:id/model` → `switchModel` → `ModelSwitched` → projector → row). Six
+  assistant messages: the first on deepseek finishing `tool-calls`, then **five consecutive steps
+  on `nemotron-3.5-lightning-free`**. F10's "dies at the next tool-call round trip" is closed.
+
+  **Known consequence, accepted:** an override that cannot be resolved now fails the *current*
+  turn rather than only the next prompt, with the same `Model not found` error `lastUser.model`
+  would produce. Deliberately not special-cased — the resolver is specified to skip ids the
+  registry cannot resolve (see Architecture), so a bad id should never reach the row.
+
+## Current free roster (re-measured 2026-08-20)
+
+The seven Zen models a fallback chain may actually name. All support tool calls. Only
+`mimo-v2.5-free` accepts images.
 
 | Model | Context | Output | Images |
 |---|---|---|---|
 | `nemotron-3-ultra-free` | 1,000,000 | 128,000 | no |
 | `nemotron-3.5-lightning-free` | 262,144 | 262,144 | no |
-| `ling-3.0-tiny-free` | 262,144 | 32,768 | no |
 | `laguna-s-2.1-free` | 256,000 | 32,000 | no |
 | `deepseek-v4-flash-free` | 200,000 | 128,000 | no |
 | `mimo-v2.5-free` | 200,000 | 32,000 | **yes** |
 | `big-pickle` | 200,000 | 32,000 | no |
 | `hy3-free` | 190,000 | 64,000 | no |
 
-Treat this table as perishable (F6). Re-check it against `zen.mdx` at every upstream merge.
+**`ling-3.0-tiny-free` was in the 2026-08-13 version of this table and is gone from this one.**
+It is still in the catalog and still described with plausible limits — it is `status:
+"deprecated"`, which the provider registry deletes outright (`provider.ts:1663-1664`), so a chain
+that fell back to it would swap one dead model for another. Twenty of the twenty-seven Zen models
+`GET /api/model` returns are in that state. **`StaticResolver` must filter on `status`, not just
+on "does the registry resolve it"** — and F6's warning stands with a sharper edge: the catalog
+listing a model, with capabilities and a price, is not evidence it can be run. Send it one prompt.
+
+Treat this table as perishable (F6). Re-check it at every upstream merge.
