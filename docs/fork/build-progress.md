@@ -1921,3 +1921,55 @@ to be false.
 - **Do not treat any provider as permanently dead on one observation.** Re-check after a gap; the
   rule "send it one prompt" needs a *second* prompt separated in time before anything is written
   down as a standing fact.
+
+---
+
+## Session state — RESUME HERE (2026-08-20, final) — the fallback spec's stage one is COMPLETE
+
+**Both modes work.** `auto: true` degrades a head by itself; `auto: false` leaves it alone, opens
+the picker and explains. Commit `2bc012fe08`.
+
+### Three failure kinds now route into the fallback
+
+| Failure | Where it is caught | Proven live |
+| --- | --- | --- |
+| Declared wall (`free_tier_limit`) | retry policy hook | no — never observed a real 429 |
+| Retirement (`model_gone`) | `SessionPrompt.getModel` | **yes** — `laguna-s-2.1-free` |
+| Persistent unexplained failure | retry policy, by counting attempts | partially — the Zhipu window closed |
+
+### "No new mechanism" was literally true
+
+The spec assumed the `auto: false` trigger needed an event and did not say which. It needed none:
+`tui.command.execute` accepts **any** command string and the TUI dispatches it by name against the
+keymap (`tui/src/app.tsx:987`) — the same keymap the paradigm plugin registers `paradigm.list` on.
+So the server can open a plugin's dialog through a channel that already exists. No new event type,
+no schema change, **still three upstream seams**.
+
+Worth remembering generally: before adding an event type, check whether `tui.command.execute` can
+already reach the thing you want to trigger.
+
+### Verification
+
+- 93 session/fallback tests, 150 paradigm tests, typecheck 32/32.
+- **Live A/B, one paradigm bound to a genuinely retired model, only the toggle differing:**
+  `auto: false` → dies without swapping. `auto: true` → degrades to
+  `nemotron-3.5-lightning-free` and answers. That exercises the whole chain — paradigm JSON,
+  compileParadigm, agent options, readDeclaration, degrade.
+- Scratch paradigm removed and `gryphon` restored as active; snapshot reinstalled.
+
+### The next three things, in order
+
+1. **Chase the one real server hang** — `HttpApi instance context middleware > falls back to the
+   raw directory when URI decoding fails`, 30007ms under `--timeout 30000`. Now genuinely the
+   oldest untouched item.
+2. **Q1 — is Zen's daily bucket per-model or shared?** Still open, still unobservable without a
+   real 429, but now much cheaper to answer: every degradation path logs what it tried, so the
+   first genuine wall will show whether the siblings fall with it.
+3. **Consider the upstream merge.** The last one was 2026-08-18; three seams now need re-checking
+   by hand at each merge, and the tests pass whether or not the seams are still wired.
+
+### Environment left behind
+
+- Working tree clean, `dev` pushed to `origin/dev`. Active paradigm: `gryphon`.
+- Three upstream seams: `retry.ts`, `processor.ts`, `prompt.ts`. All three are named in the
+  fallback spec's Global Constraints.

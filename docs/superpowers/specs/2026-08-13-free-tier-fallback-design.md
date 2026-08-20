@@ -1,6 +1,12 @@
 # Free-Tier Fallback — Design
 
-> **Status: DESIGN. Q2 and Q3 are ANSWERED; Q1 is still open.** F2 is proven, but only for the
+> **Status: STAGE ONE BUILT AND SHIPPED, 2026-08-20. Q2 and Q3 are ANSWERED; Q1 is still open.**
+> Both modes now work: `auto: true` degrades a head by itself, `auto: false` opens the picker and
+> explains. Three failure kinds route into it — a declared wall, a retirement (`model_gone`, which
+> never reaches the retry policy and needed its own entry point), and a model that simply keeps
+> failing. Everything below is the design as written; where implementation corrected it, the
+> correction is marked inline.
+> F2 is proven, but only for the
 > span it actually covers, which is narrower than this document originally assumed — read F10
 > before writing a plan: a swap that is not also persisted reverts on the next loop step.
 > **Q3 was decided and built on 2026-08-20** (option 1, with one correction to how it is gated —
@@ -174,6 +180,16 @@ the **existing picker** (shipped 2026-08-06) pre-filtered and pre-explained: *"k
 free limit; pick a paradigm."* The picker's existing honesty requirement stands — it applies on
 restart, and it must say so. This path needs no new mechanism at all; it is the picker plus a
 trigger.
+
+**BUILT 2026-08-20, and "no new mechanism" turned out to be literally true.** The trigger is
+`tui.command.execute`, whose `command` field accepts any string and which the TUI dispatches by
+name against the keymap (`tui/src/app.tsx:987`) — the same keymap the paradigm plugin registers
+`paradigm.list` on. So the server opens a plugin's dialog through a channel that already existed,
+with no new event type and no schema change. A `tui.toast.show` carries the explanation. The offer
+fires **once per session**: the retry loop calls the hook on every attempt, and offering six times
+in ninety seconds would be worse than not offering at all. Verified by live A/B on one paradigm
+bound to a retired model — `auto: false` died without swapping, `auto: true` degraded and
+answered, only the toggle differing.
 
 ## Error handling
 
