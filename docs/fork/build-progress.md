@@ -1628,3 +1628,69 @@ is a second source of truth plus a new storage path, which by rule 5 drags a mig
 - Working tree clean, `dev` pushed to `origin/dev` at `d48b483929`. Active paradigm: `gryphon`.
 - Nothing calls `Fallback.resolveStatic` or the retry hook yet — both are dead code until the
   wiring lands, deliberately, and both are fully tested so the wiring has something to trust.
+
+---
+
+## Session state — RESUME HERE (2026-08-20, channel decided)
+
+**Channel decision: option B, plus a derived-fallback failsafe.** User call. Four of stage one's
+five pieces are now built and pushed; only the wiring remains.
+
+| Piece | Commit |
+| --- | --- |
+| Schema: `needs`, `fallback`, `shift.auto` | `01850167b0` |
+| `StaticResolver` | `4a435d077e` |
+| Retry hook | `d48b483929` |
+| Channel + clobber fix | `cbb2155fac` |
+| Derived-fallback failsafe | `4adebc33eb` |
+
+### Two corrections that shaped the decision
+
+**The unknown-key sweep does not apply here.** `core/src/v1/config/agent.ts:62-66` sweeps
+unrecognised agent keys into `options`, but it is a **decode transform**, and the paradigm
+plugin's `config` hook fires *after* decode ("Notify plugins of current config",
+`plugin/index.ts:243`). A bare `fallback` key on the entry would be swept nowhere. The plugin
+therefore writes `options: { needs, fallback }` explicitly — which is more robust anyway, since
+it does not depend on sweep behaviour upstream could change.
+
+**The clobber was real and is fixed.** `{ ...entry, ...existing }` in `paradigm/src/index.ts` is a
+shallow spread; verified live that `{...{options:{fallback:['a']}}, ...{options:{other:1}}}`
+yields `{options:{other:1}}`. Any user who set `agent.build.options` for an unrelated reason would
+have lost the chain silently. Options now merge key-by-key, user still winning per key. Also
+measured: remeda's `mergeDeep` **replaces arrays** (`['a','b']` + `['c']` → `['c']`) and merges
+nested objects key-wise, so `needs` half-merges — predictable, worth knowing.
+
+### The failsafe is load-bearing, not defensive
+
+**Not one of the six bundled paradigms declares a `fallback`.** Without derived resolution the
+feature would degrade nothing for anyone until every preset had been hand-edited. `Fallback.resolve`
+honours the declared chain first and derives from the live registry when that yields nothing —
+which also covers a chain that vanished, since from inside the resolver that is indistinguishable
+from one that never existed.
+
+Derived ordering: **different provider first** (F3 — a Zen daily limit may be one bucket shared
+across every default-limit free model, and Q1 is still open, so the next Zen model can hit the
+identical wall immediately), then largest output ceiling, then id for determinism. Free-only
+unless the caller opts in; an unpriced model reads as free, matching `resolve.isFree()`.
+
+### What is left: the wiring, and it is small
+
+1. **A new fork file** holding per-session swap state — the `exhausted` set and the swap count.
+   `SessionRunState` turned out to be a `Map<SessionID, Runner>` and is the wrong home; a
+   module-level map in the wiring file, cleared when the session ends, is the fork-local answer.
+2. **`processor.ts`** — pass `swap:` to `SessionRetry.policy`, and add `Provider.Service` to the
+   layer, which it does not currently take. That service addition is the only part of this that
+   touches an upstream file beyond the one line, and it is worth a second look before doing it.
+3. The hook then: resolves via `Fallback.resolve`, mutates `streamInput.model` (F2), and publishes
+   `SessionEvent.ModelSwitched` through `EventV2Bridge.publish` — which is exactly what
+   `V2Session.switchModel` does internally, and which the Q3 seam already honours mid-turn.
+
+After that the whole path is live and wants one end-to-end run against a real 429 — or a forced
+one, which is the same instrumentation Q1 has been waiting for.
+
+### Environment left behind
+
+- Working tree clean, `dev` pushed to `origin/dev` at `4adebc33eb`. Active paradigm: `gryphon`.
+- 141 paradigm tests, 33 fallback tests, typecheck 32/32. The plugin snapshot has NOT been
+  reinstalled since the compile change — run `bun packages/paradigm/script/install.ts gryphon`
+  before any live check, or the TUI keeps running the old bundle.
