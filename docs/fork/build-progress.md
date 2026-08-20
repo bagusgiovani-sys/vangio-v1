@@ -1694,3 +1694,68 @@ one, which is the same instrumentation Q1 has been waiting for.
 - 141 paradigm tests, 33 fallback tests, typecheck 32/32. The plugin snapshot has NOT been
   reinstalled since the compile change — run `bun packages/paradigm/script/install.ts gryphon`
   before any live check, or the TUI keeps running the old bundle.
+
+---
+
+## Session state — RESUME HERE (2026-08-20) — Paradigm Shift stage one is COMPLETE
+
+**All five pieces are built, wired and pushed.** A head whose model hits a free-tier wall now
+degrades to another model by itself, mid-turn, and the swap survives the loop-step boundary.
+
+| Piece | Commit |
+| --- | --- |
+| Q3 — swap survives the step boundary | `c7170c155e` |
+| Schema: `needs`, `fallback`, `shift.auto` | `01850167b0` |
+| `StaticResolver` | `4a435d077e` |
+| Retry hook | `d48b483929` |
+| Channel + clobber fix | `cbb2155fac` |
+| Derived-fallback failsafe | `4adebc33eb` |
+| Wiring | `e0dcf514a7` |
+
+### The path, end to end
+
+429 with a `free_tier_limit` action → `retry.ts` offers it to the hook → `FallbackSwap` reads the
+head's declaration off `agent.options` → `Fallback.resolve` picks a substitute (declared chain
+first, derived from the live registry if that yields nothing) → `streamInput.model` is mutated so
+the next attempt uses it (F2) → `SessionEvent.ModelSwitched` is published, which writes the
+session row, announces the swap in the transcript, and is honoured by the agent loop at every
+subsequent step (F11/Q3). The Go upsell is dropped either way; if nothing can serve, VanGio's own
+terminal message says which head died, how many substitutes were tried, and when the wall lifts.
+
+### Verification
+
+- 143 paradigm tests, 85 fallback/session tests, typecheck 32/32.
+- `prompt.test.ts` **44 pass / 0 fail** — better than either recorded baseline (40/4 clean, 41/3
+  patched), consistent with the documented flakiness rather than any change here.
+- **The layer graph was verified by running a real prompt through it**, not by typechecking.
+  `processor.ts` now takes `Provider.Service`, and a service addition is exactly the kind of thing
+  that typechecks and then fails to build at runtime on a dependency cycle.
+- The hook itself is covered with fake services: it declines non-walls, derives for an undeclared
+  head, prefers a declared chain, stands aside on `auto:false`, walks rather than re-offering a
+  burned model, caps, and emits a terminal message instead of an upsell when nothing serves.
+
+### What is NOT proven, and cannot be yet
+
+**No real 429 has ever been observed.** F4 says the 429 is the only signal Zen sends and there is
+no way to ask for one, so the last mile is fakes. The first genuine free-tier wall is therefore
+worth treating as an experiment rather than an annoyance — it proves this path AND answers Q1 in
+the same event. Recipe unchanged: on the 429, immediately issue one minimal request to each other
+free model and record which also fail.
+
+### The next three things, in order
+
+1. **`auto: false` — the paradigm-shift path.** The hook currently stands aside when auto is off,
+   which is honest but inert. Per the spec this needs no new mechanism: the existing picker plus
+   a trigger.
+2. **Consider declaring `fallback` on the bundled presets.** They all work on the derived
+   failsafe today, but a declared chain states intent — particularly for `web-dev`'s seer, where
+   the derived pick would ignore that the role needs images unless `needs.attachment` is set.
+3. **Chase the one real server hang** — unchanged, still the oldest untouched item.
+
+### Environment left behind
+
+- Working tree clean, `dev` pushed to `origin/dev` at `e0dcf514a7`. Active paradigm: `gryphon`.
+- Plugin snapshot reinstalled after the compile change.
+- Upstream seams now number three — `retry.ts`, `processor.ts`, `prompt.ts`. All three are listed
+  in the fallback spec's Global Constraints and all three must be re-checked by hand at each
+  merge; the tests pass whether or not the seams are still wired.
