@@ -179,10 +179,30 @@ function parseJSON(value: unknown) {
   })
 }
 
+/**
+ * VanGio: the free-tier fallback's entry point into the retry loop.
+ *
+ * Returning a result at all means the fork has taken responsibility for this
+ * failure, so upstream's action - which is the Go upsell funnel (F1) - is
+ * dropped and this `message` is shown instead. `swapped` says whether a
+ * substitute model was actually installed, which is what decides the delay:
+ * a Zen daily limit's `retry-after` is the seconds remaining until UTC
+ * midnight, and waiting that out on a model we are no longer using is nonsense.
+ *
+ * Returning undefined leaves upstream behaviour completely untouched.
+ */
+export type SwapOutcome = { swapped: boolean; message: string }
+export type SwapHook = (input: {
+  reason: RetryReason | undefined
+  attempt: number
+  error: Err
+}) => Effect.Effect<SwapOutcome | undefined>
+
 export function policy(opts: {
   provider: string
   parse: (error: unknown) => Err
   set: (input: { attempt: number; message: string; action?: Retryable["action"]; next: number }) => Effect.Effect<void>
+  swap?: SwapHook
 }) {
   return Schedule.fromStepWithMetadata(
     Effect.succeed((meta: Schedule.InputMetadata<unknown>) => {
@@ -191,12 +211,19 @@ export function policy(opts: {
       if (!retry) return Cause.done(meta.attempt)
       if (meta.attempt > RETRY_MAX_RETRIES) return Cause.done(meta.attempt)
       return Effect.gen(function* () {
-        const wait = delay(meta.attempt, SessionV1.APIError.isInstance(error) ? error : undefined)
+        // VanGio: offer the failure to the fallback before honouring either the
+        // upsell action or the provider's retry-after.
+        const swap = opts.swap
+          ? yield* opts.swap({ reason: retry.action?.reason, attempt: meta.attempt, error })
+          : undefined
+        const wait = swap?.swapped
+          ? delay(meta.attempt)
+          : delay(meta.attempt, SessionV1.APIError.isInstance(error) ? error : undefined)
         const now = yield* Clock.currentTimeMillis
         yield* opts.set({
           attempt: meta.attempt,
-          message: retry.message,
-          action: retry.action,
+          message: swap?.message ?? retry.message,
+          action: swap ? undefined : retry.action,
           next: now + wait,
         })
         return [meta.attempt, Duration.millis(wait)] as [number, Duration.Duration]
