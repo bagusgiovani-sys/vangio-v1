@@ -24,6 +24,7 @@
 import { Clock, DateTime, Effect } from "effect"
 import { SessionMessage } from "@opencode-ai/schema/session-message"
 import { SessionEvent } from "@opencode-ai/schema/session-event"
+import { TuiEvent } from "@opencode-ai/schema/tui-event"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import type { Agent } from "@/agent/agent"
@@ -56,10 +57,23 @@ export namespace FallbackSwap {
   const PERSIST_AFTER = 3
 
   /**
-   * Sentinel for "the paradigm asked to be consulted, so nothing was attempted",
-   * which is different from "nothing could be found". Never shown to anyone.
+   * The command the TUI plugin registers for the paradigm picker. Sent through
+   * `tui.command.execute`, whose `command` field accepts any string and is
+   * dispatched by name against the keymap (`tui/src/app.tsx:987`), so a plugin
+   * command is reachable without inventing an event type.
    */
-  const DECLINED = "vangio:declined"
+  const PICKER_COMMAND = "paradigm.list"
+
+  export function shiftMessage(head: string, reason: Fallback.Reason): string {
+    const what =
+      reason === "model_gone"
+        ? `${head} is bound to a model that no longer exists`
+        : `${head} hit its ${reason === "free_tier_limit" ? "free-tier" : "rate"} limit`
+    // The restart caveat is not optional. The config hook fires once at boot,
+    // so a paradigm chosen now cannot apply to the session asking the question,
+    // and the picker's own status row already refuses to pretend otherwise.
+    return `${what}. Auto-swap is off for this paradigm, so nothing was changed - pick a paradigm to switch to, which applies on restart.`
+  }
 
   export type Declaration = {
     needs?: Fallback.Needs
@@ -131,6 +145,8 @@ export namespace FallbackSwap {
     exhaustedProviders: Set<string>
     /** Models that failed repeatedly for no stated reason - see escalation below. */
     persistentlyFailed: Set<string>
+    /** The paradigm-shift offer is made once per session, not once per attempt. */
+    shiftOffered: boolean
     swaps: number
   }
 
@@ -148,6 +164,7 @@ export namespace FallbackSwap {
       exhausted: new Set(),
       exhaustedProviders: new Set(),
       persistentlyFailed: new Set(),
+      shiftOffered: false,
       swaps: 0,
     }
     tracked.set(sessionID, created)
@@ -195,12 +212,29 @@ export namespace FallbackSwap {
     return Effect.gen(function* () {
       const agent = yield* deps.agents.get(deps.agentName).pipe(Effect.orElseSucceed(() => undefined))
       const declared = readDeclaration(agent?.options)
-      // auto:false means the user asked to be consulted rather than degraded.
-      // Declining leaves upstream's behaviour intact, which is the honest thing
-      // to do until the picker trigger exists.
-      if (!declared.auto) return { model: undefined, note: DECLINED }
-
       const state = stateFor(deps.sessionID)
+
+      // auto:false is the paradigm-shift path: do not swap, ask instead. The
+      // retry loop calls this on every attempt, so the offer is made once per
+      // session rather than six times in ninety seconds.
+      if (!declared.auto) {
+        const note = shiftMessage(deps.agentName, reason)
+        if (!state.shiftOffered) {
+          state.shiftOffered = true
+          yield* deps.events
+            .publish(TuiEvent.ToastShow, {
+              title: "Paradigm shift",
+              message: note,
+              variant: "warning",
+              duration: 12_000,
+            })
+            .pipe(Effect.ignore)
+          yield* deps.events.publish(TuiEvent.CommandExecute, { command: PICKER_COMMAND }).pipe(Effect.ignore)
+        }
+        // Still an outcome rather than undefined, so upstream's Go upsell is
+        // suppressed and this replaces it.
+        return { model: undefined, note }
+      }
       // Escalate on evidence, not on the first sign of trouble. ONE model
       // failing repeatedly is a model problem, and writing off its provider
       // would throw away the other six Zen models over a single blip. TWO
@@ -306,7 +340,6 @@ export namespace FallbackSwap {
           // account-wide - so trying its sibling is a slower way to fail.
           exhaustProvider: persistent,
         })
-        if (out.note === DECLINED) return undefined
         if (!out.model) return { swapped: false, message: out.note }
         deps.streamInput.model = out.model
         return { swapped: true, message: out.note }

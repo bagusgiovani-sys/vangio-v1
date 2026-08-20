@@ -142,7 +142,9 @@ function harness(opts: {
     streamInput,
     agents: { get: () => Effect.succeed({ options: opts.options ?? {} }) } as any,
     provider: { list: () => Effect.succeed(models) } as any,
-    events: { publish: (_def: unknown, data: unknown) => Effect.sync(() => void published.push(data)) } as any,
+    events: {
+      publish: (def: any, data: any) => Effect.sync(() => void published.push({ type: def?.type, ...data })),
+    } as any,
   })
 
   return { hook, streamInput, published }
@@ -182,11 +184,11 @@ describe("FallbackSwap.hook", () => {
     expect(streamInput.model.id).toBe("hy3-free")
   })
 
-  test("stands aside entirely when the paradigm turned auto off", async () => {
-    const { hook, streamInput, published } = harness({ options: { shiftAuto: false } })
-    expect(await Effect.runPromise(hook(wall))).toBeUndefined()
+  test("does not swap when the paradigm turned auto off", async () => {
+    const { hook, streamInput } = harness({ options: { shiftAuto: false } })
+    const out = await Effect.runPromise(hook(wall))
+    expect(out?.swapped).toBe(false)
     expect(streamInput.model.id).toBe("deepseek-v4-flash-free")
-    expect(published).toHaveLength(0)
   })
 
   test("walks to a new model each time rather than re-offering a burned one", async () => {
@@ -244,7 +246,9 @@ describe("FallbackSwap.rescueRetired", () => {
             failed: { id: "laguna-s-2.1-free", providerID: "opencode" },
             agents: { get: () => Effect.succeed({ options: opts.options ?? {} }) } as any,
             provider: { list: () => Effect.succeed(models) } as any,
-            events: { publish: (_d: unknown, data: unknown) => Effect.sync(() => void published.push(data)) } as any,
+            events: {
+              publish: (def: any, data: any) => Effect.sync(() => void published.push({ type: def?.type, ...data })),
+            } as any,
           }),
         ),
     }
@@ -270,9 +274,8 @@ describe("FallbackSwap.rescueRetired", () => {
   })
 
   test("respects a head that asked to be consulted instead of degraded", async () => {
-    const { run, published } = rescue({ options: { shiftAuto: false } })
+    const { run } = rescue({ options: { shiftAuto: false } })
     expect(await run()).toBeUndefined()
-    expect(published).toHaveLength(0)
   })
 
   test("honours the head's needs when rescuing, not just any live model", async () => {
@@ -364,5 +367,72 @@ describe("FallbackSwap.hook on a model that just keeps failing", () => {
     const out = await Effect.runPromise(hook({ reason: "free_tier_limit", attempt: 1, error: {} as any }))
     expect(out?.swapped).toBe(true)
     expect(streamInput.model.providerID).toBe("opencode")
+  })
+})
+
+// auto:false is the paradigm-shift path: do not degrade behind the user's back,
+// ask instead. The trigger needs no new event type - `tui.command.execute`
+// accepts any command string and the TUI dispatches it by name against the
+// keymap, which is where the paradigm plugin registers its picker.
+describe("FallbackSwap paradigm-shift path (auto: false)", () => {
+  const off = { options: { shiftAuto: false } }
+
+  test("opens the picker rather than choosing for the user", async () => {
+    const { hook, published } = harness(off)
+    await Effect.runPromise(hook(wall))
+    const command = published.find((e) => e.type === "tui.command.execute")
+    expect(command?.command).toBe("paradigm.list")
+  })
+
+  test("explains what happened instead of leaving the upsell to speak", async () => {
+    const { hook, published } = harness(off)
+    const out = await Effect.runPromise(hook(wall))
+    const toast = published.find((e) => e.type === "tui.toast.show")
+    expect(toast?.message).toContain("free-tier")
+    // An outcome at all is what suppresses upstream's Go upsell action.
+    expect(out).toBeDefined()
+    expect(out?.swapped).toBe(false)
+  })
+
+  // The config hook fires once at boot, so a paradigm chosen now cannot apply
+  // to the session that asked. Saying otherwise would be the exact dishonesty
+  // the picker's own status row already refuses.
+  test("says plainly that the switch only applies on restart", async () => {
+    const { hook } = harness(off)
+    const out = await Effect.runPromise(hook(wall))
+    expect(out?.message).toContain("restart")
+  })
+
+  test("never swaps the model on this path", async () => {
+    const { hook, streamInput, published } = harness(off)
+    await Effect.runPromise(hook(wall))
+    expect(streamInput.model.id).toBe("deepseek-v4-flash-free")
+    expect(published.find((e) => e.type === "session.next.model.switched")).toBeUndefined()
+  })
+
+  // The retry loop calls the hook on every attempt. Offering six times in
+  // ninety seconds would be worse than not offering at all.
+  test("offers once per session, not once per retry", async () => {
+    const { hook, published } = harness(off)
+    for (const attempt of [1, 2, 3, 4]) await Effect.runPromise(hook({ ...wall, attempt }))
+    expect(published.filter((e) => e.type === "tui.command.execute")).toHaveLength(1)
+  })
+
+  test("offers the shift for a retirement too, where no swap is possible", async () => {
+    const published: any[] = []
+    await Effect.runPromise(
+      FallbackSwap.rescueRetired({
+        sessionID: ("ses_" + Math.random().toString(36).slice(2)) as any,
+        agentName: "scout",
+        failed: { id: "laguna-s-2.1-free", providerID: "opencode" },
+        agents: { get: () => Effect.succeed({ options: { shiftAuto: false } }) } as any,
+        provider: { list: () => Effect.succeed({}) } as any,
+        events: {
+          publish: (def: any, data: any) => Effect.sync(() => void published.push({ type: def?.type, ...data })),
+        } as any,
+      }),
+    )
+    expect(published.find((e) => e.type === "tui.command.execute")?.command).toBe("paradigm.list")
+    expect(published.find((e) => e.type === "tui.toast.show")?.message).toContain("no longer exists")
   })
 })
