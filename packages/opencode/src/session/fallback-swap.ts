@@ -190,6 +190,30 @@ export namespace FallbackSwap {
     agentName: string
     agents: Agent.Interface
     provider: Provider.Interface
+    /**
+     * The credential check - a THIRD filter, beyond price and capability.
+     *
+     * provider.list() returns every provider opencode.json DECLARES, key or no
+     * key. Measured 2026-08-20: seventeen anthropic models sat in that list with
+     * ANTHROPIC_API_KEY unset. They were harmless only because they are paid, so
+     * isFree() dropped them - a declared provider with FREE-priced models would
+     * have been picked and would have failed on the first request.
+     *
+     * No local field separates the two cases: Zen has neither `key` nor
+     * options.apiKey and works, because it authenticates through an account
+     * integration, while anthropic looks identical and does not. Only
+     * CatalogV2's available() composes credentials AND integrations
+     * (core/src/catalog.ts:71), so it is the source of truth here.
+     *
+     * OPTIONAL, and that is a live architectural limitation rather than a
+     * preference: CatalogV2 is a LOCATION-scoped node while the session layers
+     * are instance-scoped (LayerNode.make), so wiring it into processor.ts or
+     * prompt.ts fails at boot with "Unbound layer node: @opencode/Location".
+     * Supply it from a location-scoped caller and the filter engages; omit it
+     * and the fallback behaves exactly as it did before, which is why every
+     * existing caller still works.
+     */
+    catalog?: { model: { available: () => Effect.Effect<readonly { id: string; providerID: string }[]> } }
     events: { publish: EventV2.Interface["publish"] }
   }
 
@@ -210,7 +234,7 @@ export namespace FallbackSwap {
     opts: { exhaustProvider?: boolean } = {},
   ): Effect.Effect<{ model: Provider.Model | undefined; note: string }> {
     return Effect.gen(function* () {
-      const agent = yield* deps.agents.get(deps.agentName).pipe(Effect.orElseSucceed(() => undefined))
+      const agent = yield* deps.agents.get(deps.agentName).pipe(Effect.catchCause(() => Effect.succeed(undefined)))
       const declared = readDeclaration(agent?.options)
       const state = stateFor(deps.sessionID)
 
@@ -249,12 +273,29 @@ export namespace FallbackSwap {
         if (casualties >= 2) state.exhaustedProviders.add(failed.providerID)
       }
 
-      const providers = yield* deps.provider.list().pipe(Effect.orElseSucceed(() => ({}) as Record<string, unknown>))
-        const catalog: Provider.Model[] = []
-        for (const entry of Object.values(providers) as Array<{ models?: Record<string, Provider.Model> }>) {
-          for (const model of Object.values(entry.models ?? {})) catalog.push(model)
-        }
-        const byRef = new Map(catalog.map((model) => [model.providerID + "/" + model.id, model]))
+      const providers = yield* deps.provider
+        .list()
+        .pipe(Effect.catchCause(() => Effect.succeed({} as Record<string, unknown>)))
+      const resolved: Provider.Model[] = []
+      for (const entry of Object.values(providers) as Array<{ models?: Record<string, Provider.Model> }>) {
+        for (const model of Object.values(entry.models ?? {})) resolved.push(model)
+      }
+
+      // The two lists answer different questions and both matter. provider.list()
+      // is status-filtered and carries the RESOLVED objects the loop needs;
+      // available() knows which providers can actually be reached. Only the
+      // intersection has both properties.
+      //
+      // Failing OPEN when the catalog cannot answer is deliberate: a wrong pick
+      // is recoverable, a fallback that silently never fires is not.
+      const reachable = deps.catalog
+        ? yield* deps.catalog.model
+            .available()
+            .pipe(Effect.catchCause(() => Effect.succeed(undefined as readonly { id: string; providerID: string }[] | undefined)))
+        : undefined
+      const allowed = reachable ? new Set(reachable.map((entry) => entry.providerID + "/" + entry.id)) : undefined
+      const catalog = allowed ? resolved.filter((model) => allowed.has(model.providerID + "/" + model.id)) : resolved
+      const byRef = new Map(catalog.map((model) => [model.providerID + "/" + model.id, model]))
 
         const attempt = Fallback.resolve<Provider.Model>({
           head: deps.agentName,

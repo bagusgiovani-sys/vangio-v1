@@ -142,6 +142,9 @@ function harness(opts: {
     streamInput,
     agents: { get: () => Effect.succeed({ options: opts.options ?? {} }) } as any,
     provider: { list: () => Effect.succeed(models) } as any,
+    // Everything this fake registry holds is reachable - credentials are a
+    // separate concern with its own describe block below.
+    catalog: { model: { available: () => Effect.succeed(catalog.map((m) => ({ id: m.id, providerID: m.providerID }))) } } as any,
     events: {
       publish: (def: any, data: any) => Effect.sync(() => void published.push({ type: def?.type, ...data })),
     } as any,
@@ -246,6 +249,7 @@ describe("FallbackSwap.rescueRetired", () => {
             failed: { id: "laguna-s-2.1-free", providerID: "opencode" },
             agents: { get: () => Effect.succeed({ options: opts.options ?? {} }) } as any,
             provider: { list: () => Effect.succeed(models) } as any,
+            catalog: { model: { available: () => Effect.succeed(catalog.map((m) => ({ id: m.id, providerID: m.providerID }))) } } as any,
             events: {
               publish: (def: any, data: any) => Effect.sync(() => void published.push({ type: def?.type, ...data })),
             } as any,
@@ -427,6 +431,7 @@ describe("FallbackSwap paradigm-shift path (auto: false)", () => {
         failed: { id: "laguna-s-2.1-free", providerID: "opencode" },
         agents: { get: () => Effect.succeed({ options: { shiftAuto: false } }) } as any,
         provider: { list: () => Effect.succeed({}) } as any,
+        catalog: { model: { available: () => Effect.succeed([]) } } as any,
         events: {
           publish: (def: any, data: any) => Effect.sync(() => void published.push({ type: def?.type, ...data })),
         } as any,
@@ -434,5 +439,82 @@ describe("FallbackSwap paradigm-shift path (auto: false)", () => {
     )
     expect(published.find((e) => e.type === "tui.command.execute")?.command).toBe("paradigm.list")
     expect(published.find((e) => e.type === "tui.toast.show")?.message).toContain("no longer exists")
+  })
+})
+
+// Credentials are a THIRD filter, separate from price and capability.
+//
+// provider.list() returns every provider opencode.json DECLARES, key or no key.
+// Measured 2026-08-20: ANTHROPIC_API_KEY was unset and 17 anthropic models were
+// still in that list. They were harmless only because they are paid, so
+// isFree() dropped them - a declared provider whose models are FREE-priced
+// would have been picked and would have failed on the first request.
+//
+// No local field distinguishes the two cases: Zen has neither `key` nor
+// options.apiKey and works (it authenticates through an account integration),
+// while anthropic looks identical and does not. Only CatalogV2's available()
+// composes credentials and integrations, which is why it is the source of truth
+// here - the same lesson the Craft wizard learned in ed99da81.
+describe("FallbackSwap credential filtering", () => {
+  function withCatalog(opts: {
+    catalog: ReturnType<typeof model>[]
+    credentialed: Array<{ providerID: string; id: string }>
+  }) {
+    const streamInput = { model: model("opencode/deepseek-v4-flash-free") as any }
+    const models: Record<string, any> = {}
+    for (const m of opts.catalog) {
+      models[m.providerID] = models[m.providerID] ?? { models: {} }
+      models[m.providerID].models[m.id] = m
+    }
+    const hook = FallbackSwap.hook({
+      sessionID: ("ses_" + Math.random().toString(36).slice(2)) as any,
+      agentName: "king",
+      streamInput,
+      agents: { get: () => Effect.succeed({ options: {} }) } as any,
+      provider: { list: () => Effect.succeed(models) } as any,
+      catalog: { model: { available: () => Effect.succeed(opts.credentialed) } } as any,
+      events: { publish: () => Effect.succeed(undefined) } as any,
+    })
+    return { hook, streamInput }
+  }
+
+  test("will not degrade onto a provider that has no credentials", async () => {
+    const { hook, streamInput } = withCatalog({
+      catalog: [model("nvidia/free-but-keyless"), model("opencode/hy3-free")],
+      credentialed: [{ providerID: "opencode", id: "hy3-free" }],
+    })
+    await Effect.runPromise(hook(wall))
+    expect(streamInput.model.providerID).toBe("opencode")
+    expect(streamInput.model.id).toBe("hy3-free")
+  })
+
+  test("gives up rather than picking an unreachable model", async () => {
+    const { hook, streamInput } = withCatalog({
+      catalog: [model("nvidia/free-but-keyless")],
+      credentialed: [],
+    })
+    const out = await Effect.runPromise(hook(wall))
+    expect(out?.swapped).toBe(false)
+    expect(streamInput.model.id).toBe("deepseek-v4-flash-free")
+  })
+
+  // The catalog call can fail on a half-built instance. Failing open keeps the
+  // old behaviour rather than disabling the fallback entirely - a wrong pick is
+  // recoverable, a fallback that never fires is not.
+  test("falls back to the unfiltered list when credentials cannot be checked", async () => {
+    const streamInput = { model: model("opencode/deepseek-v4-flash-free") as any }
+    const hook = FallbackSwap.hook({
+      sessionID: ("ses_" + Math.random().toString(36).slice(2)) as any,
+      agentName: "king",
+      streamInput,
+      agents: { get: () => Effect.succeed({ options: {} }) } as any,
+      provider: {
+        list: () => Effect.succeed({ opencode: { models: { "hy3-free": model("opencode/hy3-free") } } }),
+      } as any,
+      catalog: { model: { available: () => Effect.die("catalog unavailable") } } as any,
+      events: { publish: () => Effect.succeed(undefined) } as any,
+    })
+    await Effect.runPromise(hook(wall))
+    expect(streamInput.model.id).toBe("hy3-free")
   })
 })
