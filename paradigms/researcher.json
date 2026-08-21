@@ -31,7 +31,7 @@
       }
     },
     "scout-c": {
-      "model": "opencode/deepseek-v4-flash-free",
+      "model": "opencode/nemotron-3.5-lightning-free",
       "role": "answer one independent thread of the question and report only what was found",
       "needs": {
         "tools": true

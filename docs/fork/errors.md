@@ -14,6 +14,26 @@
 **Files affected:** List of changed files
 ---
 
+## [2026-08-21 06:20] A third model retired — this time the default king — and the fallback caught it unaided
+#[models] #[paradigm] #[fallback] #[verification]
+**Context:** Running the routine live smoke test after an unrelated change: `vangio run -m opencode/deepseek-v4-flash-free "Reply OK"`.
+**Error:** The header came back `> build · nemotron-3.5-lightning-free`. The requested model was not the model that answered. Logs confirmed why: `ProviderModelNotFoundError: Model not found: opencode/deepseek-v4-flash-free`, then `fallback swap`. **`deepseek-v4-flash-free` has been retired** — the third model in two days, after `kimi-k2.5-free` and `laguna-s-2.1-free`, and by far the worst one: it was the king in `gryphon` (the active paradigm), a scout in `researcher`, and the `model` + `small_model` default in `~/.config/vangio/opencode.json`.
+**Root cause:** Same mechanism as the previous two — the id leaves the runtime registry and `getModel` fails non-retryably. Nothing about this project changed; Zen's roster did. `x-preview-f-free` appeared in the same refresh. Seven Zen models every time, a different seven every time.
+**Fix:** Rebound `gryphon`'s king to `nemotron-3-ultra-free` (1M context, verified answering) and `researcher`'s scout-c to `nemotron-3.5-lightning-free` (kept distinct from scout-a and scout-b so the Q1 instrumentation survives). Added the id to the known-retired guard in `gryphon.test.ts`. `model-index.md` corrected. **The important part is that no fix was needed for the run to succeed** — the retirement path built on 2026-08-20 detected it, resolved a substitute and completed the turn, with the only visible sign being a different model name in the header.
+**Prevention:** **Three retirements in two days is the base rate, not bad luck.** Stop treating a pinned model id as a durable binding: `needs` describes the role and never rots, an id rots in hours. The remaining pinned ids in the presets exist only because a head must start somewhere — every one of them should be assumed dead until a prompt proves otherwise. Also worth noting what this run demonstrated for free: the smoke test that catches this is `run -m <model>` followed by **reading which model actually answered**, not just whether the command exited 0.
+**Files affected:** paradigms/gryphon.json, paradigms/researcher.json, packages/paradigm/test/gryphon.test.ts, docs/fork/model-index.md
+---
+
+## [2026-08-21 06:05] CatalogV2 cannot be wired into the session layer — location-scoped vs instance-scoped
+#[architecture] #[layers] #[verification] #[not-fixed]
+**Context:** Fixing the credential gap in the fallback resolver: `provider.list()` returns every DECLARED provider, keyed or not, so a declared provider with free-priced models would be picked and fail on first request. The authoritative credential check is `CatalogV2.model.available()`, which composes credentials AND integrations.
+**Error:** Threading `Catalog.Service` into `processor.ts` and `prompt.ts` **typechecked cleanly — 32/32 — and then died at boot**: `Error: Unexpected error / Unbound layer node: @opencode/Location`.
+**Root cause:** `Catalog.node` is built with `makeLocationNode`, while every session-layer node uses `LayerNode.make`. They are different scoping tiers, and an instance-scoped layer has no Location binding to satisfy the dependency. This is an architectural boundary, not a missing import — no amount of adding deps to those two layers fixes it.
+**Fix:** The credential filter ships with `catalog` as an OPTIONAL dependency. Supplied by a location-scoped caller, the filter engages and is covered by three tests; omitted, the fallback behaves exactly as before, so nothing regresses while the wiring has nowhere to live. Recorded rather than forced.
+**Prevention:** **Typecheck does not validate a layer graph.** This is the second time in two days that a service addition passed 32/32 and then failed or nearly failed at runtime (the first was `Provider.Service` in `processor.ts`, which happened to be instance-scoped and worked). **Every service added to a layer needs a real boot before it is believed** — `bun run … src/index.ts run "…"` is the cheapest proof and it takes twenty seconds. Before adding a service, check which of `makeLocationNode` / `makeGlobalNode` / `LayerNode.make` built its node and whether the target layer is in the same tier.
+**Files affected:** packages/opencode/src/session/fallback-swap.ts (optional dep + three tests)
+---
+
 ## [2026-08-20 17:10] Bounded plugin loading, the fourth upstream seam
 #[plugins] #[robustness] #[upstream-seam] #[fixed]
 **Context:** Acting on the finding recorded at 16:25 — `plugin.init()` had no timeout, so a declared-but-unresolvable plugin wedged instance boot permanently. User approved a fourth seam.

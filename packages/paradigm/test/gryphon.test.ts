@@ -120,7 +120,7 @@ describe("shipped paradigms declare what their heads need", () => {
 // the network, so it guards the two ids known to have died instead. When the
 // next one goes, add it here rather than only fixing the binding.
 describe("shipped paradigms avoid models known to be retired", () => {
-  const RETIRED = ["laguna-s-2.1-free", "kimi-k2.5-free", "north-mini-code-free", "ling-3.0-tiny-free"]
+  const RETIRED = ["laguna-s-2.1-free", "kimi-k2.5-free", "north-mini-code-free", "ling-3.0-tiny-free", "deepseek-v4-flash-free"]
   const names = ["code-review", "documenter", "gryphon", "premium-gryphon", "researcher", "web-dev"]
 
   test("no head is bound to a model that has been retired", async () => {

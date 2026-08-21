@@ -45,7 +45,7 @@ Roles are what a schemata head *does*. What each role actually needs from a mode
 
 | Role | 1st choice | 2nd choice | Note |
 |---|---|---|---|
-| king | `opencode/nemotron-3-ultra-free` | `opencode/deepseek-v4-flash-free` | 1M context vs 200k |
+| king | `opencode/nemotron-3-ultra-free` | `opencode/nemotron-3.5-lightning-free` | 1M context vs 262k |
 | coder | `opencode/nemotron-3.5-lightning-free` | `zhipu/glm-4.7-flash` | 262k output is the best free ceiling anywhere |
 | reviewer | `opencode/hy3-free` | `opencode/big-pickle` | 190k / 200k context, 64k / 32k out |
 | researcher | `opencode/hy3-free` | `opencode/big-pickle` | no genuinely tiny free model survives — see Staleness |
@@ -67,21 +67,22 @@ Roles are what a schemata head *does*. What each role actually needs from a mode
 
 ## 3. Provider detail
 
-### OpenCode Zen — 7 free models (live provider state, re-measured 2026-08-20)
+### OpenCode Zen — 7 free models (live provider state, re-measured 2026-08-21)
 
 All support tool calls. Two accept images.
 
-**`laguna-s-2.1-free` was in this table this morning and is gone by evening.** It flipped to
-`status: deprecated` in models.dev, which deletes it from the runtime registry, and it was bound
-as the scout in four presets including the active one. `muse-spark-1.2-contributor-free` arrived
-in the same refresh. Seven models both times — a different seven. Assume this table is wrong.
+**Three models have been retired out from under this project in two days.** `kimi-k2.5-free` and
+`laguna-s-2.1-free` on 2026-08-20; **`deepseek-v4-flash-free` on 2026-08-21** — which was the
+default king in `gryphon` and the configured default model. `x-preview-f-free` arrived in the same
+refresh, unmeasured. Seven models every time, a different seven every time. **Assume this table is
+wrong**, and prefer `needs` over pinned ids everywhere it is possible.
 
 | Model | Context | Output | Images |
 |---|---|---|---|
 | `nemotron-3-ultra-free` | 1,000,000 | 128,000 | no |
 | `nemotron-3.5-lightning-free` | 262,144 | 262,144 | no |
 | `muse-spark-1.2-contributor-free` | 1,048,576 | 131,072 | **yes** |
-| `deepseek-v4-flash-free` | 200,000 | 128,000 | no |
+| `x-preview-f-free` | — | — | — |
 | `mimo-v2.5-free` | 200,000 | 32,000 | **yes** |
 | `big-pickle` | 200,000 | 32,000 | no |
 | `hy3-free` | 190,000 | 64,000 | no |
