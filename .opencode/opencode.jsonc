@@ -5,7 +5,7 @@
   "instructions": ["docs/fork/**/*.md"],
   "references": {
     "effect": {
-      "repository": "github.com/Effect-TS/effect-smol",
+      "path": "~/.local/share/vangio/repos/github.com/Effect-TS/effect-smol",
       "description": "Use for Effect v4 and effect-smol implementation details",
     },
     "opencode-local": {
