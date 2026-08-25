@@ -2194,3 +2194,54 @@ instrumentation was reverted and the tree confirmed clean before this entry was 
 - Working tree carries these two doc entries only. Active paradigm: `gryphon`.
 - `.opencode/opencode.jsonc` is **unchanged** — this repo is still in the wedging state until the
   reference is switched. Launching `vangio` here will still hang.
+
+---
+
+## CORRECTION (2026-08-25, later) — the section above is wrong about the cause
+
+**The references wedge does not reproduce, and no seam was built.**
+
+Restoring the original remote reference and running it three times warm gives **15s / 20s / 15s**,
+all green. A throwaway directory containing nothing but that reference is also clean, three times.
+The section above describes a deterministic unbounded wedge. That is not what is there.
+
+### What survives from it
+
+The hang itself was real between ~20:40 and ~21:30 — six runs, one held open for **420s** on a warm
+cache, bootstrap completing in 1.4s with nothing after it, and emptying `references` reliably giving
+a green run in the same window. The correlation was measured in both directions. **What does not
+survive is the mechanism**: no span, marker or DEBUG log ever showed a blocking call, and
+`Effect.forkIn(scope)` at `reference.ts:88` is non-blocking by construction, so it cannot have caused
+what was described. Best guess, explicitly unproven: one initial `fetch` + `checkout -B` +
+`reset --hard` over a 45MB tree was pathologically slow once and is a no-op now.
+
+### What was kept and why
+
+`84d2bf4899` (remote reference -> local path) stays. It is independently defensible — the upstream
+repo is archived, so a boot-time refresh can never return anything new — but **its commit message
+overstates the evidence.** Read it against the correction entry in errors.md.
+
+### Two method failures, both worth more than the bug
+
+1. **Never measure the first run after a source edit.** A cold module graph after touching
+   `packages/core` costs 40s+ here, and a run that exceeds its `timeout` is indistinguishable from a
+   hang. This produced two retracted conclusions in one session — "the instrumentation broke the
+   build" and "the working config hangs" — both were cold-cache timeouts. Warm first, discard that
+   timing, then measure.
+2. **A mechanism you have not observed is a hypothesis.** A correlation plus a plausible-looking code
+   path was written up as a root cause. It should have been recorded as an open question.
+
+### The next three things, in order
+
+1. **The actual reported bug is still untouched** — repeated `[504] Upstream idle timeout exceeded`
+   from Zen on `nemotron-3-ultra-free` in the 2026-08-23 Web Coder session, which is what the user
+   originally hit: the turn loads, stops, and produces nothing. That is a degradation-path question,
+   not a boot question.
+2. **Leave the references path alone** until it reproduces. If it recurs, capture `git` child
+   processes and the OTLP span tree at the moment of the hang.
+3. **Q1 — Zen's daily bucket**, still waiting on a real 429.
+
+### Environment left behind
+
+- Working tree clean; `.opencode/opencode.jsonc` on the committed local-path form. Active paradigm:
+  `gryphon`. **No test suite was run this session.**
