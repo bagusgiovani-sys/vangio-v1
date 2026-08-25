@@ -2245,3 +2245,59 @@ overstates the evidence.** Read it against the correction entry in errors.md.
 
 - Working tree clean; `.opencode/opencode.jsonc` on the committed local-path form. Active paradigm:
   `gryphon`. **No test suite was run this session.**
+
+---
+
+## Session state — RESUME HERE (2026-08-25, the silence swap) — the reported bug, fixed
+
+**The bug the user actually hit was never the references wedge.** It was Zen returning
+`[504] Upstream idle timeout exceeded` on `nemotron-3-ultra-free` after ~123 seconds with **zero
+tokens**, twice in the 2026-08-23 `Web Coder` session, retrying the same model each time. One turn
+cost 3m 57s and produced a single message; on the next prompt the user cancelled after 20s.
+
+### Why the fallback never helped
+
+Nothing was broken. Three sound rules compose badly: `retry.ts` classes 504 with all 5xx (retry same
+model), `ELIGIBLE` admits only rate limits, and the catch-all `PERSIST_AFTER = 3` counts attempts
+**within one turn**. Each turn saw one failure, so the counter never moved. **Earning a swap on idle
+timeouts costs ~6 minutes of unbroken silence** — past every human budget.
+
+### What shipped — `a9fde4ac38`
+
+`packages/opencode/src/session/stream-progress.ts` (new) reports how long an attempt stayed silent.
+`retry.ts` carries it (`silentMs`) through the existing swap seam, `FallbackSwap.hook` judges it
+(`STALL_AFTER_MS = 30_000`), `processor.ts` wires a per-attempt tracker. Unset behaves exactly as
+before — one guard test in each of the three files.
+
+**The signal is duration, not zero output.** The first cut gated on "produced nothing" and broke four
+`processor-effect` retry tests, because their fake `503` arrives instantly having produced nothing
+too — the transient case that must keep retrying. 30s separates a fast refusal from a stall.
+
+### Verification
+
+session suite **501 pass / 2 fail**, both failures reproduced on a stashed baseline
+(`prompt.test.ts` metadata, `snapshot-tool-race`) so neither is mine. `processor-effect` **16/16**
+against a **16/16** baseline. typecheck **32/32**. Two live runs green. `core` and `tui` **not run**
+this session.
+
+### Two findings worth more than the fix
+
+1. **Baseline a suspicious failure before believing OR disbelieving it.** The four regressions timed
+   out at ~30000ms and looked exactly like the known deadline class. Stashing and re-running is what
+   separated a real regression from a red herring — it took 25 seconds.
+2. **Check whether it already exists.** Retry visibility was about to be built from scratch;
+   `prompt/index.tsx:1533` already renders the retry state with a countdown.
+
+### The next three things, in order
+
+1. **The smoke test cannot see this class of failure.** `run -m <model> "Reply OK"` is too small —
+   both candidate models answer it in ~20s. A honest latency probe needs a real working context.
+   Worth designing before trusting another model binding.
+2. **Reconsider the king.** A 1M-context model is a strange default for interactive work where
+   first-token latency is what you feel. Now measurable, since a stall swaps and logs.
+3. **Q1 — Zen's daily bucket**, still waiting on a real 429.
+
+### Environment left behind
+
+- Working tree clean, `dev` pushed. Active paradigm: `gryphon`. `.opencode/opencode.jsonc` on the
+  committed local-path reference form.
