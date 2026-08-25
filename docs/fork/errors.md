@@ -14,6 +14,16 @@
 **Files affected:** List of changed files
 ---
 
+## [2026-08-25 21:30] A git-backed `references` entry wedges instance boot forever — a fifth seam candidate
+#[references] #[boot] #[upstream-seam] #[verification] #[not-fixed]
+**Context:** Reported symptom was `vangio` sitting on "loading" with no progress. Reproduced against this repo.
+**Error:** `vangio run "Reply with exactly: OK"` launched **inside `vangio-v1`** never completes — **no error, no log line, no timeout, tested out to 420s**. The identical command from the parent directory `C:\Exodus\Projects\VanGio-AI Agent` answers in 24s. Not TUI-specific: the headless `run` reproduces it exactly.
+**Root cause:** `.opencode/opencode.jsonc` declares a git-backed reference, `"effect": { "repository": "github.com/Effect-TS/effect-smol" }`. `Reference` is **location-scoped** and calls `RepositoryCache.ensure({ ..., refresh: true })` on every materialization (`packages/core/src/reference.ts:88`). Nothing on that path is bounded. Instance bootstrap itself is **not** the problem — it completes in **1.4s** with all six services (`lsp, shareNext, format, vcs, snapshot, project`) returning; the wedge is in the later location-services phase, which never reaches `booting location services` and never creates a session. Silent even at `OPENCODE_LOG_LEVEL=DEBUG`.
+**Fix:** **Not fixed** — bounding it is a new seam in upstream code and is the user's call. Two verified workarounds: point the entry at the clone already on disk (`"path": "~/.local/share/vangio/repos/github.com/Effect-TS/effect-smol"`) → **21s, green**, and the reference stays usable; or delete the entry → **22s, green**. The upstream repo is archived, so there is nothing to refresh anyway.
+**Prevention:** **Same failure class as the `plugin.init()` seam bounded on 2026-08-20** — an unbounded await at instance boot with no error, no log and no timeout, which is precisely the shape `Effect.catchCause` cannot catch. Treat every network-touching call reached during instance or location boot as a seam candidate until it is bounded. Two traps worth recording: (1) **the obvious suspect was innocent** — `opencode-mem` is declared here and not installed, but `loadExternal` returns in **212ms** and the seam correctly skips it (`count=3`); a standalone probe confirmed `Effect.timeout` *does* interrupt `Effect.promise` on 4.0.0-beta.83, firing at 2009ms. The first read of the logs blamed the plugin and was wrong — adding an explicit `:END` marker is what corrected it, because **absence of a completion line is not evidence of a hang**. (2) **Bisecting the config beat reading the code**: emptying `references`, then restoring one entry at a time, localised this in two runs. Also: **piping the TUI proves nothing on this build** (0 bytes, no paint) and a TUI never self-exits, so `timeout` always reports 124 — `run` is the honest reproduction.
+**Files affected:** None (diagnosis only; instrumentation reverted, tree clean). Trigger lives in `.opencode/opencode.jsonc`.
+---
+
 ## [2026-08-21 06:20] A third model retired — this time the default king — and the fallback caught it unaided
 #[models] #[paradigm] #[fallback] #[verification]
 **Context:** Running the routine live smoke test after an unrelated change: `vangio run -m opencode/deepseek-v4-flash-free "Reply OK"`.

@@ -2129,3 +2129,68 @@ itself exercised end to end.
 
 - Working tree clean, `dev` pushed to `origin/dev`. Active paradigm: `gryphon`.
 - `merge/upstream-2026-08-20` still exists locally and is contained in `dev`; safe to delete.
+
+---
+
+## Session state — RESUME HERE (2026-08-25, the references wedge) — a FIFTH seam candidate
+
+**`vangio` hangs forever inside this repo and nowhere else.** Diagnosed, **not fixed** — the fix is
+a new seam in upstream code and that is the user's call.
+
+### What it is
+
+A git-backed `references` entry in `.opencode/opencode.jsonc`: `effect` →
+`github.com/Effect-TS/effect-smol`. `Reference` is **location-scoped** and calls
+`RepositoryCache.ensure({ ..., refresh: true })` at every materialization
+(`packages/core/src/reference.ts:88`). Nothing on that path is bounded, so boot never finishes —
+no error, no log line, no timeout, measured out to **420s**.
+
+**Instance bootstrap is not the culprit.** It completes in **1.4s** with all six services
+(`lsp, shareNext, format, vcs, snapshot, project`) returning. The wedge is the later
+location-services phase, which never reaches `booting location services` and never creates a
+session. Silent even at `OPENCODE_LOG_LEVEL=DEBUG`.
+
+### What it is NOT — each tested, not assumed
+
+| Suspect | Verdict |
+| --- | --- |
+| `opencode-mem`, declared here and not installed | **innocent** — `loadExternal` returns in 212ms, seam skips it (`count=3`) |
+| the `plugin.init()` timeout seam | **intact** — probe confirmed `Effect.timeout` interrupts `Effect.promise` (fired at 2009ms) |
+| npm dependency install | `waitForDependencies` completes in **1ms** |
+| codegraph MCP | disabled it — no change |
+| the git fetch itself | 2s standalone; **no `git.exe` alive** during the hang |
+| stale flocks | two July locks from dead pid 67324; no lock or breaker created during the hang |
+
+### Workarounds, both verified live
+
+- Point the entry at the clone already on disk —
+  `"path": "~/.local/share/vangio/repos/github.com/Effect-TS/effect-smol"` — **21s, green**, and
+  the reference stays usable. Upstream is archived, so there is nothing to refresh. **Recommended.**
+- Delete the entry — **22s, green**.
+
+### Two things noticed in passing, neither the cause
+
+- `~/.config/vangio/opencode.json` still pins `model` **and** `small_model` to
+  `deepseek-v4-flash-free`, retired 2026-08-21. The fallback rescues every run silently — everything
+  answered on `nemotron-3-ultra-free`. It works, and the config lies.
+- Two stale lock directories in `~/.local/state/vangio/locks/` from pid 67324, 2026-07-18. Harmless
+  (`Npm.install` returns before reaching `reify`), but litter.
+
+### The next three things, in order
+
+1. **Decide the fifth seam** — bound `RepositoryCache.ensure` on the boot path the way
+   `loadExternal` was bounded on 2026-08-20. Same shape, same silence, same argument.
+2. **Correct the stale default model** in `~/.config/vangio/opencode.json`.
+3. **Q1 — Zen's daily bucket**, still waiting on a real 429.
+
+### Verification
+
+Reproduction and both workarounds measured live. **No code changed** — all diagnostic
+instrumentation was reverted and the tree confirmed clean before this entry was written.
+**No test suite was run this session**, so nothing here is evidence about suite health.
+
+### Environment left behind
+
+- Working tree carries these two doc entries only. Active paradigm: `gryphon`.
+- `.opencode/opencode.jsonc` is **unchanged** — this repo is still in the wedging state until the
+  reference is switched. Launching `vangio` here will still hang.
