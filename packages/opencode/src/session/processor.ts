@@ -5,6 +5,7 @@ import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { Cause, Deferred, Effect, Exit, Layer, Context, Scope, Schema } from "effect"
 import * as Stream from "effect/Stream"
 import { Agent } from "@/agent/agent"
+import { StreamProgress } from "./stream-progress"
 import { FallbackSwap } from "./fallback-swap"
 import { Config } from "@/config/config"
 import { Permission } from "@/permission"
@@ -634,16 +635,23 @@ const layer = Layer.effect(
         })
         ctx.needsCompaction = false
         ctx.shouldBreak = (yield* config.get()).experimental?.continue_loop_on_deny !== true
+        // VanGio: per-ATTEMPT, so the fallback can tell a model that never
+        // started from one that died halfway. Reset inside the retried block.
+        const progress = StreamProgress.tracker(Date.now())
 
         return yield* Effect.gen(function* () {
           yield* Effect.gen(function* () {
             ctx.currentText = undefined
             ctx.reasoningMap = {}
+            progress.reset(Date.now())
             yield* status.set(ctx.sessionID, { type: "busy" })
             const stream = llm.stream(streamInput)
 
             yield* stream.pipe(
-              Stream.tap((event) => handleEvent(event)),
+              Stream.tap((event) => {
+                progress.saw((event as { type?: string }).type ?? "")
+                return handleEvent(event)
+              }),
               Stream.takeUntil(() => ctx.needsCompaction),
               Stream.runDrain,
             )
@@ -664,6 +672,7 @@ const layer = Layer.effect(
               SessionRetry.policy({
                 provider: input.model.providerID,
                 parse,
+                silentMs: () => progress.silentMs(Date.now()),
                 // VanGio: degrade the head instead of showing the Go upsell.
                 swap: FallbackSwap.hook({
                   sessionID: ctx.sessionID,

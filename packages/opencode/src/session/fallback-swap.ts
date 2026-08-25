@@ -57,6 +57,23 @@ export namespace FallbackSwap {
   const PERSIST_AFTER = 3
 
   /**
+   * How long a stream may produce NOTHING before the model is treated as not
+   * serving this request at all.
+   *
+   * Measured 2026-08-23: Zen returned `[504] Upstream idle timeout exceeded`
+   * on `nemotron-3-ultra-free` after ~123 seconds with zero tokens, twice in
+   * one session. `PERSIST_AFTER` would only have moved on the third such
+   * failure in a single turn - about six minutes of dead air - and the user
+   * cancelled long before that.
+   *
+   * The threshold has to sit well above a fast refusal and well below the
+   * gateway's own budget: a 503 that comes back in 200ms produced nothing
+   * either, and it genuinely deserves its retries. 30s separates the two with
+   * room to spare in both directions.
+   */
+  const STALL_AFTER_MS = 30_000
+
+  /**
    * The command the TUI plugin registers for the paradigm picker. Sent through
    * `tui.command.execute`, whose `command` field accepts any string and is
    * dispatched by name against the keymap (`tui/src/app.tsx:987`), so a plugin
@@ -373,7 +390,14 @@ export namespace FallbackSwap {
         // failing repeatedly, so genuine transient errors still get their
         // retries.
         const persistent = !walled && info.attempt >= PERSIST_AFTER
-        if (!walled && !persistent) return undefined
+        // VanGio: except a stream that went SILENT, which is known on the
+        // first failure. Minutes with no output means the model never started,
+        // and duration needs no vocabulary - the same argument PERSIST_AFTER
+        // makes for counting rather than parsing. Deliberately NOT "produced
+        // nothing": a 503 back in 200ms produced nothing too, and that one
+        // should keep its retries.
+        const stalled = !walled && info.silentMs !== undefined && info.silentMs >= STALL_AFTER_MS
+        if (!walled && !persistent && !stalled) return undefined
 
         const out = yield* degrade(deps, walled ? (info.reason as Fallback.Reason) : "model_gone", deps.streamInput.model, {
           // A model that keeps failing for no stated reason has usually taken

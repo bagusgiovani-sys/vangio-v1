@@ -116,3 +116,43 @@ describe("session.retry fallback hook", () => {
     expect(decision.next - started).toBeGreaterThan(1_000_000)
   })
 })
+
+// The silence report the fallback needs to tell a stall from a fast refusal.
+// The policy only carries it; the judgement lives in FallbackSwap.hook.
+describe("SessionRetry.policy silence reporting", () => {
+  async function drive(silentMs?: () => number) {
+    const seen: Array<number | undefined> = []
+    let failed = false
+    const effect = Effect.gen(function* () {
+      if (!failed) {
+        failed = true
+        return yield* Effect.fail(freeTierError())
+      }
+      return "ok" as const
+    }).pipe(
+      Effect.retry(
+        SessionRetry.policy({
+          provider: "opencode",
+          parse,
+          silentMs,
+          set: () => Effect.void,
+          swap: (input) => Effect.sync(() => (seen.push(input.silentMs), undefined)),
+        }),
+      ),
+    )
+    await Effect.runPromise(Effect.timeout(effect, 300).pipe(Effect.orElseSucceed(() => "timeout")))
+    return seen
+  }
+
+  test("hands the hook how long the attempt was silent", async () => {
+    expect(await drive(() => 123_000)).toEqual([123_000])
+  })
+
+  test("reports zero when the attempt produced output", async () => {
+    expect(await drive(() => 0)).toEqual([0])
+  })
+
+  test("reports undefined when nothing is wired, leaving the seam as it was", async () => {
+    expect(await drive()).toEqual([undefined])
+  })
+})

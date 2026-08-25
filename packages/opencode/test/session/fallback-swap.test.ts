@@ -518,3 +518,49 @@ describe("FallbackSwap credential filtering", () => {
     expect(streamInput.model.id).toBe("hy3-free")
   })
 })
+
+// ---------------------------------------------------------------------------
+// A stream that went SILENT is not the same failure as a stream that refused.
+//
+// Measured 2026-08-23 against Zen: `nemotron-3-ultra-free` returned
+// `[504] Upstream idle timeout exceeded` after ~123 seconds having produced
+// zero tokens, twice in one session. Upstream classes that with every other
+// 5xx, so it retried the same model at ~2 minutes of dead air per attempt.
+// PERSIST_AFTER would only have moved on the third failure of a single turn.
+// The user cancelled first, which is the honest measure of the budget.
+//
+// The signal is duration, not zero output: a 503 back in 200ms has produced
+// nothing either and genuinely deserves its retries.
+describe("FallbackSwap.hook on a stream that went silent", () => {
+  const dead = { reason: undefined, attempt: 1, error: {} as any }
+
+  test("swaps on the first failure when the model was silent for minutes", async () => {
+    const { hook, streamInput } = harness({})
+    const out = await Effect.runPromise(hook({ ...dead, silentMs: 123_000 }))
+    expect(out?.swapped).toBe(true)
+    expect(streamInput.model.id).toBe("nemotron-3.5-lightning-free")
+  })
+
+  // The 503-in-200ms case. Nothing produced, but nothing stalled either.
+  test("leaves a fast failure on its honest retries", async () => {
+    const { hook, streamInput } = harness({})
+    const out = await Effect.runPromise(hook({ ...dead, silentMs: 200 }))
+    expect(out).toBeUndefined()
+    expect(streamInput.model.id).toBe("deepseek-v4-flash-free")
+  })
+
+  test("leaves a stream that produced output alone", async () => {
+    const { hook, streamInput } = harness({})
+    const out = await Effect.runPromise(hook({ ...dead, silentMs: 0 }))
+    expect(out).toBeUndefined()
+    expect(streamInput.model.id).toBe("deepseek-v4-flash-free")
+  })
+
+  // A build that cannot report silence must behave exactly as before.
+  test("unknown silence changes nothing", async () => {
+    const { hook, streamInput } = harness({})
+    const out = await Effect.runPromise(hook(dead))
+    expect(out).toBeUndefined()
+    expect(streamInput.model.id).toBe("deepseek-v4-flash-free")
+  })
+})

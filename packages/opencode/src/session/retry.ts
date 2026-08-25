@@ -197,6 +197,12 @@ export type SwapHook = (input: {
   reason: RetryReason | undefined
   attempt: number
   error: Err
+  /**
+   * VanGio: how long the failed attempt went WITHOUT the model producing
+   * anything. 0 means it produced output; `undefined` means the caller cannot
+   * tell, which must behave exactly as this seam did before the field existed.
+   */
+  silentMs?: number
 }) => Effect.Effect<SwapOutcome | undefined>
 
 export function policy(opts: {
@@ -204,6 +210,12 @@ export function policy(opts: {
   parse: (error: unknown) => Err
   set: (input: { attempt: number; message: string; action?: Retryable["action"]; next: number }) => Effect.Effect<void>
   swap?: SwapHook
+  /**
+   * VanGio: reports how long the attempt that just failed stayed silent.
+   * Carried here, judged in FallbackSwap.hook. Unset leaves this seam exactly
+   * as it was.
+   */
+  silentMs?: () => number
 }) {
   return Schedule.fromStepWithMetadata(
     Effect.succeed((meta: Schedule.InputMetadata<unknown>) => {
@@ -215,7 +227,12 @@ export function policy(opts: {
         // VanGio: offer the failure to the fallback before honouring either the
         // upsell action or the provider's retry-after.
         const swap = opts.swap
-          ? yield* opts.swap({ reason: retry.action?.reason, attempt: meta.attempt, error })
+          ? yield* opts.swap({
+              reason: retry.action?.reason,
+              attempt: meta.attempt,
+              error,
+              silentMs: opts.silentMs?.(),
+            })
           : undefined
         const wait = swap?.swapped
           ? delay(meta.attempt)
