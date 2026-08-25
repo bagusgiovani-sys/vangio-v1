@@ -564,3 +564,74 @@ describe("FallbackSwap.hook on a stream that went silent", () => {
     expect(streamInput.model.id).toBe("deepseek-v4-flash-free")
   })
 })
+
+// A stalled model has NOT retired. Saying it has is the same class of lie the
+// reset-time wording already refuses to tell: the user would go rebind a
+// binding that was never wrong, when the model is merely too slow right now.
+describe("FallbackSwap wording for a stall", () => {
+  test("the shift message does not claim a stalled model is gone", () => {
+    const m = FallbackSwap.shiftMessage("king", "stalled")
+    expect(m).not.toContain("no longer exists")
+    expect(m).toContain("stopped responding")
+  })
+
+  test("the terminal message does not claim a stalled model is gone", () => {
+    const m = FallbackSwap.terminalMessage("king", 0, Date.UTC(2026, 7, 25, 12, 0, 0), "stalled")
+    expect(m).not.toContain("no longer exists")
+    expect(m).toContain("stopped responding")
+  })
+
+  // A stall says nothing about the provider's credentials, so it must not
+  // report a free-tier reset time either.
+  test("the terminal message does not promise a reset for a stall", () => {
+    const m = FallbackSwap.terminalMessage("king", 0, Date.UTC(2026, 7, 25, 12, 0, 0), "stalled")
+    expect(m).not.toContain("00:00 UTC")
+  })
+
+  test("a stall with no substitute reports the stall rather than a retirement", async () => {
+    const { hook } = harness({ catalog: [] })
+    const out = await Effect.runPromise(
+      hook({ reason: undefined, attempt: 1, error: {} as any, silentMs: 123_000 }),
+    )
+    expect(out?.swapped).toBe(false)
+    expect(out?.message).not.toContain("no longer exists")
+    expect(out?.message).toContain("stopped responding")
+  })
+})
+
+// The threshold has to be forceable, for the same reason the plugin seam's
+// budget is: the real failure takes ~123s to arrive, which is far too slow to
+// sit inside a test and awkward to reproduce live on demand.
+describe("FallbackSwap stall threshold override", () => {
+  function withEnv(value: string | undefined, fn: () => Promise<void>) {
+    const prev = process.env["VANGIO_STALL_AFTER_MS"]
+    if (value === undefined) delete process.env["VANGIO_STALL_AFTER_MS"]
+    else process.env["VANGIO_STALL_AFTER_MS"] = value
+    return fn().finally(() => {
+      if (prev === undefined) delete process.env["VANGIO_STALL_AFTER_MS"]
+      else process.env["VANGIO_STALL_AFTER_MS"] = prev
+    })
+  }
+
+  test("a lowered budget makes a short silence count as a stall", () =>
+    withEnv("50", async () => {
+      const { hook, streamInput } = harness({})
+      // 200ms is nowhere near the 30s default, so this can only pass if the
+      // override is being read.
+      const out = await Effect.runPromise(
+        hook({ reason: undefined, attempt: 1, error: {} as any, silentMs: 200 }),
+      )
+      expect(out?.swapped).toBe(true)
+      expect(streamInput.model.id).toBe("nemotron-3.5-lightning-free")
+    }))
+
+  test("a junk value falls back to the shipped budget", () =>
+    withEnv("not-a-number", async () => {
+      const { hook, streamInput } = harness({})
+      const out = await Effect.runPromise(
+        hook({ reason: undefined, attempt: 1, error: {} as any, silentMs: 200 }),
+      )
+      expect(out).toBeUndefined()
+      expect(streamInput.model.id).toBe("deepseek-v4-flash-free")
+    }))
+})

@@ -30,7 +30,7 @@
  */
 
 export namespace Fallback {
-  export type Reason = "free_tier_limit" | "account_rate_limit" | "model_gone"
+  export type Reason = "free_tier_limit" | "account_rate_limit" | "model_gone" | "stalled"
 
   /** What the head's role requires, as declared in the paradigm file. */
   export type Needs = {
@@ -131,6 +131,7 @@ export namespace Fallback {
     free_tier_limit: "free tier limit",
     account_rate_limit: "account rate limit",
     model_gone: "model no longer available",
+    stalled: "model stopped responding",
   }
 
   export function resolveStatic<M extends Judgeable>(input: {
@@ -235,7 +236,11 @@ export namespace Fallback {
    * trading a dead model for a dead account.
    */
   function preferElsewhere(reason: Reason): boolean {
-    return reason !== "model_gone"
+    // A STALL is like a retirement in the one way that matters here: it says
+    // nothing about the provider, whose credentials are working fine. The model
+    // is merely too slow right now, so a sibling on the same provider is a
+    // perfectly good answer and moving accounts would be unmotivated.
+    return reason !== "model_gone" && reason !== "stalled"
   }
 
   export function resolveDerived<M extends Judgeable>(input: {

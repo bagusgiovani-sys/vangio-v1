@@ -74,6 +74,19 @@ export namespace FallbackSwap {
   const STALL_AFTER_MS = 30_000
 
   /**
+   * Read per call, not once at module load, so a probe can force a stall
+   * without waiting out the real budget - the failure this exists for takes
+   * ~123s to arrive, which is far too slow to sit inside a test and awkward to
+   * reproduce live on demand. Same reasoning as VANGIO_PLUGIN_LOAD_TIMEOUT_MS,
+   * and the same shape: a junk or non-positive value falls back to the shipped
+   * budget rather than disabling the guard.
+   */
+  function stallAfterMs(): number {
+    const raw = Number.parseInt(process.env["VANGIO_STALL_AFTER_MS"] ?? "", 10)
+    return Number.isFinite(raw) && raw > 0 ? raw : STALL_AFTER_MS
+  }
+
+  /**
    * The command the TUI plugin registers for the paradigm picker. Sent through
    * `tui.command.execute`, whose `command` field accepts any string and is
    * dispatched by name against the keymap (`tui/src/app.tsx:987`), so a plugin
@@ -85,7 +98,9 @@ export namespace FallbackSwap {
     const what =
       reason === "model_gone"
         ? `${head} is bound to a model that no longer exists`
-        : `${head} hit its ${reason === "free_tier_limit" ? "free-tier" : "rate"} limit`
+        : reason === "stalled"
+          ? `${head} stopped responding`
+          : `${head} hit its ${reason === "free_tier_limit" ? "free-tier" : "rate"} limit`
     // The restart caveat is not optional. The config hook fires once at boot,
     // so a paradigm chosen now cannot apply to the session asking the question,
     // and the picker's own status row already refuses to pretend otherwise.
@@ -151,6 +166,12 @@ export namespace FallbackSwap {
     // never coming back.
     if (reason === "model_gone") {
       return `${head} is bound to a model that no longer exists, and could not be degraded (${attempted}). Rebind it in the paradigm.`
+    }
+    // A stall is not a retirement and not a wall: the binding is fine and the
+    // credentials are fine, so neither "rebind it" nor a reset time would be
+    // true. Say only what is known.
+    if (reason === "stalled") {
+      return `${head} stopped responding and could not be degraded (${attempted}). Try again, or bind it to a faster model.`
     }
     const reset = resetsAt(now)
     const hours = Math.max(1, Math.round((reset.getTime() - now) / 3_600_000))
@@ -396,10 +417,14 @@ export namespace FallbackSwap {
         // makes for counting rather than parsing. Deliberately NOT "produced
         // nothing": a 503 back in 200ms produced nothing too, and that one
         // should keep its retries.
-        const stalled = !walled && info.silentMs !== undefined && info.silentMs >= STALL_AFTER_MS
+        const stalled = !walled && info.silentMs !== undefined && info.silentMs >= stallAfterMs()
         if (!walled && !persistent && !stalled) return undefined
 
-        const out = yield* degrade(deps, walled ? (info.reason as Fallback.Reason) : "model_gone", deps.streamInput.model, {
+        // "stalled" is the more specific truth when both apply: a model that
+        // went silent has not retired, and telling the user to rebind a binding
+        // that was never wrong sends them after the wrong thing.
+        const why: Fallback.Reason = walled ? (info.reason as Fallback.Reason) : stalled ? "stalled" : "model_gone"
+        const out = yield* degrade(deps, why, deps.streamInput.model, {
           // A model that keeps failing for no stated reason has usually taken
           // its whole provider down with it - no balance and a bad key are both
           // account-wide - so trying its sibling is a slower way to fail.

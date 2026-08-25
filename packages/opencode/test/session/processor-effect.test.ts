@@ -1112,3 +1112,110 @@ itFragmentFailure.live("session.processor effect tests retain partial legacy par
     { config: cfg },
   ),
 )
+
+// END-TO-END proof that processor.ts actually measures silence and hands it to
+// the fallback. Everything else about the stall swap is unit-tested by passing
+// `silentMs` to the hook as a number, which proves the JUDGEMENT but says
+// nothing about the WIRING - whether a real stream attempt produces a real
+// figure at all.
+//
+// The pair below is the discriminator. With the budget forced to 1ms a fast
+// 503 counts as a stall; with the shipped 30s budget the same failure does
+// not. Only a value that is genuinely measured from the attempt can be both
+// above 1ms and below 30s, so a constant - 0, or a hardcoded large number -
+// fails one test or the other.
+//
+// The single test model has no substitute to move to, so the swap reports
+// "could not be degraded" - which is exactly the wording that proves the stall
+// path ran rather than the ordinary retry path.
+function withStallBudget<A, E, R>(value: string | undefined, effect: Effect.Effect<A, E, R>) {
+  return Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const prev = process.env["VANGIO_STALL_AFTER_MS"]
+      if (value === undefined) delete process.env["VANGIO_STALL_AFTER_MS"]
+      else process.env["VANGIO_STALL_AFTER_MS"] = value
+      return prev
+    }),
+    () => effect,
+    (prev) =>
+      Effect.sync(() => {
+        if (prev === undefined) delete process.env["VANGIO_STALL_AFTER_MS"]
+        else process.env["VANGIO_STALL_AFTER_MS"] = prev
+      }),
+  )
+}
+
+function retryMessages(budget: string | undefined) {
+  return provideTmpdirServer(
+    ({ dir, llm }) =>
+      withStallBudget(
+        budget,
+        Effect.gen(function* () {
+          const { processors, session, provider } = yield* boot()
+          const events = yield* EventV2Bridge.Service
+
+          yield* llm.error(503, { error: "boom" })
+          yield* llm.text("")
+
+          const chat = yield* session.create({})
+          const parent = yield* user(chat.id, "retry")
+          const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+          const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+          const messages: string[] = []
+          const off = yield* events.listen((evt) => {
+            if (evt.type !== SessionStatus.Event.Status.type) return Effect.void
+            const data = evt.data as typeof SessionStatus.Event.Status.data.Type
+            if (data.sessionID === chat.id && data.status.type === "retry") messages.push(data.status.message)
+            return Effect.void
+          })
+          const handle = yield* processors.create({
+            assistantMessage: msg,
+            sessionID: chat.id,
+            model: mdl,
+          })
+          const value = yield* handle.process({
+            user: {
+              id: parent.id,
+              sessionID: chat.id,
+              role: "user",
+              time: parent.time,
+              agent: parent.agent,
+              model: { providerID: ref.providerID, modelID: ref.modelID },
+            } satisfies SessionV1.User,
+            sessionID: chat.id,
+            model: mdl,
+            agent: agent(),
+            system: [],
+            messages: [{ role: "user", content: "retry" }],
+            tools: {},
+          })
+          yield* off
+          expect(value).toBe("continue")
+          return messages
+        }),
+      ),
+    { config: (url) => providerCfg(url) },
+  )
+}
+
+// The forced-1ms companion to the test below was REMOVED, deliberately.
+//
+// With the budget at 1ms every attempt counts as a stall, so the fallback walks
+// the whole chain - and the substitutes it resolves (glm-*) are REAL providers,
+// so the retry leaves the fake server and goes to the network. Non-hermetic and
+// ~75s. It did do its job once, interactively: with markers on `degrade` it
+// showed `why=stalled` reached the fallback from a real stream attempt, which
+// is the wiring proof. Pinning that permanently needs a fake provider with no
+// resolvable substitute, which the shared harness does not offer today.
+//
+// What survives here is the guard that matters most in practice: a fast failure
+// must NOT be treated as a stall. Gating on "produced nothing" instead of
+// duration broke four tests in this file, and this is the test that would catch
+// that regression returning.
+it.live("session.processor effect tests a fast failure is not treated as a stall", () =>
+  Effect.gen(function* () {
+    const messages = yield* retryMessages(undefined)
+    expect(messages.length).toBe(1)
+    expect(messages[0]).not.toContain("stopped responding")
+  }),
+)
