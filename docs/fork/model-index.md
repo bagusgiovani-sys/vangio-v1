@@ -207,3 +207,30 @@ curl -s https://opencode.ai/zen/v1/models | tr ',' '\n' | grep -o '"id":"[^"]*fr
 - **Output ceiling is the binding constraint for implementer roles**, not context. Several free
   models cap output at 32k, which truncates real file writes. `nemotron-3.5-lightning-free` at 262k
   is the standout and should be the default coder binding.
+
+## Measured time-to-first-token (2026-08-26)
+
+`bun packages/paradigm/script/latency-probe.ts --kb <n> --runs <n>` — context built from
+`packages/opencode/src/session/*.ts`, timed against the provider directly so instance boot is not
+counted. Gateway idle budget observed at **~123s** (two real failures, 2026-08-23).
+
+| Model | 60KB | 250KB | 250KB, worst of 3 |
+|---|---|---|---|
+| `nemotron-3-ultra-free` | 6.0s | 4.9s | **11.0s** |
+| `nemotron-3.5-lightning-free` | 2.7s | 3.0s | — |
+| `hy3-free` | 8.2s | 26.2s | **17.0s** |
+
+**Nothing here is close to the budget, and the probe does NOT reproduce the 2026-08-23 failure.**
+That is the finding, not a footnote. Two things follow.
+
+First, **the suspicion that a 1M-context model is a bad interactive default is not supported.**
+`nemotron-3-ultra-free` is the *fastest to first token* of the three at 250KB. Whatever cost its
+context window carries, it is not paid at prefill.
+
+Second, **if prefill does not explain a 123-second silence, something time-varying does** — free-tier
+queueing or provider contention are the obvious candidates, and neither is reproducible on demand.
+So this table says a model is *structurally* fast enough; it cannot promise a given turn will be.
+`hy3-free` is the one to watch: it is the only model whose figure moves sharply with context
+(8.2s → 26.2s), and it varies run to run.
+
+Re-measure after any binding change, and read the WORST sample, never the mean.

@@ -14,6 +14,16 @@
 **Files affected:** List of changed files
 ---
 
+## [2026-08-26 09:35] Built the latency probe the smoke test needed - and it does not reproduce the failure
+#[models] #[verification] #[tooling] #[not-reproduced]
+**Context:** Closing the last gap from the 504 work: `run -m <model> "Reply OK"` structurally cannot see a model that is too slow for a real turn, because the prompt is three words and most of the ~20s is instance boot.
+**Error:** Not an error - a measurement. `nemotron-3-ultra-free` **4.9s** to first token at a 250KB context, **11.0s** worst of three. `nemotron-3.5-lightning-free` 3.0s. `hy3-free` 8.2s at 60KB but **26.2s** at 250KB, 17.0s worst of three. The gateway budget is ~123s. **Nothing is near it, and the 2026-08-23 failure does not reproduce.**
+**Root cause:** Unknown, and now more interesting than before. Prefill was the obvious explanation for 123 seconds of silence and **it is wrong**: the model that stalled is the *fastest to first token* of the three. So the suspicion recorded on 2026-08-25 - that a 1M-context model is a poor interactive default - **is not supported by measurement**. What remains is something time-varying: free-tier queueing or provider contention, neither of which can be summoned on demand.
+**Fix:** `packages/paradigm/src/latency.ts` + `script/latency-probe.ts`. Talks to the provider directly so boot is excluded, builds context from this repo's own source, and reports the WORST sample rather than a mean - one timeout in three is the failure a person hits. Two traps pinned by tests: Zen's opening chunk is `{role, content: ""}` and on a reasoning model the first real text arrives in `reasoning` while `content` stays empty, so a content-only check would skip the whole reasoning phase; and a stream that produced NO token has no TTFT, which classifies as over-budget rather than ok. Commit `881253cd05`.
+**Prevention:** **A probe that cannot reproduce the bug is still worth having, but say so plainly rather than letting a green table imply safety.** This one proves a model is *structurally* fast enough; it cannot promise a given turn will be, and the table in model-index.md now says that in as many words. The silence-swap shipped in `a9fde4ac38` is the right answer precisely *because* the cause is not reproducible: it reacts to the stall rather than predicting it. Also worth carrying: **the measurement killed a hypothesis I had already written into the docs.** Recording a suspicion is cheap; measuring it before acting on it is what stops a rebinding that would have made nothing better.
+**Files affected:** packages/paradigm/src/latency.ts, test/latency.test.ts, script/latency-probe.ts, docs/fork/model-index.md
+---
+
 ## [2026-08-26 06:55] Verifying the stall swap found a lie in its own wording, and a git checkout that silently ate the fix
 #[fallback] #[verification] #[wording] #[fixed]
 **Context:** Closing the gap left by `a9fde4ac38`: the stall swap's JUDGEMENT was unit-tested, but nothing proved `processor.ts` fed a real `silentMs` from a live stream.
