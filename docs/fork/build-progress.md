@@ -2301,3 +2301,85 @@ this session.
 
 - Working tree clean, `dev` pushed. Active paradigm: `gryphon`. `.opencode/opencode.jsonc` on the
   committed local-path reference form.
+
+---
+
+## Session state — RESUME HERE (2026-08-27, the deprecation filter and the schema that was never sent)
+
+**Two silent facts found, both by probing something that already ships rather than building
+anything.** No new subsystem. One upstream line changed, one out-of-repo config corrected, and two
+documented rules corrected because they gave the wrong answer.
+
+### 1. `vangio models` is the authority on bindability — not the endpoint, not the catalog
+
+The 2026-08-25 note said the config lied: `model` and `small_model` still pinned
+`deepseek-v4-flash-free`, "retired 2026-08-21", with the fallback rescuing every run. Fixing it
+started by re-checking availability the documented way, and **the documented way was wrong.**
+
+`curl https://opencode.ai/zen/v1/models` lists `deepseek-v4-flash-free` **and**
+`laguna-s-2.1-free`. So does the refreshed local catalog. Both are nonetheless unbindable —
+models.dev marks them `status: "deprecated"` and `provider.ts:1664` **deletes deprecated models
+from the provider map outright**. Zen still serves them to a direct caller; VanGio refuses to route
+to them. So 2026-08-21's "retirement" was a **deprecation flag flip**, not a removal.
+
+Three sources, and only the third answers the question a head binding actually asks:
+
+| Source | Answers |
+| --- | --- |
+| models.dev / `zen.mdx` | capabilities. Never availability. |
+| Zen's `/models` endpoint | what the provider serves a **direct caller**. |
+| **`vangio models`** | **what a head can be bound to.** |
+
+`model-index.md` §4 and `OVERVIEW.md` rule 13 are corrected. **The old rule is not merely
+incomplete — it returns a false positive**, which is worse than the false negative it was written
+to prevent.
+
+**Config fixed and verified live.** `model` → `nemotron-3-ultra-free` (so config and the active
+paradigm finally agree), `small_model` → `hy3-free`, both deprecated ids dropped from the provider
+block and the three live ones added. `vangio run` now answers on the requested model with no swap,
+in **18.8s against 48.4s** — the failed-resolution-then-swap path was costing 30 seconds on every
+single run for six days, invisibly. Backup at `~/.config/vangio/opencode.json.bak-2026-08-27`.
+
+### 2. The json_schema constraint never reaches Zen — and it does not matter as much as it looks
+
+Probing whether v6's builder needs a pinned model, using `vangio agent create` (`Agent.generate`),
+which is already "describe it, get a validated config" in miniature.
+
+Generation works — twice, on `nemotron-3-ultra-free`, producing well-formed agents. Underneath,
+`@ai-sdk/openai-compatible` defaults `supportsStructuredOutputs` to **false**, then drops the
+schema and sends `response_format: { type: "json_object" }`, reporting it **only** through
+`warnings` — which `Agent.generate` discarded. The model complies because `generate.txt` asks it
+to, not because the provider constrains it. Now surfaced (`9022de1191`) and confirmed live.
+
+**But `generateObject` validates client-side regardless** (`ai@6.0.168`, `dist/index.js:3443-3468`)
+and raises `NoObjectGeneratedError` on a mismatch. So a non-compliant model **fails loudly** and
+cannot produce a malformed config. That is exactly the property v6 needs, and it already exists.
+
+**The pinned-model recommendation is therefore withdrawn.** It rested on a silent-degradation risk
+that measurement says is not there, and pinning would have bought a lower retry rate while hiding
+a dropped constraint. **v6 runs on the active king, `-m` to override** — matching `Agent.generate`,
+so the two "describe it, get a config" gestures behave identically.
+
+### The next three things, in order
+
+1. **v6** — spec written this session at `docs/superpowers/specs/2026-08-27-paradigm-builder.md`.
+   Everything except "goal sentence → draft" already shipped in v4/v5; it stays inside
+   `packages/paradigm` and adds **zero upstream-merge risk**, the way v5 did.
+2. **v3 is still blocked on one browser click** and has been since 2026-07-20 — Serve is not enabled
+   on the tailnet, and HTTPS certs have never been provisioned (`CertDomains` empty). Everything
+   downstream of that toggle is code-complete and verified. Five weeks for a toggle.
+3. **Q1 — Zen's daily bucket**, still waiting on a real 429. Do not force one.
+
+### Verification
+
+typecheck **32/32**. `packages/opencode` agent suite **49/0**. Both findings confirmed live, not
+inferred — the warning was read off a real run, and the deprecation filter was traced to the line
+that performs the delete. **No other suite was run this session**, so nothing here is evidence
+about overall suite health.
+
+### Environment left behind
+
+- `dev` pushed to `origin/dev`. Active paradigm: `gryphon`. Config corrected and backed up.
+- Reliability, not correctness, is the open variable on v6 generation: **one sample is not a rate.**
+  If generation proves flaky on a weaker king, the answer is a bounded retry falling back to the
+  Craft wizard — not a pinned model.

@@ -1,8 +1,9 @@
 # Model Index — what to bind each schemata head to
 
-**Verified 2026-08-17.** Capability numbers come from the models.dev catalog; availability comes
-from each provider's live endpoint, never from the catalog (see *Staleness* at the bottom — this
-distinction has already bitten us twice). Rate limits come from provider docs, dated below.
+**Verified 2026-08-17. Availability rule corrected 2026-08-27.** Capability numbers come from the
+models.dev catalog. **Bindability comes from `vangio models` — not from the catalog and not from the
+provider's live endpoint**, both of which have now been wrong, in opposite directions (see
+*Staleness* at the bottom). Rate limits come from provider docs, dated below.
 
 **Treat this file as perishable.** Re-verify at every upstream merge and before shipping any
 preset schemata.
@@ -178,19 +179,41 @@ Free model ids get retired with **no client-visible signal**, and every catalog 
 - `north-mini-code-free` — retired 2026-08-12. Both paradigms pointed at it; nothing caught it.
 - `ling-3.0-tiny-free` — the model we *replaced it with*. Documented in `zen.mdx` at `upstream/dev`,
   and **absent from the live endpoint on 2026-08-17.** Caught only by querying the live catalog.
+- `deepseek-v4-flash-free` and `laguna-s-2.1-free` — **2026-08-27, the opposite direction.** Both are
+  present on the live endpoint AND in the local catalog, and neither is bindable. models.dev marks
+  them `status: "deprecated"`, and `provider.ts:1664` deletes deprecated models from the provider
+  map outright. Zen still serves them; VanGio refuses to route to them.
 
-Two rules follow:
+**The rule that follows, corrected — there are three sources and only one of them answers the
+question:**
 
-1. **models.dev and `zen.mdx` are authoritative for capabilities, never for availability.**
-   Availability comes from `https://opencode.ai/zen/v1/models` and nothing else.
+| Source | Answers |
+|---|---|
+| models.dev / `zen.mdx` | capabilities — context, output, tools, images. Never availability. |
+| `https://opencode.ai/zen/v1/models` | what the provider will serve **a direct caller**. Not what VanGio will route to. |
+| **`vangio models`** | **what a head can actually be bound to.** The only one that matters. |
+
+1. **Check bindability with `vangio models`.** It applies every filter the engine applies —
+   credentials, catalog presence, and the deprecation delete — and it is one command instead of two.
+   A model absent from that list cannot be a head's `model`, whatever the other two sources say.
 2. **Re-verify every `*-free` id in every schemata** at each upstream merge, and before publishing
    any preset. This is exactly what the `needs` + `fallback` fields in the fallback spec exist to
    survive — a retired model should degrade, not dead-end.
+3. **A deprecation is invisible until something routes to it**, and the fallback layer will hide it
+   indefinitely. The config pinned a deprecated model for six days while every run silently
+   succeeded on a substitute. Green is not evidence here.
 
-Reproduce the availability check with:
+Reproduce the bindability check with:
 
 ```sh
-curl -s https://opencode.ai/zen/v1/models | tr ',' '\n' | grep -o '"id":"[^"]*free[^"]*"' | sort -u
+vangio models | grep '^opencode/'
+```
+
+The provider's own roster — useful for telling "Zen dropped it" from "the engine refuses it" — is:
+
+```sh
+curl -s https://opencode.ai/zen/v1/models | tr ',' '
+' | grep -o '"id":"[^"]*free[^"]*"' | sort -u
 ```
 
 ---
