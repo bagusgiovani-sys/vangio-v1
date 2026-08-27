@@ -427,6 +427,15 @@ describe("builderFallbacks", () => {
     expect(builderFallbacks([mute])).toEqual([])
   })
 
+  test("never offers a zero-cost subscription plan, which isFree cannot tell from free", () => {
+    // A subscription plan reports cost 0, so isFree() waves it through. Before
+    // the ladder was capped to curation these sat at positions 4-13 of a
+    // 26-entry list, and only maxAttempts: 3 kept them out of reach - "free
+    // only" held by ordering luck rather than by construction.
+    const plan = m("glm-4.7", { providerID: "zai-coding-plan" })
+    expect(builderFallbacks([plan, m("hy3-free")])).toEqual(["opencode/hy3-free"])
+  })
+
   test("returns an empty list rather than throwing when nothing is reachable", () => {
     expect(builderFallbacks([])).toEqual([])
   })

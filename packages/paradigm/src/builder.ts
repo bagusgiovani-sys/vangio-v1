@@ -298,12 +298,27 @@ export function pickForRole(roleId: string, models: CandidateModel[]): string | 
  * It matters: measured 2026-08-27, hy3-free answered in 28s and mimo-v2.5-free
  * in 12s, while nemotron-3.5-lightning-free took 135s. Catalog order put the
  * slow one first and blew a 300s budget.
+ *
+ * Capped to the curated picks THEMSELVES, not merely ranked by them. `isFree`
+ * can only see `cost === 0` and a subscription plan reports exactly that, so
+ * an uncapped list put zai-coding-plan/* and zhipuai-coding-plan/* at
+ * positions 4-13 of 26. `maxAttempts: 3` never reached them, which made "free
+ * only" true by ORDERING LUCK - one raised retry budget away from spending
+ * money nobody opted into. Curation is the guarantee instead: this ladder is
+ * the scout picks a human wrote in roles.json, and nothing else. The uncapped
+ * tail was ranked by headroom too, biggest context first, which is the exact
+ * ordering that blew the budget above.
+ *
+ * The cost is honest: if none of the picks is in this machine's catalog there
+ * is no ladder, and the builder lands on the v5 name step - choose the heads
+ * yourself. That is the same failure the caller already handles.
  */
 export function builderFallbacks(models: CandidateModel[]): string[] {
   const scout = getRole("scout")
   if (!scout) return models.filter(isFree).map(modelRef)
+  const curated = new Set(scout.picks.map((pick) => pick.model))
   return modelOptions({ needs: scout.needs, picks: scout.picks, models, allowPaid: false })
-    .filter((option) => !option.disabled)
+    .filter((option) => !option.disabled && curated.has(option.model))
     .map((option) => option.model)
 }
 

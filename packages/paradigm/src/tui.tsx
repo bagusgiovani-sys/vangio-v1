@@ -274,11 +274,14 @@ function Craft(props: { api: TuiPluginApi }) {
     const result = await generateDraft({
       goal,
       existing: existing(),
-      // Free only, ranked as a scout. The king is tried first by omission, so
-      // this list only matters when the king cannot comply - and a builder
-      // that quietly degrades onto a PAID model would spend money the user
-      // never opted into, on a step that is not even their actual task. Paid
-      // stays opt-in: bind a paid king yourself and it is tried first.
+      // Exactly the curated scout picks from roles.json, nothing else. The
+      // king is tried first by omission, so this list only matters when the
+      // king cannot comply - and a builder that quietly degrades onto a PAID
+      // model would spend money the user never opted into, on a step that is
+      // not even their actual task. Free cannot be DETECTED - a subscription
+      // plan reports cost 0 like everything else - so curation, not a filter,
+      // is what keeps this list honest. Paid stays opt-in: bind a paid king
+      // yourself and it is tried first.
       fallbacks: builderFallbacks(available),
       prompt: builderPrompt(props.api),
     })
