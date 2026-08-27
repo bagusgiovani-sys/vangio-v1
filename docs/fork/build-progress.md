@@ -2362,7 +2362,7 @@ so the two "describe it, get a config" gestures behave identically.
 
 ### The next three things, in order
 
-1. **v6** — spec written this session at `docs/superpowers/specs/2026-08-27-paradigm-builder.md`.
+1. **v6** — spec written this session at `docs/superpowers/specs/2026-08-27-paradigm-builder-design.md`.
    Everything except "goal sentence → draft" already shipped in v4/v5; it stays inside
    `packages/paradigm` and adds **zero upstream-merge risk**, the way v5 did.
 2. **v3 is still blocked on one browser click** and has been since 2026-07-20 — Serve is not enabled
