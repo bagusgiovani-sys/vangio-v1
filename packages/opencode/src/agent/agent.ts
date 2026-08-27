@@ -432,7 +432,22 @@ const layer = Layer.effect(
           })
         }
 
-        return yield* Effect.promise(() => generateObject(params).then((r) => r.object))
+        const generated = yield* Effect.promise(() => generateObject(params))
+        // An openai-compatible provider defaults supportsStructuredOutputs to
+        // false and then DROPS an unsupported json_schema response format,
+        // reporting it only through `warnings` - so the schema silently never
+        // reaches the model. The object is still validated client-side, so this
+        // costs reliability rather than correctness, but discarding the warning
+        // made the difference invisible. Note the OpenAI-OAuth branch above is
+        // deliberately untouched: its warnings arrive as a promise off
+        // streamObject, and no provider this fork ships uses that path.
+        if (generated.warnings && generated.warnings.length > 0) {
+          yield* Effect.logWarning("agent generate warnings", {
+            model: `${model.providerID}/${model.modelID}`,
+            warnings: generated.warnings,
+          })
+        }
+        return generated.object
       }),
     })
   }),
