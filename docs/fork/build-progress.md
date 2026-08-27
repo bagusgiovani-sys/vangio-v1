@@ -2383,3 +2383,82 @@ about overall suite health.
 - Reliability, not correctness, is the open variable on v6 generation: **one sample is not a rate.**
   If generation proves flaky on a weaker king, the answer is a bounded retry falling back to the
   Craft wizard — not a pinned model.
+
+---
+
+## Session state — RESUME HERE (2026-08-27, v6 is live — a goal sentence became a team on screen)
+
+**v6 works end to end, verified under ConPTY rather than inferred.** `/craft` -> goal prompt ->
+generating -> the review dialog reading `Create "bra-tiktok-videos"?` with `king:
+opencode/nemotron-3-ultra-free, warrior ...`. Boot 13s, goal dialog 33s, generating 44s, review at
+**123s**. Two commits: `412ff2d82e` (the feature), `4bfda0773f` (the findings).
+
+### What the live run actually proved
+
+The generation path is not the one the spec drew, and the difference is the whole story:
+
+| Attempt | Model | Outcome | Time |
+| --- | --- | --- | --- |
+| 1 | the active king, `nemotron-3-ultra-free` | `StructuredOutputError` — typed the tool call as text | 49s |
+| 2 | `opencode/hy3-free` (first rung of the scout ladder) | structured output, valid team | 19s |
+
+**The active king is the one model on this machine that cannot do the thing v6 needs**, and it
+fails the same way every time (3/3 today, across the TUI and two HTTP probes). The spec's "runs on
+the active king" contract survives as the FIRST attempt; the ladder does the rest. A pinned
+generation model — withdrawn earlier this week on measurement — would have hidden this instead.
+
+Two supporting measurements: switching the coding tools off was necessary (left on, the model
+reaches for `todowrite` and the turn dies), and **running inside this repo inflates the builder turn
+from 9,804 to 108,535 input tokens**, because the session carries the project context. That is what
+turns a 30s call into a 90s one; the builder's latency depends on where VanGio is running.
+
+### Three findings, all in errors.md
+
+1. **[17:20] The king types the tool call instead of making it.** Free-tier tool calling breaks as
+   plausible TEXT, not as an error. OVERVIEW rule 16.
+2. **[17:25] `format.retryCount` is inert** — declared with a default of 2, validated, persisted,
+   in the SDK types, read by nothing; `prompt.ts:1337` hardcodes `retries: 0`. The v6 spec's
+   "a field, not code" line is struck through and corrected in place. OVERVIEW rule 17.
+3. **[17:35] The harness starved the run it was measuring.** A 1.5s repaint poll made a 49s call
+   look like a >420s hang. Both new rules are in `.claude/skills/verify/SKILL.md`.
+
+### What is NOT verified, stated plainly
+
+- **The write path was not exercised live this session.** The run was stopped ON the review screen;
+  nobody pressed Create. `writeParadigm`, the activation marker and the restart notice are covered
+  by unit tests and by v5's own live runs, not by today's.
+- **Reliability is still not a rate.** The king has failed 3/3 and `hy3-free` has answered 2/2.
+  That is a direction, not a measurement.
+- **The fallback ladder is not actually free-only.** `builderFallbacks` filters with `isFree`, which
+  can only see `cost === 0` — and a subscription plan reports zero cost, so
+  `zai-coding-plan/*` and `zhipuai-coding-plan/*` sit at positions 4-13 of the 26-entry ladder.
+  `maxAttempts: 3` never reaches them today, so the comment in `tui.tsx` promising "free only" is
+  true by ordering luck rather than by construction. Closing it properly needs the raw models.dev
+  payload, which a plugin cannot reach (`resolve.ts` already says so).
+- The degradation toast was unit-tested, not read off the screen — it had expired by the time the
+  review frame was captured.
+
+### Verification
+
+`packages/paradigm` **237 pass / 0 fail**. `bunx tsgo --noEmit` clean in that package; pre-push
+`turbo typecheck` **32/32**. `packages/opencode/test/session/structured-output.test.ts` 22/0 (run to
+settle what `retryCount` actually does). **No other suite was run**, so nothing here is evidence
+about overall suite health. The plugin snapshot at `~/.config/vangio/plugins/` was reinstalled from
+the committed source after the instrumentation came out — 47,627 bytes, matching the clean bundle.
+
+### The next three things, in order
+
+1. **Press Create.** One live run through the review screen to disk, so the generated `goal` field
+   and the write path are proven by something other than unit tests.
+2. **Reconsider the king** — now on much harder evidence than the latency argument. The default
+   model cannot make a tool call, which costs every structured feature a 49s failed attempt before
+   anything works. `hy3-free` answered in 19s.
+3. **v3 is still blocked on one browser click**, unchanged since 2026-07-20 — Serve is not enabled
+   on the tailnet. Everything downstream is code-complete.
+
+### Environment left behind
+
+- `dev` pushed to `origin/dev`. Active paradigm: `gryphon`. Working tree clean.
+- **A stale `vangio serve` from an earlier session still holds 127.0.0.1:4199** (PID 9172, started
+  ~13:40). Today's probes used a second server on 4211, which has since exited. Kill 9172 when
+  convenient; nothing depends on it.
