@@ -2486,8 +2486,10 @@ the committed source after the instrumentation came out — 47,627 bytes, matchi
   in `provider.opencode.models`, which that entry states outright does not work. Reverted. **The
   probe was designed before errors.md was read for the day.** Read the log first; it is rule one at
   the top of that file and it would have saved three 200s runs.
-- **Free supply, measured:** 6 live free Zen models + 2 free GLM (`zai/glm-4.7-flash`,
-  `zai/glm-4.5-flash`). Direct DeepSeek and Kimi add nothing free — DeepSeek has no permanent free
+- **Free supply, measured:** 6 live free Zen models — and **GLM does not count.** `zai/glm-4.7-flash`
+  went **1-for-3** on a real tool-calling turn (hang / correct / overloaded-then-swapped-then-died,
+  errors.md 19:20), so it is not a viable agentic fallback. The earlier "2 free GLM" figure in this
+  addendum rested on a smoke prompt with no tool call in it and is withdrawn. Direct DeepSeek and Kimi add nothing free — DeepSeek has no permanent free
   tier (one-time 5M-token grant; V4-Flash repriced 2026-08-16) and Kimi needs a $1 minimum top-up
   before its key works. Zen is what makes those models free here, not what limits them.
 
