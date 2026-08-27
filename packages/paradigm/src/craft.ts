@@ -60,6 +60,10 @@ export type Draft = {
 }
 
 export type Step =
+  /** v6: what is this team for? Blank falls through to the v5 flow. */
+  | { kind: "goal" }
+  /** v6: waiting on the builder. Only the network reply moves off this step. */
+  | { kind: "generating" }
   | { kind: "name" }
   | { kind: "shape" }
   | { kind: "role"; slot: number }
@@ -75,7 +79,7 @@ export function emptyDraft(): Draft {
 }
 
 export function firstStep(): Step {
-  return { kind: "name" }
+  return { kind: "goal" }
 }
 
 function headCount(draft: Draft): number {
@@ -97,6 +101,21 @@ export function nextStep(draft: Draft, step: Step, answer: string): { draft: Dra
   const next: Draft = { ...draft, heads: { ...draft.heads } }
 
   switch (step.kind) {
+    case "goal": {
+      // A blank goal is how the user says "I will choose the heads myself", so
+      // it must reach the v5 name step having changed nothing at all.
+      const goal = answer.trim()
+      if (goal.length === 0) return { draft: next, step: { kind: "name" } }
+      next.goal = goal
+      return { draft: next, step: { kind: "generating" } }
+    }
+
+    // Deliberately inert. The builder call resolves off-machine and the TUI
+    // sets the next step from its result; letting a keystroke advance this
+    // would race the reply.
+    case "generating":
+      return { draft: next, step }
+
     case "name":
       next.name = answer.trim()
       return { draft: next, step: { kind: "shape" } }
@@ -141,8 +160,12 @@ export function nextStep(draft: Draft, step: Step, answer: string): { draft: Dra
 
 export function stepBack(draft: Draft, step: Step): Step {
   switch (step.kind) {
+    case "goal":
+      return { kind: "goal" }
+    case "generating":
+      return { kind: "goal" }
     case "name":
-      return { kind: "name" }
+      return { kind: "goal" }
     case "shape":
       return { kind: "name" }
     case "role":

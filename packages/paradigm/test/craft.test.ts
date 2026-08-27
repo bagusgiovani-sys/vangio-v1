@@ -61,7 +61,9 @@ describe("validateName", () => {
 describe("wizard state machine", () => {
   function run(answers: string[]): { draft: Draft; step: Step } {
     let draft = emptyDraft()
-    let step = firstStep()
+    // v6: every v5 walkthrough now enters through a blank goal, which must
+    // leave the draft untouched and land exactly where v5 used to start.
+    let step = nextStep(draft, firstStep(), "").step
     for (const answer of answers) {
       const result = nextStep(draft, step, answer)
       draft = result.draft
@@ -70,8 +72,8 @@ describe("wizard state machine", () => {
     return { draft, step }
   }
 
-  test("starts by asking for a name", () => {
-    expect(firstStep()).toEqual({ kind: "name" })
+  test("the v5 flow still begins at the name step, reached by a blank goal", () => {
+    expect(nextStep(emptyDraft(), firstStep(), "").step).toEqual({ kind: "name" })
   })
 
   test("name then asks for shape", () => {
@@ -143,16 +145,14 @@ describe("wizard state machine", () => {
     expect(stepBack(draft, { kind: "model", slot: 2 })).toEqual({ kind: "role", slot: 2 })
     expect(stepBack(draft, { kind: "model", slot: 0 })).toEqual({ kind: "shape" })
   })
-
-  test("stepBack from name stays at name - there is nowhere to go", () => {
-    expect(stepBack(emptyDraft(), { kind: "name" })).toEqual({ kind: "name" })
-  })
 })
 
 describe("toParadigm", () => {
   function built(): Draft {
     let draft = emptyDraft()
-    let step = firstStep()
+    // v6: every v5 walkthrough now enters through a blank goal, which must
+    // leave the draft untouched and land exactly where v5 used to start.
+    let step = nextStep(draft, firstStep(), "").step
     for (const answer of [
       "my-team", "court", "opencode/ultra", "warrior", "opencode/light", "scout", "opencode/hy3", "done",
     ]) {
@@ -177,7 +177,9 @@ describe("toParadigm", () => {
 
   test("names duplicate roles with a numeric suffix", () => {
     let draft = emptyDraft()
-    let step = firstStep()
+    // v6: every v5 walkthrough now enters through a blank goal, which must
+    // leave the draft untouched and land exactly where v5 used to start.
+    let step = nextStep(draft, firstStep(), "").step
     for (const answer of [
       "my-team", "court", "opencode/ultra", "scout", "opencode/a", "scout", "opencode/b", "done",
     ]) {
@@ -205,7 +207,9 @@ describe("toParadigm", () => {
 describe("wizard completeness guard", () => {
   test("done is refused when a head exists but has no model", () => {
     let draft = emptyDraft()
-    let step = firstStep()
+    // v6: every v5 walkthrough now enters through a blank goal, which must
+    // leave the draft untouched and land exactly where v5 used to start.
+    let step = nextStep(draft, firstStep(), "").step
     for (const answer of ["my-team", "court", "opencode/ultra", "warrior"]) {
       const result = nextStep(draft, step, answer)
       draft = result.draft
@@ -219,7 +223,9 @@ describe("wizard completeness guard", () => {
 
   test("done is accepted once that head gets a model", () => {
     let draft = emptyDraft()
-    let step = firstStep()
+    // v6: every v5 walkthrough now enters through a blank goal, which must
+    // leave the draft untouched and land exactly where v5 used to start.
+    let step = nextStep(draft, firstStep(), "").step
     for (const answer of ["my-team", "court", "opencode/ultra", "warrior", "opencode/light"]) {
       const result = nextStep(draft, step, answer)
       draft = result.draft
@@ -234,7 +240,9 @@ describe("wizard completeness guard", () => {
   test("reaching review through a full forward build keeps toParadigm valid (stepBack is computed here, not applied)", async () => {
     const { parseParadigm } = await import("../src/schema")
     let draft = emptyDraft()
-    let step = firstStep()
+    // v6: every v5 walkthrough now enters through a blank goal, which must
+    // leave the draft untouched and land exactly where v5 used to start.
+    let step = nextStep(draft, firstStep(), "").step
     // Build a court with two heads
     for (const answer of ["my-team", "court", "opencode/ultra", "warrior", "opencode/light", "scout", "opencode/hy3"]) {
       const result = nextStep(draft, step, answer)
@@ -256,7 +264,9 @@ describe("wizard completeness guard", () => {
 
   test("a real back-edit that re-answers a role clears its model - done is refused until a model is supplied again", () => {
     let draft = emptyDraft()
-    let step = firstStep()
+    // v6: every v5 walkthrough now enters through a blank goal, which must
+    // leave the draft untouched and land exactly where v5 used to start.
+    let step = nextStep(draft, firstStep(), "").step
     // Build a complete two-head court: king, then warrior with a model.
     for (const answer of ["my-team", "court", "opencode/ultra", "warrior", "opencode/light"]) {
       const result = nextStep(draft, step, answer)
@@ -294,7 +304,9 @@ describe("wizard completeness guard", () => {
 
   test("stepBack from review with four heads returns model step of highest slot", () => {
     let draft = emptyDraft()
-    let step = firstStep()
+    // v6: every v5 walkthrough now enters through a blank goal, which must
+    // leave the draft untouched and land exactly where v5 used to start.
+    let step = nextStep(draft, firstStep(), "").step
     // Build a court with four heads (slots 0, 1, 2, 3)
     for (const answer of [
       "my-team", "court", "opencode/ultra",
@@ -394,5 +406,47 @@ describe("cloneParadigm", () => {
     const { parseParadigm } = await import("../src/schema")
     const result = parseParadigm(cloneParadigm(source, "my-copy"))
     expect(result.ok).toBe(true)
+  })
+})
+
+describe("the goal step (v6)", () => {
+  test("the wizard now opens on the goal, not the name", () => {
+    expect(firstStep()).toEqual({ kind: "goal" })
+  })
+
+  test("a blank goal falls straight through to the v5 flow", () => {
+    const result = nextStep(emptyDraft(), { kind: "goal" }, "")
+    expect(result.step).toEqual({ kind: "name" })
+    expect(result.draft.goal).toBeUndefined()
+  })
+
+  test("whitespace is a blank goal, not a goal made of spaces", () => {
+    const result = nextStep(emptyDraft(), { kind: "goal" }, "   ")
+    expect(result.step).toEqual({ kind: "name" })
+    expect(result.draft.goal).toBeUndefined()
+  })
+
+  test("a real goal is recorded and hands off to generating", () => {
+    const result = nextStep(emptyDraft(), { kind: "goal" }, "  sell bras on tiktok  ")
+    expect(result.step).toEqual({ kind: "generating" })
+    expect(result.draft.goal).toBe("sell bras on tiktok")
+  })
+
+  test("generating does not advance itself - only the network reply moves it", () => {
+    const draft = { ...emptyDraft(), goal: "anything" }
+    const result = nextStep(draft, { kind: "generating" }, "whatever")
+    expect(result.step).toEqual({ kind: "generating" })
+  })
+
+  test("stepBack from name now returns to the goal instead of dead-ending", () => {
+    expect(stepBack(emptyDraft(), { kind: "name" })).toEqual({ kind: "goal" })
+  })
+
+  test("stepBack from generating returns to the goal, so a slow model is escapable", () => {
+    expect(stepBack(emptyDraft(), { kind: "generating" })).toEqual({ kind: "goal" })
+  })
+
+  test("stepBack from goal stays at goal - it is the start now", () => {
+    expect(stepBack(emptyDraft(), { kind: "goal" })).toEqual({ kind: "goal" })
   })
 })

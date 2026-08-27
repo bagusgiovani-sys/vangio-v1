@@ -56,7 +56,7 @@ export function checkNeeds(needs: Needs, model: CandidateModel): string | undefi
  * reject every free model, which is worse. Closing this properly needs the raw
  * models.dev payload, which a plugin cannot reach.
  */
-function isFree(model: CandidateModel): boolean {
+export function isFree(model: CandidateModel): boolean {
   return model.cost.input === 0 && model.cost.output === 0
 }
 

@@ -5,12 +5,16 @@ import {
   builderRequest,
   parseGenerated,
   toDraft,
+  sanitiseName,
+  pickForRole,
+  builderFallbacks,
   MAX_GENERATED_HEADS,
   type Generated,
 } from "../src/builder"
 import { listRoles, KING_ROLE_ID } from "../src/roles"
-import { BUNDLED_NAMES, canFinish, toParadigm } from "../src/craft"
+import { BUNDLED_NAMES, canFinish, toParadigm, validateName } from "../src/craft"
 import { parseParadigm } from "../src/schema"
+import { isFree, type CandidateModel } from "../src/resolve"
 
 const ok = (): Generated => ({
   name: "tiktok-shop",
@@ -135,20 +139,29 @@ describe("parseGenerated", () => {
     expect(result.ok).toBe(false)
   })
 
-  test("rejects a name that collides with an existing paradigm", () => {
+  test("suffixes around a collision instead of discarding a good team", () => {
     const result = parseGenerated(ok(), { existing: ["tiktok-shop"] })
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.errors.join(" ")).toContain("tiktok-shop")
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value.name).toBe("tiktok-shop-2")
   })
 
-  test("rejects a bundled name - install.ts would silently revert it", () => {
+  test("never lands on a bundled name - install.ts would silently revert it", () => {
     const result = parseGenerated({ ...ok(), name: BUNDLED_NAMES[0] }, { existing: [] })
-    expect(result.ok).toBe(false)
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(BUNDLED_NAMES).not.toContain(result.value.name)
+      expect(result.value.name).toBe(`${BUNDLED_NAMES[0]}-2`)
+    }
   })
 
-  test("rejects a name the filename rules would not survive", () => {
+  test("defuses a traversal shape by construction rather than by rejecting it", () => {
     const result = parseGenerated({ ...ok(), name: "../escape" }, { existing: [] })
-    expect(result.ok).toBe(false)
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.value.name).toBe("escape")
+      expect(result.value.name).not.toContain("/")
+      expect(result.value.name).not.toContain(".")
+    }
   })
 
   test("rejects a head with no purpose", () => {
@@ -264,5 +277,157 @@ describe("the generated paradigm carries its enrichment through to disk", () => 
     })
     expect(paradigm.description).toBe("Crafted paradigm - court")
     expect(paradigm.goal).toBeUndefined()
+  })
+})
+
+describe("sanitiseName", () => {
+  test("rescues the shape a real model actually returned", () => {
+    // hy3-free answered "BraTok Court" on 2026-08-27. The team was good; only
+    // the name was unusable. Throwing the whole draft away for that is wrong.
+    expect(sanitiseName("BraTok Court", [])).toBe("bratok-court")
+  })
+
+  test("rescues a longer real answer", () => {
+    expect(sanitiseName("TikTok Bra Sales Video Team", [])).toBe("tiktok-bra-sales-video-team")
+  })
+
+  test("leaves an already-valid name alone", () => {
+    expect(sanitiseName("bra-tiktok-video-team", [])).toBe("bra-tiktok-video-team")
+  })
+
+  test("collapses runs of punctuation into single hyphens", () => {
+    expect(sanitiseName("  ---Hello___World!!!  ", [])).toBe("hello-world")
+  })
+
+  test("gives up when nothing usable survives", () => {
+    expect(sanitiseName("!!!", [])).toBeUndefined()
+    expect(sanitiseName("   ", [])).toBeUndefined()
+  })
+
+  test("suffixes rather than colliding with an existing paradigm", () => {
+    expect(sanitiseName("My Team", ["my-team"])).toBe("my-team-2")
+  })
+
+  test("keeps counting past a taken suffix", () => {
+    expect(sanitiseName("My Team", ["my-team", "my-team-2"])).toBe("my-team-3")
+  })
+
+  test("suffixes a bundled name, which install.ts would otherwise revert", () => {
+    expect(sanitiseName("Gryphon", [])).toBe("gryphon-2")
+  })
+
+  test("its output always satisfies the wizard's own validator", () => {
+    for (const raw of ["BraTok Court", "TikTok Bra Sales Video Team", "  ---Hello!!!  "]) {
+      const name = sanitiseName(raw, [])
+      expect(name).toBeDefined()
+      expect(validateName(name!, [])).toBeUndefined()
+    }
+  })
+})
+
+describe("parseGenerated rescues a salvageable name", () => {
+  test("accepts a team whose only flaw is the name, and reports the rewrite", () => {
+    const result = parseGenerated({ ...ok(), name: "BraTok Court" }, { existing: [] })
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value.name).toBe("bratok-court")
+  })
+
+  test("still rejects a name with nothing to salvage", () => {
+    const result = parseGenerated({ ...ok(), name: "!!!" }, { existing: [] })
+    expect(result.ok).toBe(false)
+  })
+})
+
+describe("pickForRole", () => {
+  const model = (over: Partial<CandidateModel> & { id: string }): CandidateModel => ({
+    providerID: "opencode",
+    name: over.id,
+    limit: { context: 1_000_000, output: 1_000_000 },
+    capabilities: { toolcall: true, input: { image: true } },
+    cost: { input: 0, output: 0 },
+    ...over,
+  })
+
+  test("binds a role to the best runnable model for it", () => {
+    const chosen = pickForRole("scout", [model({ id: "hy3-free" })])
+    expect(chosen).toBe("opencode/hy3-free")
+  })
+
+  test("refuses a model that cannot meet the role's needs", () => {
+    // A warrior needs 128k output; this one caps at 32k.
+    const tiny = model({ id: "tiny", limit: { context: 200_000, output: 32_000 } })
+    expect(pickForRole("warrior", [tiny])).toBeUndefined()
+  })
+
+  test("refuses a text-only model for the seer, which is defined by modality", () => {
+    const blind = model({
+      id: "blind",
+      capabilities: { toolcall: true, input: { image: false } },
+    })
+    expect(pickForRole("seer", [blind])).toBeUndefined()
+  })
+
+  test("returns undefined for a role that does not exist", () => {
+    expect(pickForRole("wizard", [model({ id: "any" })])).toBeUndefined()
+  })
+
+  test("returns undefined when this machine can reach nothing at all", () => {
+    expect(pickForRole("scout", [])).toBeUndefined()
+  })
+})
+
+describe("isFree gates what the builder may degrade onto", () => {
+  const m = (id: string, input: number, output: number): CandidateModel => ({
+    id,
+    providerID: "p",
+    name: id,
+    limit: { context: 1_000_000, output: 1_000_000 },
+    capabilities: { toolcall: true, input: { image: true } },
+    cost: { input, output },
+  })
+
+  test("a zero-cost model is free", () => {
+    expect(isFree(m("free", 0, 0))).toBe(true)
+  })
+
+  test("a model that charges for output is not free, even at zero input", () => {
+    expect(isFree(m("cheap-in", 0, 3))).toBe(false)
+  })
+
+  test("a paid model is not free", () => {
+    expect(isFree(m("sonnet", 3, 15))).toBe(false)
+  })
+})
+
+describe("builderFallbacks", () => {
+  const m = (id: string, over: Partial<CandidateModel> = {}): CandidateModel => ({
+    id,
+    providerID: "opencode",
+    name: id,
+    limit: { context: 1_000_000, output: 1_000_000 },
+    capabilities: { toolcall: true, input: { image: true } },
+    cost: { input: 0, output: 0 },
+    ...over,
+  })
+
+  test("never offers a paid model - the builder must not spend money unasked", () => {
+    const paid = m("sonnet", { providerID: "anthropic", cost: { input: 3, output: 15 } })
+    expect(builderFallbacks([paid, m("hy3-free")])).toEqual(["opencode/hy3-free"])
+  })
+
+  test("puts the curated scout pick ahead of an uncurated model", () => {
+    // Catalog order put the 135s model first and blew a 300s budget on
+    // 2026-08-27; roles.json curation is what fixes that.
+    const order = builderFallbacks([m("zzz-unknown-free"), m("hy3-free")])
+    expect(order[0]).toBe("opencode/hy3-free")
+  })
+
+  test("excludes a model that cannot make tool calls, since the whole mechanism is one", () => {
+    const mute = m("mute-free", { capabilities: { toolcall: false, input: { image: false } } })
+    expect(builderFallbacks([mute])).toEqual([])
+  })
+
+  test("returns an empty list rather than throwing when nothing is reachable", () => {
+    expect(builderFallbacks([])).toEqual([])
   })
 })

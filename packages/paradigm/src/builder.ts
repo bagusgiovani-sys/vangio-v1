@@ -15,7 +15,8 @@
  */
 
 import { getRole, listRoles, KING_ROLE_ID } from "./roles"
-import { validateName, MAX_HEADS, type Draft, type Shape } from "./craft"
+import { modelOptions, modelRef, isFree, type CandidateModel } from "./resolve"
+import { validateName, BUNDLED_NAMES, MAX_HEADS, type Draft, type Shape } from "./craft"
 
 /** The king occupies slot 0 and is never generated, so six remain. */
 export const MAX_GENERATED_HEADS = MAX_HEADS - 1
@@ -124,6 +125,41 @@ export function builderRequest(goal: string, existing: string[]): string {
   return `Assemble a team for this goal:\n\n${goal.trim()}${taken}`
 }
 
+/**
+ * Turn whatever the model called the team into a legal paradigm name, or give
+ * up.
+ *
+ * Measured 2026-08-27: hy3-free answered "BraTok Court" and nemotron-3.5
+ * answered "TikTok Bra Sales Video Team". Both teams were good; only the names
+ * were unusable. Rejecting a whole draft over capitalisation is the wrong
+ * trade, and asking the model again costs 30 seconds for a problem a regex
+ * solves.
+ *
+ * Sanitising also closes a path-traversal shape by construction rather than by
+ * rejection: every character outside [a-z0-9] becomes a hyphen, so "../escape"
+ * can only ever come out as "escape".
+ */
+export function sanitiseName(raw: string, existing: string[]): string | undefined {
+  const base = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+
+  if (base.length === 0) return undefined
+
+  // Bundled names are refused rather than overwritten: install.ts copies over
+  // those six filenames on every install, so a user file with one of those
+  // names is silently reverted.
+  const taken = new Set([...existing, ...BUNDLED_NAMES])
+  if (!taken.has(base)) return base
+
+  for (let n = 2; n < 100; n++) {
+    const candidate = `${base}-${n}`
+    if (!taken.has(candidate)) return candidate
+  }
+  return undefined
+}
+
 export type ParseGeneratedResult =
   | { ok: true; value: Generated }
   | { ok: false; errors: string[] }
@@ -146,14 +182,21 @@ export function parseGenerated(
 
   const errors: string[] = []
 
-  const name = input["name"]
-  if (typeof name !== "string") {
+  const rawName = input["name"]
+  let name: string | undefined
+  if (typeof rawName !== "string") {
     errors.push("name must be a string")
   } else {
-    // Reuse the wizard's own rule so a generated name and a typed one can never
-    // disagree about what is legal.
-    const problem = validateName(name, opts.existing)
-    if (problem) errors.push(problem)
+    name = sanitiseName(rawName, opts.existing)
+    if (name === undefined) {
+      errors.push(`name "${rawName}" has nothing usable in it`)
+    } else {
+      // Belt and braces: sanitiseName is supposed to satisfy the wizard's own
+      // validator by construction, so a failure here is a bug in this file
+      // rather than a bad answer from the model.
+      const problem = validateName(name, opts.existing)
+      if (problem) errors.push(problem)
+    }
   }
 
   const description = input["description"]
@@ -217,7 +260,7 @@ export function parseGenerated(
   return {
     ok: true,
     value: {
-      name: (name as string).trim(),
+      name: name as string,
       description: (description as string).trim(),
       shape: shape as Shape,
       heads,
@@ -225,6 +268,43 @@ export function parseGenerated(
       discipline,
     },
   }
+}
+
+/**
+ * The binding half of "the LLM picks the team, the resolver picks the models".
+ * Reuses the exact ranking Craft's model step shows the user, so a generated
+ * head and a hand-picked one can never disagree about what the best model for
+ * a role is. Returns undefined when nothing runnable satisfies the role's
+ * needs - the caller reports that head rather than binding it to something
+ * that will fail at first prompt.
+ */
+export function pickForRole(roleId: string, models: CandidateModel[]): string | undefined {
+  const role = getRole(roleId)
+  if (!role) return undefined
+  const options = modelOptions({ needs: role.needs, picks: role.picks, models })
+  return options.find((option) => !option.disabled)?.model
+}
+
+/**
+ * The order to try free models in when the king cannot produce structured
+ * output.
+ *
+ * Ranked as a SCOUT rather than by catalog order, because the builder's job is
+ * scout-shaped: one small structured answer, where speed and cheapness matter
+ * far more than either limit. Reusing that role's curated picks means this
+ * ordering is maintained in exactly one place - roles.json - instead of a
+ * second ranking drifting away from it.
+ *
+ * It matters: measured 2026-08-27, hy3-free answered in 28s and mimo-v2.5-free
+ * in 12s, while nemotron-3.5-lightning-free took 135s. Catalog order put the
+ * slow one first and blew a 300s budget.
+ */
+export function builderFallbacks(models: CandidateModel[]): string[] {
+  const scout = getRole("scout")
+  if (!scout) return models.filter(isFree).map(modelRef)
+  return modelOptions({ needs: scout.needs, picks: scout.picks, models, allowPaid: false })
+    .filter((option) => !option.disabled)
+    .map((option) => option.model)
 }
 
 /** Given a role id, the model this machine should bind it to - or undefined. */

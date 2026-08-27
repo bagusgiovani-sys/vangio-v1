@@ -30,6 +30,8 @@ import {
   type Draft,
   type Step,
 } from "./craft"
+import { pickForRole, toDraft, builderFallbacks } from "./builder"
+import { generateDraft, degradationNotice, type PromptFn } from "./generate"
 import { parseParadigm, type Paradigm } from "./schema"
 
 const id = "vangio-paradigm-tui"
@@ -131,6 +133,64 @@ function candidateSource(api: TuiPluginApi): CandidateSource {
   }
 }
 
+/**
+ * Everything the coding agent normally carries, switched off for the builder.
+ *
+ * Measured 2026-08-27: left on, the model reaches for `todowrite` instead of
+ * the StructuredOutput tool and the turn ends with StructuredOutputError. The
+ * builder is not writing code, so none of these earn their place in the prompt.
+ * Ids come from GET /experimental/tool/ids.
+ */
+const BUILDER_TOOLS_OFF: Record<string, boolean> = Object.fromEntries(
+  [
+    "invalid", "question", "bash", "read", "glob", "grep", "edit", "write",
+    "task", "webfetch", "todowrite", "websearch", "skill", "apply_patch",
+  ].map((id) => [id, false]),
+)
+
+function splitRef(ref: string): { providerID: string; modelID: string } | undefined {
+  const slash = ref.indexOf("/")
+  if (slash <= 0) return undefined
+  return { providerID: ref.slice(0, slash), modelID: ref.slice(slash + 1) }
+}
+
+/**
+ * One generation attempt, on a throwaway session.
+ *
+ * A scratch session rather than the user's own: the builder turn is a system
+ * prompt plus a JSON blob, and dropping that into the transcript the user is
+ * reading is a poor trade for one saved round trip. The session is deleted
+ * afterwards on both paths.
+ */
+function builderPrompt(api: TuiPluginApi): PromptFn {
+  return async ({ model, system, text, schema }) => {
+    const created = await api.client.session.create({ title: "paradigm builder" }, { throwOnError: true })
+    const sessionID = created.data.id
+    try {
+      const reply = await api.client.session.prompt(
+        {
+          sessionID,
+          system,
+          tools: BUILDER_TOOLS_OFF,
+          format: { type: "json_schema", schema: schema as Record<string, unknown>, retryCount: 1 },
+          ...(model ? { model: splitRef(model) } : {}),
+          parts: [{ type: "text", text }],
+        },
+        { throwOnError: true },
+      )
+      // `structured` is set on the assistant message by prompt.ts:1317 and DOES
+      // come back over the wire - verified against a live server 2026-08-27 -
+      // but the generated SDK type does not declare it. Hence the cast.
+      const info = reply.data?.info as unknown as
+        | { structured?: unknown; error?: { name?: string } }
+        | undefined
+      return { structured: info?.structured, errorName: info?.error?.name }
+    } finally {
+      void api.client.session.delete({ sessionID }).catch(() => {})
+    }
+  }
+}
+
 function Craft(props: { api: TuiPluginApi }) {
   const [draft, setDraft] = createSignal<Draft>(emptyDraft())
   const [step, setStep] = createSignal<Step>(firstStep())
@@ -177,6 +237,11 @@ function Craft(props: { api: TuiPluginApi }) {
       finish(result.draft)
       return
     }
+    if (result.step.kind === "generating") {
+      rerender()
+      void build(result.draft)
+      return
+    }
     // nextStep refusing to move is only expected when "done" is answered
     // before every head has a model. Surface the reason instead of silently
     // repainting an identical dialog, so any future divergence is visible.
@@ -192,6 +257,74 @@ function Craft(props: { api: TuiPluginApi }) {
 
   const back = () => {
     setStep(stepBack(draft(), step()))
+    rerender()
+  }
+
+  /**
+   * Ask for a team, bind it, and land the user on review.
+   *
+   * Every failure path ends on a PAINTED step. A generation that dies leaving
+   * the wizard on "generating" would be a dialog that never repaints - the
+   * exact 2026-08-18 trap - so the fallback is always the v5 name step, which
+   * is also the honest answer: choose the heads yourself.
+   */
+  const build = async (working: Draft) => {
+    const goal = working.goal ?? ""
+    const available = candidates() ?? []
+    const result = await generateDraft({
+      goal,
+      existing: existing(),
+      // Free only, ranked as a scout. The king is tried first by omission, so
+      // this list only matters when the king cannot comply - and a builder
+      // that quietly degrades onto a PAID model would spend money the user
+      // never opted into, on a step that is not even their actual task. Paid
+      // stays opt-in: bind a paid king yourself and it is tried first.
+      fallbacks: builderFallbacks(available),
+      prompt: builderPrompt(props.api),
+    })
+
+    if (!result.ok) {
+      props.api.ui.toast({
+        variant: "error",
+        title: "Paradigm",
+        message: `Could not build a team: ${result.errors.join("; ")}. Choose the heads yourself.`,
+      })
+      setStep({ kind: "name" })
+      rerender()
+      return
+    }
+
+    const { draft: built, unbindable } = toDraft(
+      result.generated,
+      (roleId) => pickForRole(roleId, available),
+      goal,
+    )
+
+    if (!canFinish(built)) {
+      props.api.ui.toast({
+        variant: "error",
+        title: "Paradigm",
+        message: `Nothing this machine can reach fits ${unbindable.join(", ")}. Choose the heads yourself.`,
+      })
+      setStep({ kind: "name" })
+      rerender()
+      return
+    }
+
+    // Both notices are advisory - the draft is good either way, and the user is
+    // about to see it. Never silently drop a head; say which one and why.
+    if (unbindable.length > 0) {
+      props.api.ui.toast({
+        variant: "warning",
+        title: "Paradigm",
+        message: `Left out ${unbindable.join(", ")} - no model this machine can reach meets that role.`,
+      })
+    }
+    const notice = degradationNotice(result.attempts)
+    if (notice) props.api.ui.toast({ variant: "warning", title: "Paradigm", message: notice })
+
+    setDraft(built)
+    setStep({ kind: "review" })
     rerender()
   }
 
@@ -242,6 +375,34 @@ function Craft(props: { api: TuiPluginApi }) {
 
   function render() {
     const current = step()
+
+    if (current.kind === "goal") {
+      return (
+        <DialogPrompt
+          title="New paradigm - what is this team for?"
+          placeholder="describe the job, or leave blank to choose heads yourself"
+          description={() => (
+            <text>Describe the work and VanGio assembles a team. Blank goes to the manual wizard.</text>
+          )}
+          onConfirm={(value) => advance(value)}
+        />
+      )
+    }
+
+    if (current.kind === "generating") {
+      // A step is painted explicitly in this TUI or it is not painted at all,
+      // so the waiting state gets a real dialog rather than an absent one.
+      // Measured 2026-08-27: 12s to 135s depending on which model answers.
+      return (
+        <DialogSelect
+          title="New paradigm - assembling the team"
+          options={[]}
+          placeholder="Asking the king for a team. This takes a few seconds."
+          onSelect={() => {}}
+        />
+      )
+    }
+
     if (current.kind === "name") {
       return (
         <DialogPrompt
