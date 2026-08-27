@@ -95,7 +95,11 @@ This is **better than `generateObject` on every axis that matters here**:
 
 - Structure is enforced by **tool calling**, which every one of the seven Zen free models supports —
   rather than by a `response_format` the provider silently drops.
-- **`retryCount` is built in.** The bounded retry §5 asked for is a field, not code.
+- ~~**`retryCount` is built in.** The bounded retry §5 asked for is a field, not code.~~
+  **Wrong, corrected 2026-08-27 after measurement.** `retryCount` is declared with a default of 2
+  (`packages/schema/src/v1/session.ts:72`), validated, and stored on the user message - and read by
+  **nothing**. `prompt.ts:1337-1342` hardcodes `retries: 0` and breaks on the first miss. The bounded
+  retry is code after all, and it is the builder's own model ladder (§5).
 - Zero upstream files touched. It is a client call.
 
 The call: `api.client.session.prompt({ path: { id }, body: { format, system, model?, parts } })` on
@@ -146,14 +150,17 @@ Layered, cheapest first. **Every layer already exists:**
 
 | Layer | Mechanism | On failure |
 |---|---|---|
-| Structure | engine's `StructuredOutput` tool + `retryCount` | `StructuredOutputError` |
+| Structure | engine's `StructuredOutput` tool (`retryCount` is inert - see §4) | `StructuredOutputError`, then the next model in the ladder |
 | Name | `validateName()` — bundled names, bad chars, collisions | fall back to the `name` step |
 | Roles | `getRole(id)` per head | reject the draft |
 | Shape | `canFinish()` — at least 2 heads, king in slot 0 | reject the draft |
 | Bindability | `modelOptions()` against the runnable catalog | head reported by name |
 | Final | `parseParadigm()` before write | refuse, keep the user on review |
 
-**`retryCount: 1`, then fall back to the v5 blank wizard.** Never leave the user holding nothing,
+**Corrected 2026-08-27:** `retryCount` does nothing, so the ladder carries the whole burden. **The king,
+then up to two free fallbacks ranked as a scout, then the v5 blank wizard.** Measured: the active king
+cannot produce structured output at all (it types the tool call), so this path is not hypothetical - it
+is the normal path on this machine. Never leave the user holding nothing,
 and never retry unbounded — a free tier that has started refusing will refuse again, and a silent
 retry loop is the failure shape this project keeps logging.
 

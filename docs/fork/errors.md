@@ -14,6 +14,33 @@
 **Files affected:** List of changed files
 ---
 
+## [2026-08-27 17:20] The active king TYPES the tool call instead of making it - v6 generation fails on the default model
+#[models] #[free-model-quirk] #[structured-output] #[paradigm]
+**Context:** Verifying v6's `/craft` goal flow live. Generation runs on the active king by omission, matching `Agent.generate` - and the active king here is `opencode/nemotron-3-ultra-free`.
+**Error:** `StructuredOutputError: Model did not produce structured output`, three times out of three: 49s inside the TUI, 89.6s over HTTP from the repo, 30s over HTTP from a scratch directory. The reply carries the call as message TEXT - `[[{"name":"StructuredOutput",...}]]` - and `finish` is `stop`, so nothing retries it.
+**Root cause:** The documented free-model tool-calling weakness (errors.md 2026-07-17), in its most expensive form: the model's ANSWER was substantively right every time, and only the channel was wrong. `format.retryCount` does not help, because it is never read (entry below). Two things made it worse and both are now closed: the coding tools were left on, so the model reached for `todowrite` instead of the StructuredOutput tool; and running inside this repo inflates the turn from **9,804 to 108,535 input tokens**, because the session carries the project context - which is what makes a 30s call take 90s here.
+**Fix:** `412ff2d82e`. The king stays the first attempt, and a king that cannot comply degrades to one that can, out loud - `hy3-free` answered correctly in 19s. Coding tools are switched off for the builder turn (`BUILDER_TOOLS_OFF`). Only a TRANSPORT failure earns a fallback; a schema violation stops the search, because a second opinion on a bad shape is usually the same opinion at 30s a go.
+**Prevention:** Do not assume the active model can do structured output just because the feature exists - on a free tier, tool CALLING is the thing that breaks, and it breaks silently as plausible text. Any feature that needs a tool call must degrade to another model out loud, and must be measured against the model that is actually bound, not against a model that looked reasonable.
+**Files affected:** packages/paradigm/src/generate.ts (new), packages/paradigm/src/tui.tsx, packages/paradigm/src/builder.ts
+---
+## [2026-08-27 17:25] `format.retryCount` is accepted, defaulted and stored - and read by nothing
+#[engine] #[structured-output] #[correction] #[silent-failure]
+**Context:** The v6 spec leaned on it explicitly: "`retryCount` is built in. The bounded retry §5 asked for is a field, not code." Checking that claim before trusting it with the only retry the builder had.
+**Error:** No error - the field is silently inert. `packages/schema/src/v1/session.ts:72` declares `retryCount` with a decoding default of **2**; a test asserts it round-trips onto the user message. A case-insensitive search of `packages/opencode/src` and `packages/core/src` finds **zero** consumers. `prompt.ts:1337-1342` builds `StructuredOutputError` with a HARDCODED `retries: 0` and breaks out of the loop on the first failure.
+**Root cause:** Schema and behaviour were shipped apart. The field validates (it even rejects negatives), persists, and appears in the SDK types, so every signal a caller can see says the retry exists.
+**Fix:** None in the engine - that is an upstream behaviour change and constraint #1 says stay out. The v6 spec is corrected instead, and the builder's own model ladder is now understood to be the ONLY retry in the path.
+**Prevention:** A validated, defaulted, round-tripping field is not evidence that anything acts on it. Before designing on top of an engine field, grep for its CONSUMER, not its declaration - `retries: 0` in the error payload was the tell, and it is a literal.
+**Files affected:** docs/superpowers/specs/2026-08-27-paradigm-builder-design.md (corrected)
+---
+## [2026-08-27 17:35] The ConPTY harness starved the run it was measuring - a 49s call looked like a >420s hang
+#[verification] #[windows] #[tooling] #[false-negative]
+**Context:** First live run of the v6 `/craft` flow. The harness polls by forcing a full repaint (`proc.resize` down and back) and reading that frame.
+**Error:** The wizard sat on "assembling the team" until the 420s budget expired. The server log made it look genuine: the king's stream started and NOTHING followed - no error, no swap, no second attempt, and no session delete, so the `finally` had not run either.
+**Root cause:** The poll interval was 1.5s, so the harness forced a full 140x40 repaint roughly every 2 seconds for seven minutes on a CPU-only machine, competing with the same process that was parsing the model stream. Re-running the identical flow with a 9s poll and plugin-side tracing: king answers in **49s**, `hy3-free` in **19s**, review painted at 123s. The same call over HTTP with no TUI at all: 89.6s. Nothing was hung.
+**Fix:** Poll at 9s or slower once a step is waiting on the network, and trace from inside the code (an append to a file from the plugin) rather than inferring progress from frames. Rule added to `.claude/skills/verify/SKILL.md`.
+**Prevention:** A harness that repaints to observe is not a passive observer. When a step waits on the network, slow the polling down and get the timings from the code itself - and treat "the server log shows nothing after the stream started" as ambiguous, because a successful turn logs nothing either.
+**Files affected:** .claude/skills/verify/SKILL.md (harness rule; harness itself lives in the session scratchpad)
+---
 ## [2026-08-27 13:10] Zen lists a model the engine refuses - models.dev `status: deprecated` is the filter that actually decides
 #[models] #[availability] #[correction] #[silent-failure]
 **Context:** Fixing the stale `deepseek-v4-flash-free` pin in `~/.config/vangio/opencode.json`, recorded 2026-08-25 as "the fallback rescues every run silently - and the config lies". Started by re-checking availability the way `model-index.md` says to: against the provider's live endpoint.
