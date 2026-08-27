@@ -2433,12 +2433,16 @@ turns a 30s call into a 90s one; the builder's latency depends on where VanGio i
   activate, by design.
 - **Reliability is still not a rate.** The king has failed 3/3 and `hy3-free` has answered 2/2.
   That is a direction, not a measurement.
-- **The fallback ladder is not actually free-only.** `builderFallbacks` filters with `isFree`, which
-  can only see `cost === 0` — and a subscription plan reports zero cost, so
-  `zai-coding-plan/*` and `zhipuai-coding-plan/*` sit at positions 4-13 of the 26-entry ladder.
-  `maxAttempts: 3` never reaches them today, so the comment in `tui.tsx` promising "free only" is
-  true by ordering luck rather than by construction. Closing it properly needs the raw models.dev
-  payload, which a plugin cannot reach (`resolve.ts` already says so).
+- ~~**The fallback ladder is not actually free-only.**~~ **Closed 2026-08-27, `cec9725fd1`.**
+  `builderFallbacks` filtered with `isFree`, which can only see `cost === 0` — and a subscription
+  plan reports zero cost, so `zai-coding-plan/*` and `zhipuai-coding-plan/*` sat at positions 4-13
+  of the 26-entry ladder, out of reach only because `maxAttempts: 3` stops at three. The ladder is
+  now **capped to the curated scout picks themselves** rather than merely ranked by them, so
+  curation in `roles.json` is the guarantee. That is the only guarantee available: the raw
+  models.dev payload a real free check would need is unreachable from a plugin, as `resolve.ts`
+  already says. Capping also drops an uncurated tail ranked by headroom — biggest context first,
+  the exact ordering the docblock above it says blew a 300s budget. No behaviour change today by
+  construction: three picks, three attempts.
 - The degradation toast was unit-tested, not read off the screen — it had expired by the time the
   review frame was captured.
 
@@ -2457,9 +2461,11 @@ the committed source after the instrumentation came out — 47,627 bytes, matchi
    anything works. `hy3-free` answered in 19s.
 2. **v3 is still blocked on one browser click**, unchanged since 2026-07-20 — Serve is not enabled
    on the tailnet. Everything downstream is code-complete.
-3. **Make the ladder free-only by construction, or stop claiming it is.** Today it holds by ordering
-   luck: `maxAttempts: 3` never reaches the subscription-plan models at positions 4-13. Either cap
-   the ladder to the provider known to be free, or reword the comment in `tui.tsx`.
+3. ~~**Make the ladder free-only by construction, or stop claiming it is.**~~ **Done** — capped to
+   curation, `cec9725fd1`. Next in its place: **turn 3/3 and 2/2 into a rate.** Item 1 rests on six
+   observations. A tool-call probe across the free catalog — does this model emit a real tool call,
+   or type one — is what would settle both the king question and which rung the ladder should start
+   on. It costs free-tier budget, so it is a decision, not a chore (see Q1).
 
 ### Environment left behind
 
