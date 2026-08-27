@@ -2456,9 +2456,15 @@ the committed source after the instrumentation came out — 47,627 bytes, matchi
 
 ### The next three things, in order
 
-1. **Reconsider the king** — now on much harder evidence than the latency argument. The default
-   model cannot make a tool call, which costs every structured feature a 49s failed attempt before
-   anything works. `hy3-free` answered in 19s.
+1. ~~**Reconsider the king**~~ **Settled 2026-08-27 19:05 — the king STAYS.** Two measurements
+   closed it. First, `nemotron-3-ultra-free` makes a REAL tool call: `run -m ... "read notes.txt"`
+   returned the correct line in **68s**, tool call and all. So "the king cannot make a tool call"
+   was too strong — it fails the **StructuredOutput channel only**, and its day job is untouched.
+   Second, there is nowhere to move: of 29 free tool-capable Zen models only **6 are not
+   `status: deprecated`**, and only two of those are 1M — this king, and
+   `muse-spark-1.2-contributor-free`, which made the tool call but produced no answer inside 200s.
+   The remedy is therefore the narrow one: point the paradigm builder's first attempt at
+   `small_model` (`hy3-free`, 2/2) instead of the king, and leave the crown alone.
 2. **v3 is still blocked on one browser click**, unchanged since 2026-07-20 — Serve is not enabled
    on the tailnet. Everything downstream is code-complete.
 3. ~~**Make the ladder free-only by construction, or stop claiming it is.**~~ **Done** — capped to
@@ -2466,6 +2472,24 @@ the committed source after the instrumentation came out — 47,627 bytes, matchi
    observations. A tool-call probe across the free catalog — does this model emit a real tool call,
    or type one — is what would settle both the king question and which rung the ladder should start
    on. It costs free-tier budget, so it is a decision, not a chore (see Q1).
+
+### Session addendum (2026-08-27 evening) — what this session actually added
+
+- **Ladder capped to curation** (`cec9725fd1`), doc-synced (`b3ccf82d8d`). See the corrected entry above.
+- **King settled** — see item 1. The probe artifacts are throwaway; only the verdict is kept.
+- **`zhipu` provider block dropped** from `~/.config/vangio/opencode.json`. It was vestigial: one
+  model, no paradigm referenced `zhipu/`, and the catalog provider `zai` supersedes it with **16**
+  GLM models on the same endpoint and the same `ZHIPU_API_KEY`. `zai/glm-4.7-flash` verified live
+  BEFORE and AFTER removal. Backups: `opencode.json.bak-2026-08-27-pre-1m`, `-pre-zhipu-drop`.
+- **A warning about this session's method.** Most of it was spent re-deriving the deprecation
+  filter already recorded at errors.md 2026-08-27 13:10 — including declaring three deprecated ids
+  in `provider.opencode.models`, which that entry states outright does not work. Reverted. **The
+  probe was designed before errors.md was read for the day.** Read the log first; it is rule one at
+  the top of that file and it would have saved three 200s runs.
+- **Free supply, measured:** 6 live free Zen models + 2 free GLM (`zai/glm-4.7-flash`,
+  `zai/glm-4.5-flash`). Direct DeepSeek and Kimi add nothing free — DeepSeek has no permanent free
+  tier (one-time 5M-token grant; V4-Flash repriced 2026-08-16) and Kimi needs a $1 minimum top-up
+  before its key works. Zen is what makes those models free here, not what limits them.
 
 ### Environment left behind
 
