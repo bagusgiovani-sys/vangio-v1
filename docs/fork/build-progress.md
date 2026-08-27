@@ -2424,9 +2424,13 @@ turns a 30s call into a 90s one; the builder's latency depends on where VanGio i
 
 ### What is NOT verified, stated plainly
 
-- **The write path was not exercised live this session.** The run was stopped ON the review screen;
-  nobody pressed Create. `writeParadigm`, the activation marker and the restart notice are covered
-  by unit tests and by v5's own live runs, not by today's.
+- ~~The write path was not exercised live this session.~~ **Done, second run:** Create pressed on
+  the review screen, `~/.config/vangio/paradigms/bra-tiktok-videos.json` on disk at 195s, valid and
+  complete — king in slot 0, `scout` bound to `hy3-free` with `edit: deny` from roles.json,
+  `warrior` bound to `nemotron-3.5-lightning-free`, routing and discipline generated, and **the
+  `goal` sentence recorded**, which is the v7 hook. The resolver, not the model, chose all three
+  model ids. Activation and the restart notice are still only unit-tested — creating does not
+  activate, by design.
 - **Reliability is still not a rate.** The king has failed 3/3 and `hy3-free` has answered 2/2.
   That is a direction, not a measurement.
 - **The fallback ladder is not actually free-only.** `builderFallbacks` filters with `isFree`, which
@@ -2448,17 +2452,20 @@ the committed source after the instrumentation came out — 47,627 bytes, matchi
 
 ### The next three things, in order
 
-1. **Press Create.** One live run through the review screen to disk, so the generated `goal` field
-   and the write path are proven by something other than unit tests.
-2. **Reconsider the king** — now on much harder evidence than the latency argument. The default
+1. **Reconsider the king** — now on much harder evidence than the latency argument. The default
    model cannot make a tool call, which costs every structured feature a 49s failed attempt before
    anything works. `hy3-free` answered in 19s.
-3. **v3 is still blocked on one browser click**, unchanged since 2026-07-20 — Serve is not enabled
+2. **v3 is still blocked on one browser click**, unchanged since 2026-07-20 — Serve is not enabled
    on the tailnet. Everything downstream is code-complete.
+3. **Make the ladder free-only by construction, or stop claiming it is.** Today it holds by ordering
+   luck: `maxAttempts: 3` never reaches the subscription-plan models at positions 4-13. Either cap
+   the ladder to the provider known to be free, or reword the comment in `tui.tsx`.
 
 ### Environment left behind
 
 - `dev` pushed to `origin/dev`. Active paradigm: `gryphon`. Working tree clean.
+- `~/.config/vangio/paradigms/bra-tiktok-videos.json` is a REAL artifact of the verification run.
+  It is not active (the marker still reads `gryphon`); delete it whenever it stops being useful.
 - **A stale `vangio serve` from an earlier session still holds 127.0.0.1:4199** (PID 9172, started
   ~13:40). Today's probes used a second server on 4211, which has since exited. Kill 9172 when
   convenient; nothing depends on it.
