@@ -32,6 +32,13 @@ export type Paradigm = {
   routing: string[]
   discipline: Record<string, string>
   shift?: { auto: boolean }
+  /**
+   * The goal sentence a generated paradigm was built from (v6). Optional and
+   * ignored by every existing consumer, but recorded from the start: v7 cannot
+   * improve a team without knowing what it was for, and adding this later would
+   * leave every v6-era paradigm without it.
+   */
+  goal?: string
 }
 
 /**
@@ -177,6 +184,9 @@ export function parseParadigm(input: unknown): ParseResult {
       routing,
       discipline,
       ...(shift ? { shift } : {}),
+      ...(typeof input["goal"] === "string" && input["goal"].length > 0
+        ? { goal: input["goal"] }
+        : {}),
     },
   }
 }

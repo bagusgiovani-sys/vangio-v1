@@ -38,6 +38,8 @@ export type Shape = "court" | "legion"
 export type DraftHead = {
   role: string
   model?: string
+  /** v6: the duty the builder wrote for this head, replacing the role summary. */
+  purpose?: string
 }
 
 export type Draft = {
@@ -46,6 +48,15 @@ export type Draft = {
   /** Slot 0 is always the king. */
   heads: Record<number, DraftHead>
   instances?: number
+  /**
+   * v6 enrichment. All optional, all absent for a hand-crafted draft, so the
+   * wizard's own output is byte-identical to what it produced before v6.
+   */
+  description?: string
+  routing?: string[]
+  discipline?: Record<string, string>
+  /** The sentence this team was generated from. Carried so v7 can read it. */
+  goal?: string
 }
 
 export type Step =
@@ -186,7 +197,9 @@ export function toParadigm(draft: Draft): Paradigm {
     const role = getRole(draftHead.role)
     const head: Head = {
       model: draftHead.model ?? "",
-      role: role?.summary ?? draftHead.role,
+      // A generated head states its own duty; a hand-crafted one falls back to
+      // the catalog summary exactly as it did before v6.
+      role: draftHead.purpose ?? role?.summary ?? draftHead.role,
     }
     // Advisory heads are locked read-only. NEVER set permission on the king -
     // compileParadigm drops it silently, so offering it would be a lie.
@@ -198,11 +211,12 @@ export function toParadigm(draft: Draft): Paradigm {
 
   return {
     name: draft.name ?? "",
-    description: `Crafted paradigm - ${draft.shape ?? "court"}`,
+    description: draft.description ?? `Crafted paradigm - ${draft.shape ?? "court"}`,
     king: ids.get(0) ?? KING_ROLE_ID,
     heads,
-    routing: [],
-    discipline: {},
+    routing: draft.routing ?? [],
+    discipline: draft.discipline ?? {},
+    ...(draft.goal ? { goal: draft.goal } : {}),
   }
 }
 
