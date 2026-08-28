@@ -2571,7 +2571,7 @@ legitimately sends 10 tools = 21,674 bytes, 66% of its 32,469-byte request.
   ~13:40). Today's probes used a second server on 4211, which has since exited. Kill 9172 when
   convenient; nothing depends on it.
 
-## RESUME HERE (2026-08-28 midday) — Groq free works on exactly ONE model. Fallback, not a driver.
+## Session state — RESUME HERE (2026-08-28 midday, Groq is worth one model)
 
 The morning's plan was executed exactly as written and it landed. **One config line, no code
 change:** `limit: {context: 131072, output: 600}` on the five groq models in
@@ -2704,3 +2704,74 @@ from memory; look them up live before spending an account on one.
 - Probe artifacts in the session scratchpad (`groq-probe/`), throwaway; only the verdict is kept.
 - `~/.config/vangio/paradigms/bra-tiktok-videos.json` still present from the 08-27 run; still not
   active. Delete whenever it stops being useful.
+
+## RESUME HERE (2026-08-28 afternoon) — tool trim is APPLIED but NOT verified live; both tiers stalled
+
+Session paused deliberately, with work in a known half-state. Read this section and errors.md
+2026-08-28 14:00 before touching anything.
+
+### State of the machine, exactly
+
+- **`~/.config/vangio/opencode.json` HAS BEEN CHANGED and the change is live but unverified.**
+  - `agent.build.permission` denies `task`, `todowrite`, `websearch` → **build ships 10 tools, was 13**
+  - `agent.lean` added — a read-only agent (read/grep/glob), **premise disproven**, kept only as the
+    measurement artifact; its `description` says so
+  - groq models carry `limit: {context: 131072, output: 600}` and measured verdicts in their names
+  - Backups: `…bak-2026-08-28-pre-trim` (before this), `…-pre-survey`, `…-pre-limit`
+  - **If tomorrow's `build` feels wrong, restore `…bak-2026-08-28-pre-trim` — one command, no other
+    dependency.**
+- `dev` pushed to `origin/dev`. Working tree clean. Active paradigm: `gryphon`.
+- **Killed PID 13844** — the `vangio serve` on :4211 from 2026-08-27, still alive with 1,615s CPU
+  and also holding :4747. The previous session's notes said it "has since exited". It had not.
+- Probe artifacts in the session scratchpad (`groq-probe/`) — throwaway.
+
+### What was proven, and by what
+
+**Tier 1 (trim `build`) is proven at the code path, with zero API calls.** `vangio debug agent <name>`
+resolves the shipped tool set through the SAME `Permission.disabled` the request path uses
+(`agent.handler.ts` → `resolved[id] = !disabled.has(id)`; `request.ts:208` filters on the same
+call). So "13 → 10 tools ship" is measured, not inferred. **Remember this instrument** — the payload
+half of any tool-trim question is free to answer.
+
+**Tier 2 (`lean`) delivered the per-request win and NOT the per-turn win.** Measured on
+`groq/openai/gpt-oss-20b`:
+
+| | build (untrimmed) | lean |
+|---|---|---|
+| Request | 6,995 tokens | **4,636 (−34%)** |
+| Rate-limit wait | 44.7s | **8.1s** |
+| Steps per turn | 2 (read → answer) | **3 (glob → read → answer)** |
+| **Per-turn TPM** | ~14,000 | **~14,100 — identical** |
+
+**Trimming tools trades request SIZE for step COUNT, and on a per-minute budget they cancel.** The
+scope predicted a lean turn would fit inside one 8,000 window; it does not, because the turn was
+costed as one request. That is rule 19's own arithmetic applied one level too shallowly.
+
+### What is NOT verified — the first thing to do next session
+
+1. **Rule 18 on trimmed `build`** — three tool-calling turns, scratch directory, no env var.
+2. **A Zen no-regression run** — the trim must not have changed the daily driver's behaviour.
+
+Both are blocked today, and **not by the trim**: both tiers began stalling mid-session — stream
+opens, nothing returns, no error. Groq `lean` hung indefinitely (run `db0a6da7`); a Zen
+`Reply with exactly: OK` that ran in 27s in the morning timed out at 151s (run `a94728ca`). It hits
+an untrimmed Zen path too, so it is congestion or a daily wall, not our change. Re-measure when the
+tiers recover — and per rule 2 **nothing about the trim gets called done until those two pass.**
+
+### The next three things, in order
+
+1. **Finish verifying the trim** (above). If rule 18 passes and Zen is unchanged, Tier 1 is done and
+   should be written up as a straight ~20% cut to every request on every provider.
+2. **`STALL_AFTER_MS` did not fire.** A 151s silent stream should trip the 30s stall-swap and nothing
+   swapped. The likely reason is that a hard-bound agent has no fallback chain to swap TO — but that
+   is a guess and it needs checking, because a stall guard that silently does nothing is worse than
+   none. This is the highest-value item after verification.
+3. **RTK-style tool-OUTPUT compression — approved, not started, and needs its own design.** Searched
+   OmniRoute's actual docs (2026-08-28): its ~89% saving is real but targets tool RESULTS and
+   conversation history. **No engine compresses the tools/functions array** — the docs say schemas
+   stay "native" — and LLMLingua-2 skips system messages. So it does nothing for our floor (66%
+   schemas + 33% system prompt) and everything for session GROWTH, which we have badly: this repo
+   inflates a turn from 9,804 to 108,535 input tokens. Borrow the idea (compress bash/grep/test
+   output before it enters context, new files, no gateway); do NOT adopt the router — it flattens
+   `preferElsewhere` and `satisfies()`, and Caveman is lossy on models that already fail tool calls.
+   This is architectural: it gets questions, approaches and a spec before any code.
