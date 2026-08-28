@@ -2571,7 +2571,7 @@ legitimately sends 10 tools = 21,674 bytes, 66% of its 32,469-byte request.
   ~13:40). Today's probes used a second server on 4211, which has since exited. Kill 9172 when
   convenient; nothing depends on it.
 
-## RESUME HERE (2026-08-28 midday) — Groq free WORKS. It is a fallback, not a driver.
+## RESUME HERE (2026-08-28 midday) — Groq free works on exactly ONE model. Fallback, not a driver.
 
 The morning's plan was executed exactly as written and it landed. **One config line, no code
 change:** `limit: {context: 131072, output: 600}` on the five groq models in
@@ -2612,6 +2612,73 @@ So: **Groq is now a legitimate fallback destination and must not become a `roles
 still closes the gap the gateway question identified — the resolver had nowhere to land when Zen
 walled, and now it has somewhere. Free supply for tool-using work is 6 live Zen models **plus a
 slow second provider**, which is the first change to that number in weeks.
+
+### CORRECTION, same day 13:05 — it is ONE model, not five
+
+Asked directly whether all Groq models work. They do not, and the question exposed a real gap: the
+rule-18 pass above is `groq/openai/gpt-oss-20b` alone, while the config declared **five**. Screened
+the other four — four models, four outcomes, three unrelated failure modes:
+
+| Model | Verdict |
+|---|---|
+| `openai/gpt-oss-20b` | **Works** — 3/3 rule 18, ~100s/turn, fallback only |
+| `openai/gpt-oss-120b` | **1/3 rule 18** — provider fine (52-68s, no walls); ignores relative paths |
+| `qwen/qwen3.6-27b` | **Unusable at any setting** — 413 `Requested 8814`, then 9492 on retry |
+| `llama-3.3-70b-versatile` | **No access** — 403 in 6s, account-level |
+| `llama-3.1-8b-instant` | **No access** — 403 in 6s, account-level |
+
+**The correction that matters: the input floor is TOKENIZER-dependent, so `limit.output` is a
+per-model remedy and not a Groq-wide one.** On the identical prompt gpt-oss-20b's floor is ~6,400
+tokens and qwen3.6-27b's is **~8,214** — same schemas, different tokenizer, and qwen is over the
+8,000 wall at reservation **zero**. Nothing in config can rescue it. The section above treated
+~6,400 as a property of VanGio; it is a property of VanGio **times the model's tokenizer**.
+
+gpt-oss-120b's failure is not Groq's either — it never hit a 413 or a 429 and answered in 52-68s.
+It is the documented free-model instruction-following weakness: the prompt said "use the read tool
+on the relative path notes.txt" and it sent `/notes.txt` twice out of three. gpt-oss-20b obeyed 3/3
+on the same prompt.
+
+`~/.config/vangio/opencode.json` now carries the measured verdict in each model's `name`, so the
+picker itself says which one to use (backup `opencode.json.bak-2026-08-28-pre-survey`).
+
+**So the supply picture barely moved: 6 live Zen models plus ONE slow Groq model.** Which sharpens
+the next item rather than softening it.
+
+### The gateway question, asked a fourth time (2026-08-28) — and the answer to the NEW half
+
+Asked as "can't we just use OmniRoute since its models already work, then tweak it to fit us."
+Two different questions with opposite answers, so both are recorded.
+
+**As a router in front of VanGio: no**, for the two reasons already in the 2026-08-28 gateway
+section — `preferElsewhere` (`fallback.ts:238`) is provider-aware and would see one provider id;
+`satisfies(model, needs)` is capability-aware and models.dev metadata does not survive a custom
+endpoint. A gateway flattens exactly the signal that makes the fallback smart.
+
+**The premise is also wrong.** OmniRoute's models are not "already working" in any transferable
+sense. Its plain-API-key set is Groq (already ours), NVIDIA NIM (1,000 credits, a trial) and Gemini
+CLI (ruled out). The "unlimited" names — iFlow, Qwen, Kiro — are OAuth/device-code session tokens
+obtained by impersonating those vendors' first-party CLI clients, which is what the TLS-fingerprint
+spoofing is for. That is not supply this project can ship: it breaks on a fingerprint change and it
+is a ToS problem in a public repo under a real name.
+
+**But the separable half of the instinct is right and does NOT need a gateway.** More providers is
+a config question — VanGio already speaks OpenAI-compatible, and the groq block is the proof. Take
+OmniRoute's provider LIST if useful; wire the honest ones in natively; keep the fallback logic.
+
+**Priority order, highest leverage first:**
+
+1. **Lower the agent floor — this is multiplication, not addition.** `build` sends 10 tool schemas
+   = 21,674 bytes, **66%** of its 32,469-byte request; in tokens that is ~4,200-4,700 of the
+   ~6,400-7,150 floor measured today. Trimming the tool set per agent makes Zen faster, shrinks or
+   erases Groq's TPM waits, rescues models like qwen that are over the wall by ~200 tokens, and
+   lowers the bar for every future candidate. Nothing else on this list helps all of them at once.
+2. **Add providers natively, not through a router.**
+3. **Screen candidates before creating an account**, using rule 19: `TPM ÷ (floor × requests/turn)`.
+   At today's floor that is ~7,000 × 2+, so under ~15k TPM is a Groq-style crawl and ~40k+ is a
+   real driver. Kills most candidates from published docs at zero cost — and gets cheaper after 1.
+
+Free-tier terms drift and have drifted repeatedly here, so no specific candidate is named above
+from memory; look them up live before spending an account on one.
 
 ### The next three things, in order
 
