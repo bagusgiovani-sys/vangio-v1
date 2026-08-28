@@ -2493,6 +2493,36 @@ the committed source after the instrumentation came out — 47,627 bytes, matchi
   tier (one-time 5M-token grant; V4-Flash repriced 2026-08-16) and Kimi needs a $1 minimum top-up
   before its key works. Zen is what makes those models free here, not what limits them.
 
+### The gateway question, settled (2026-08-28) — the mechanism is done, the GAP IS SUPPLY
+
+Asked three times in one session, so it is written down rather than re-argued. **VanGio's own
+fallback already does what an AI gateway's headline feature does, and is better suited to this
+codebase.** `fallback-swap.ts` + `fallback.ts` cover: `free_tier_limit`/`account_rate_limit`
+(immediate swap), a stream silent >30s (`STALL_AFTER_MS`), 3 unexplained failures
+(`PERSIST_AFTER`), a retired model (`rescueRetired`, which the retry path never sees), and
+provider-level escalation after 2 casualties on one provider.
+
+Two properties a gateway structurally cannot match — and they are the reason NOT to adopt one:
+
+1. **It is provider-aware.** `preferElsewhere` (`fallback.ts:238`) jumps to a DIFFERENT provider on
+   a quota wall, but STAYS on the provider for a stall or a retirement, because the credentials are
+   fine. Routed through a gateway every model arrives under ONE provider id — `exhaustedProviders`
+   would blacklist the whole pool after two failures, and `preferElsewhere` would become a no-op.
+2. **It is capability-aware.** `satisfies(model, needs)` checks `minOutput`/`tools`/`attachment`
+   before substituting, using models.dev metadata that a custom gateway endpoint does not carry.
+
+So a gateway would flatten exactly the signal that makes the fallback smart. **What is thin is not
+the mechanism, it is the supply it can switch to:** the resolver only chooses among CONFIGURED
+providers, and today that is Zen (6 live free) + zai (1-for-3, unusable). When Zen walls, the
+resolver runs and finds nothing to land on. That — not failover — is what a second provider buys.
+
+Checked OmniRoute's own catalogue for a shortcut rather than hunting from scratch. Its official,
+plain-API-key set is **Groq** (already the pick), **NVIDIA NIM** (1,000 credits — a trial, not a
+standing tier), and **Gemini CLI** (ruled out by preference). The "unlimited" names — iFlow, Qwen,
+Kiro — are OAuth/device-code session tokens, the category its TLS-fingerprint spoofing exists to
+protect. The field really is that small: converging on Groq is the answer, not a failure to look.
+
+
 ### Environment left behind
 
 - `dev` pushed to `origin/dev`. Active paradigm: `gryphon`. Working tree clean.
