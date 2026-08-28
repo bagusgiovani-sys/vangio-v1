@@ -2523,6 +2523,46 @@ Kiro — are OAuth/device-code session tokens, the category its TLS-fingerprint 
 protect. The field really is that small: converging on Groq is the answer, not a failure to look.
 
 
+## RESUME HERE (2026-08-28) — Groq is one config line from working; the blocker was ours
+
+**Root cause found and proven: `max_tokens: 32000` on every request.** `transform.ts:18`
+(`OUTPUT_TOKEN_MAX = 32_000`) is sent as a reservation, and Groq charges RESERVED OUTPUT against
+its TPM budget. So every request costs `input + 32,000` — which is why a *title-generation* call
+appeared to "request" 33,749 tokens against an 8,000 limit. Arithmetic matches Groq's own error to
+within 35 tokens (errors.md 2026-08-28 10:40).
+
+**Proven live:** `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=3000` made a call that had failed 3/3
+succeed immediately.
+
+### The exact next step
+
+1. **Declare `limit.output` for the groq models in `~/.config/vangio/opencode.json`** — NOT the env
+   var, which is global and would shrink Zen's output too. `maxOutputTokens()` takes
+   `Math.min(model.limit.output, OUTPUT_TOKEN_MAX)`, so a per-model limit caps the reservation for
+   Groq alone, needs no code change, and is honest: Groq free cannot return a large response anyway.
+2. **Find the threshold.** At a 3,000 reservation a tool-calling turn measured **8,173–8,521**
+   against the 8,000 limit — 2–6% over, with the tool call EXECUTING on 2 of 3 attempts before the
+   follow-up turn tipped over. A 1,200 run was in flight when the session ended and **its result is
+   unknown**. Start there: 1,200, then bisect.
+3. **Then re-run rule 18** — three tool-calling turns, from a scratch directory, with NO env var
+   set, so the test measures the configuration that would actually ship.
+
+### Method warning, worth more than the finding
+
+Three conclusions in a row were wrong, each stated confidently: (1) "Groq's free tier cannot run
+VanGio" — blamed the provider; (2) "~27k unexplained constant" — a phantom produced by subtracting
+known components from a number in the wrong units; (3) "Groq counts bytes" — a coincidence, killed
+by one 7,137-byte request that was still rejected. What settled it was **capturing the actual
+request** (a throwaway HTTP server behind a custom `baseURL`, ~20 lines) and then changing ONE
+variable. Both are cheap and should have come first. The user's challenge — "I think it is our
+codebase" — was correct and was resisted for two rounds.
+
+Also confirmed along the way, contradicting a hypothesis rather than supporting one: **the
+permission filter already works.** `title` and `summary` send **zero** tools against a tool-capable
+model (`resolveTools`, `request.ts:208`). There is no tool-bloat bug for utility agents. `build`
+legitimately sends 10 tools = 21,674 bytes, 66% of its 32,469-byte request.
+
+### Environment left behind
 ### Environment left behind
 
 - `dev` pushed to `origin/dev`. Active paradigm: `gryphon`. Working tree clean.
