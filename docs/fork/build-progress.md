@@ -2523,7 +2523,7 @@ Kiro — are OAuth/device-code session tokens, the category its TLS-fingerprint 
 protect. The field really is that small: converging on Groq is the answer, not a failure to look.
 
 
-## RESUME HERE (2026-08-28) — Groq is one config line from working; the blocker was ours
+## Session state — RESUME HERE (2026-08-28 morning, Groq root-caused — the blocker was ours)
 
 **Root cause found and proven: `max_tokens: 32000` on every request.** `transform.ts:18`
 (`OUTPUT_TOKEN_MAX = 32_000`) is sent as a reservation, and Groq charges RESERVED OUTPUT against
@@ -2563,7 +2563,6 @@ model (`resolveTools`, `request.ts:208`). There is no tool-bloat bug for utility
 legitimately sends 10 tools = 21,674 bytes, 66% of its 32,469-byte request.
 
 ### Environment left behind
-### Environment left behind
 
 - `dev` pushed to `origin/dev`. Active paradigm: `gryphon`. Working tree clean.
 - `~/.config/vangio/paradigms/bra-tiktok-videos.json` is a REAL artifact of the verification run.
@@ -2571,3 +2570,70 @@ legitimately sends 10 tools = 21,674 bytes, 66% of its 32,469-byte request.
 - **A stale `vangio serve` from an earlier session still holds 127.0.0.1:4199** (PID 9172, started
   ~13:40). Today's probes used a second server on 4211, which has since exited. Kill 9172 when
   convenient; nothing depends on it.
+
+## RESUME HERE (2026-08-28 midday) — Groq free WORKS. It is a fallback, not a driver.
+
+The morning's plan was executed exactly as written and it landed. **One config line, no code
+change:** `limit: {context: 131072, output: 600}` on the five groq models in
+`~/.config/vangio/opencode.json`. `provider.ts:1531` lets a config `limit.output` beat the catalog
+and `maxOutputTokens` (`transform.ts:1418`) takes `Math.min(model.limit.output, 32_000)`, so the
+reservation is capped for Groq alone.
+
+**Rule 18 passed 3/3** — `groq/openai/gpt-oss-20b`, scratch directory, no env var, real `Read` tool
+call, correct canary every time, in **91s / 105s / 106s**. Zen re-verified with the identical prompt
+in the same directory and is **unaffected**: the king answered in **27s**. That isolation is the
+entire reason the per-model limit was chosen over `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX`.
+
+Thresholds are measured, not extrapolated: **32,000 rejected · 1,200 rejected (Requested 8,347) ·
+600 passes.**
+
+### The finding that matters more than the fix: there were TWO walls
+
+Capping the reservation cleared the 413 (`Request too large`) and revealed a 429
+(`Rate limit reached ... try again in Xs`) underneath it, which is the one that actually decides
+viability. From the log, one turn:
+
+- request 1 — `Used 6972, Requested 6995` → 429, waits **44.7s**, succeeds, tool call executes
+- request 2 (carrying the tool result) — `Used 7821, Requested 7148` → 429, waits **52.3s**, answers
+
+That is the whole ~100s. **A tool-calling turn is two requests of ~7,000 tokens against an 8,000
+TPM budget**, so it must wait out a window — and no reservation value can change that. The good
+news is behavioural: **VanGio honours the `try again in Xs` and waits rather than swapping away.**
+The retry path is correct against a real 429 with a retry-after, which nothing had tested before.
+
+### What Groq free is actually good for, stated honestly
+
+~1.14 requests/minute. A trivial one-tool turn costs ~100s; a real coding task of 5-10 tool calls
+would be 10-18 minutes of mostly waiting. It also ships two hard limits: a **600-token ceiling on
+any single response**, and an **input ceiling** — once a conversation passes ~7,400 input tokens no
+reservation fits under 8,000, so it serves short conversations only.
+
+So: **Groq is now a legitimate fallback destination and must not become a `roles.json` pick.** That
+still closes the gap the gateway question identified — the resolver had nowhere to land when Zen
+walled, and now it has somewhere. Free supply for tool-using work is 6 live Zen models **plus a
+slow second provider**, which is the first change to that number in weeks.
+
+### The next three things, in order
+
+1. **Wire Groq into the fallback chain and prove it swaps.** Everything above tests Groq bound
+   directly with `-m`. What is NOT tested is the thing it was added for: Zen walls, `preferElsewhere`
+   escalates to a different provider, and the turn lands on Groq. That is the actual acceptance
+   test and it has not been run.
+2. **The 413 handler misreports its own cause.** On the 1,200 rejection VanGio compacted the session
+   and printed "Attachments were too large, removed from context ... suggest smaller or fewer
+   files." There were no attachments. The handler assumes media bloat and tells the user so, which
+   would misdirect anyone debugging a size error. Small, self-contained, and in-repo.
+3. **v3 is still blocked on one browser click**, unchanged since 2026-07-20 — Serve is not enabled
+   on the tailnet. Everything downstream is code-complete. (Carried, unchanged, for the sixth
+   session.)
+
+### Environment left behind
+
+- `dev` pushed to `origin/dev`. Active paradigm: `gryphon`. Working tree clean.
+- `~/.config/vangio/opencode.json` — groq models carry `limit.context`/`limit.output`. Backup at
+  `opencode.json.bak-2026-08-28-pre-limit`. **Gotcha:** declaring `limit` requires BOTH keys;
+  `{output: N}` alone fails validation and the model silently drops out of resolution.
+- The stale `vangio serve` on 127.0.0.1:4199 (PID 9172) is **gone** — it had already exited.
+- Probe artifacts in the session scratchpad (`groq-probe/`), throwaway; only the verdict is kept.
+- `~/.config/vangio/paradigms/bra-tiktok-videos.json` still present from the 08-27 run; still not
+  active. Delete whenever it stops being useful.
