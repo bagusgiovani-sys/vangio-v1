@@ -2705,7 +2705,7 @@ from memory; look them up live before spending an account on one.
 - `~/.config/vangio/paradigms/bra-tiktok-videos.json` still present from the 08-27 run; still not
   active. Delete whenever it stops being useful.
 
-## RESUME HERE (2026-08-28 afternoon) — tool trim is APPLIED but NOT verified live; both tiers stalled
+## Session state — RESUME HERE (2026-08-28 afternoon) — tool trim APPLIED but not verified; superseded below
 
 Session paused deliberately, with work in a known half-state. Read this section and errors.md
 2026-08-28 14:00 before touching anything.
@@ -2775,3 +2775,77 @@ tiers recover — and per rule 2 **nothing about the trim gets called done until
    output before it enters context, new files, no gateway); do NOT adopt the router — it flattens
    `preferElsewhere` and `satisfies()`, and Caveman is lossy on models that already fail tool calls.
    This is architectural: it gets questions, approaches and a spec before any code.
+
+## RESUME HERE (2026-08-29) — the tool trim is VERIFIED and closed; the headline number was corrected down
+
+Yesterday's two blocked items are both closed. The blocker was real and it was not ours: both tiers
+had recovered by this morning and every run below went through on the first attempt.
+
+### What was closed, and how
+
+**Rule 18 on the trimmed `build`: 3/3 on TWO providers**, scratch directory, no env var, real `Read`
+tool call, correct canary every time.
+
+| | trimmed (today) | untrimmed (08-28) |
+|---|---|---|
+| Zen `nemotron-3-ultra-free` | **3/3** — 53s / 11s / 10s | 27s (single baseline) |
+| Groq `openai/gpt-oss-20b` | **3/3** — 41s / 93s / 45s | 91s / 105s / 106s |
+
+**The Zen no-regression run passed** — same step count, same answer, and two of three runs faster
+than the untrimmed baseline (the 53s is a cold first run). Tier 1 is done.
+
+### The correction: it is ~14%, not the ~20% this section told you to publish
+
+The previous section instructed the next session to write Tier 1 up as "a straight ~20% cut to every
+request on every provider." **Do not write that.** Measured from Groq's own 429 text — five samples
+at **5,820 / 5,962 / 6,064 / 6,145 / 6,346** against untrimmed **6,995 / 7,148** — the cut is
+**~14%**, roughly 1,000-1,175 tokens.
+
+The ~20% came from a BYTE ratio. The three denied tools carry the three largest description files in
+the tree (`task` 2,324 + `todowrite` 2,056 + `websearch` 1,047 = **5,427 bytes**), which is ~17-20%
+of the 32,469-byte request measured on 08-28. But descriptions are prose at ~4.5 bytes/token while
+the JSON schema left behind runs nearer 2, so removing prose removes fewer tokens per byte than the
+payload average. Now **rule 22**.
+
+### The per-turn result — a real win, but a distribution and not a constant
+
+On the two Groq runs that held at 2 requests the turn cost ~12,100-12,450 tokens in 41-45s against
+untrimmed ~14,143 in 91-106s: **a ~12-14% per-turn win, which is exactly what Tier 2 failed to
+deliver.** But run 2 took **3 steps** (`Glob` → `Read` → answer), ~18,000 tokens, 93s — **erasing
+the win on that run.** Step count went **2/3/2 on identical input.**
+
+None of the three denied tools locates a file, so unlike `lean` (where removing `bash` genuinely
+lengthened the path) this reads as free-model nondeterminism, not a consequence of the trim. That
+does not rescue the arithmetic: **on a TPM-bound tier the run-to-run step variance is larger than
+the saving the trim buys.** Quote the win as an average, never as a promise about one turn.
+
+### Environment left behind
+
+- `~/.config/vangio/opencode.json` **unchanged today** — still the 08-28 trim. Rollback point is
+  still `opencode.json.bak-2026-08-28-pre-trim`, one command, no other dependency.
+- `dev` pushed to `origin/dev`. Working tree clean. Active paradigm: `gryphon`.
+- **No stale `vangio serve`** — checked by process list and by ports; 4211/4747 are free. (The
+  08-27 PID 13844 was killed yesterday.)
+- Canary scratch dir is in this session's scratchpad (`rule18/notes.txt`) — throwaway, but the
+  recipe is worth keeping: a file holding a canary word, prompt `Use the read tool on the relative
+  path notes.txt and tell me the canary word.`, run from that directory with no env var.
+
+### The next two things, in order
+
+1. **`STALL_AFTER_MS` did not fire — now the highest-value open item.** A 151s silent stream on
+   08-28 should have tripped the 30s stall-swap and nothing swapped. The likely reason is that a
+   hard-bound agent (`run -m ...`) has no fallback chain to swap TO, but **that is still a guess and
+   it needs checking** — a stall guard that silently does nothing is worse than none. Note today's
+   runs cannot test it: nothing stalled, which is why this is the item and not a re-measurement.
+2. **RTK-style tool-OUTPUT compression — approved, not started, needs its own design.** Unchanged
+   from yesterday and still correct: no engine compresses the tools/functions array (schemas stay
+   native, LLMLingua-2 skips system messages), so it does nothing for our floor and everything for
+   session GROWTH, which this repo has badly — a turn inflates from 9,804 to 108,535 input tokens.
+   Borrow the idea (compress bash/grep/test output before it enters context, new files, no
+   gateway); do NOT adopt OmniRoute's router — it flattens `preferElsewhere` and `satisfies()`.
+   Architectural: it gets questions, approaches and a spec before any code.
+
+**One thing today's numbers quietly settle about item 2:** the floor is now measured at ~5,800-6,300
+tokens per request and the trim took ~14% of it. Further tool trimming has little left to give —
+the remaining ten tools are the ones actually on the path. Growth, not floor, is where the next real
+saving is.
