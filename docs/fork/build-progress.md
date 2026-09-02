@@ -2832,11 +2832,15 @@ the saving the trim buys.** Quote the win as an average, never as a promise abou
 
 ### The next two things, in order
 
-1. **`STALL_AFTER_MS` did not fire — now the highest-value open item.** A 151s silent stream on
-   08-28 should have tripped the 30s stall-swap and nothing swapped. The likely reason is that a
-   hard-bound agent (`run -m ...`) has no fallback chain to swap TO, but **that is still a guess and
-   it needs checking** — a stall guard that silently does nothing is worse than none. Note today's
-   runs cannot test it: nothing stalled, which is why this is the item and not a re-measurement.
+1. ~~**`STALL_AFTER_MS` did not fire — now the highest-value open item.**~~ **CLOSED 2026-09-02.**
+   The guess recorded here — that a hard-bound agent has no fallback chain to swap TO — **was
+   wrong.** The guard is only ever reached from the FAILURE path: `silentMs` is sampled inside the
+   schedule step `Effect.retry` drives, and `Effect.retry` runs only when the wrapped effect fails.
+   A stream that opens, goes quiet and ends cleanly was never judged at all. Fixed by a watchdog
+   that fails past its own 60s budget (`StreamProgress.watchdog`, raced with `Effect.raceFirst`),
+   borrowing `ProviderError.ResponseStreamError` so the whole existing chain is reached with zero
+   changes to `message-v2.ts`, `retry.ts` or `fallback-swap.ts`. Pinned by a 2.2s regression test.
+   Full write-up in errors.md.
 2. **RTK-style tool-OUTPUT compression — approved, not started, needs its own design.** Unchanged
    from yesterday and still correct: no engine compresses the tools/functions array (schemas stay
    native, LLMLingua-2 skips system messages), so it does nothing for our floor and everything for
