@@ -647,13 +647,21 @@ const layer = Layer.effect(
             yield* status.set(ctx.sessionID, { type: "busy" })
             const stream = llm.stream(streamInput)
 
-            yield* stream.pipe(
-              Stream.tap((event) => {
-                progress.saw((event as { type?: string }).type ?? "")
-                return handleEvent(event)
-              }),
-              Stream.takeUntil(() => ctx.needsCompaction),
-              Stream.runDrain,
+            // VanGio: the watchdog turns a stream that goes silent WITHOUT
+            // erroring into a failure the retry policy can actually see - the
+            // one shape the stall guard was blind to. raceFirst, not race:
+            // whichever side settles first wins, so the watchdog's failure
+            // lands immediately instead of waiting on a drain that never ends.
+            yield* Effect.raceFirst(
+              stream.pipe(
+                Stream.tap((event) => {
+                  progress.saw((event as { type?: string }).type ?? "")
+                  return handleEvent(event)
+                }),
+                Stream.takeUntil(() => ctx.needsCompaction),
+                Stream.runDrain,
+              ),
+              StreamProgress.watchdog(progress),
             )
           }).pipe(
             Effect.onInterrupt(() =>

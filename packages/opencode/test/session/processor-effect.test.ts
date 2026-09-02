@@ -226,6 +226,76 @@ const fragmentFailureLLM = Layer.succeed(
 const fragmentFailureEnv = LayerNode.compile(root, [...replacements, [LLM.node, fragmentFailureLLM]])
 const itFragmentFailure = testEffect(fragmentFailureEnv)
 
+/**
+ * A stream that opens, produces NOTHING the model generated, and then ends
+ * CLEANLY - no error, no interrupt - on its FIRST attempt only.
+ *
+ * This is the 2026-08-28 shape: "stream opens, nothing returns, no error."
+ * `step-start`, `step-finish` and `finish` all sit deliberately outside
+ * stream-progress's OUTPUT set, so the tracker reports the whole elapsed time
+ * as silence while the attempt still SUCCEEDS - which is the entire point.
+ *
+ * The SECOND attempt answers normally, so the turn does not walk the whole
+ * backoff ladder (2+4+8+16+32s) to reach a verdict.
+ */
+let silentAttempts = 0
+const silentStreamLLM = Layer.succeed(
+  LLM.Service,
+  LLM.Service.of({
+    stream: () => {
+      silentAttempts += 1
+      if (silentAttempts > 1)
+        return Stream.make(
+          LLMEvent.stepStart({ index: 0 }),
+          LLMEvent.textStart({ id: "text-1" }),
+          LLMEvent.textDelta({ id: "text-1", text: "recovered" }),
+          LLMEvent.textEnd({ id: "text-1" }),
+          LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+          LLMEvent.finish({ reason: "stop" }),
+        )
+      return Stream.make(LLMEvent.stepStart({ index: 0 })).pipe(
+        Stream.concat(Stream.fromEffectDrain(Effect.sleep("250 millis"))),
+        Stream.concat(
+          Stream.make(LLMEvent.stepFinish({ index: 0, reason: "stop" }), LLMEvent.finish({ reason: "stop" })),
+        ),
+      )
+    },
+  }),
+)
+/**
+ * Output FIRST, then a long quiet spell - a turn doing real work, e.g. sitting
+ * on a five-minute bash call after the model already committed to it.
+ *
+ * `text-start` / `text-delta` are in the OUTPUT set, so the tracker's `seen`
+ * latch pins silentMs at 0 for the rest of the attempt and the watchdog must
+ * stay out of the way. This is the false positive that would matter most in
+ * practice, and it is exactly what `Stream.timeoutOrElse` would have got wrong.
+ */
+const busyStreamLLM = Layer.succeed(
+  LLM.Service,
+  LLM.Service.of({
+    stream: () =>
+      Stream.make(
+        LLMEvent.stepStart({ index: 0 }),
+        LLMEvent.textStart({ id: "text-1" }),
+        LLMEvent.textDelta({ id: "text-1", text: "working" }),
+      ).pipe(
+        Stream.concat(Stream.fromEffectDrain(Effect.sleep("250 millis"))),
+        Stream.concat(
+          Stream.make(
+            LLMEvent.textEnd({ id: "text-1" }),
+            LLMEvent.stepFinish({ index: 0, reason: "stop" }),
+            LLMEvent.finish({ reason: "stop" }),
+          ),
+        ),
+      ),
+  }),
+)
+const busyStreamEnv = LayerNode.compile(root, [...replacements, [LLM.node, busyStreamLLM]])
+const itBusyStream = testEffect(busyStreamEnv)
+const silentStreamEnv = LayerNode.compile(root, [...replacements, [LLM.node, silentStreamLLM]])
+const itSilentStream = testEffect(silentStreamEnv)
+
 const boot = Effect.fn("test.boot")(function* () {
   const processors = yield* SessionProcessor.Service
   const session = yield* Session.Service
@@ -1145,6 +1215,24 @@ function withStallBudget<A, E, R>(value: string | undefined, effect: Effect.Effe
   )
 }
 
+/** Companion to withStallBudget for the TRIGGER budget - see stream-progress.ts. */
+function withStallTrigger<A, E, R>(value: string | undefined, effect: Effect.Effect<A, E, R>) {
+  return Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const prev = process.env["VANGIO_STALL_TRIGGER_MS"]
+      if (value === undefined) delete process.env["VANGIO_STALL_TRIGGER_MS"]
+      else process.env["VANGIO_STALL_TRIGGER_MS"] = value
+      return prev
+    }),
+    () => effect,
+    (prev) =>
+      Effect.sync(() => {
+        if (prev === undefined) delete process.env["VANGIO_STALL_TRIGGER_MS"]
+        else process.env["VANGIO_STALL_TRIGGER_MS"] = prev
+      }),
+  )
+}
+
 function retryMessages(budget: string | undefined) {
   return provideTmpdirServer(
     ({ dir, llm }) =>
@@ -1218,4 +1306,129 @@ it.live("session.processor effect tests a fast failure is not treated as a stall
     expect(messages.length).toBe(1)
     expect(messages[0]).not.toContain("stopped responding")
   }),
+)
+
+// THE REGRESSION TEST FOR THE STALL GUARD'S BLIND SPOT (2026-09-02).
+//
+// The judgement above is sound and its wiring is proven - but both are only
+// ever reached from the FAILURE path. `silentMs` is sampled at `retry.ts:234`,
+// inside the step function of the schedule `Effect.retry` drives, and
+// `Effect.retry` runs that schedule ONLY when the wrapped effect fails.
+//
+// So a stream that opens, stays silent well past the budget and then ends
+// without erroring is never judged at all: no failure, no retry, no sample, no
+// swap. That is exactly the 2026-08-28 shape - "stream opens, nothing returns,
+// no error" - and the reason the 2026-08-23 case worked is that Zen eventually
+// answered `[504] Upstream idle timeout exceeded`, an error the retry path CAN
+// see. The guard has never been able to see a stall that does not fail.
+//
+// 250ms of real silence against a 50ms budget, so a working guard has no timing
+// excuse. EXPECTED TO FAIL until the trigger exists; it pins the root cause.
+itSilentStream.live("session.processor effect tests a silent stream that never errors trips the stall guard", () =>
+  provideTmpdirInstance(
+    (dir) =>
+      withStallTrigger(
+        "50",
+        withStallBudget(
+          "40",
+          Effect.gen(function* () {
+            const { processors, session, provider } = yield* boot()
+            const events = yield* EventV2Bridge.Service
+
+            const chat = yield* session.create({})
+            const parent = yield* user(chat.id, "silent")
+            const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+            const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+            const retries: string[] = []
+            const off = yield* events.listen((evt) => {
+              if (evt.type !== SessionStatus.Event.Status.type) return Effect.void
+              const data = evt.data as typeof SessionStatus.Event.Status.data.Type
+              if (data.sessionID === chat.id && data.status.type === "retry") retries.push(data.status.message)
+              return Effect.void
+            })
+            const handle = yield* processors.create({ assistantMessage: msg, sessionID: chat.id, model: mdl })
+            const value = yield* handle.process({
+              user: {
+                id: parent.id,
+                sessionID: chat.id,
+                role: "user",
+                time: parent.time,
+                agent: parent.agent,
+                model: { providerID: ref.providerID, modelID: ref.modelID },
+              } satisfies SessionV1.User,
+              sessionID: chat.id,
+              model: mdl,
+              agent: agent(),
+              system: [],
+              messages: [{ role: "user", content: "silent" }],
+              tools: {},
+            })
+            yield* off
+
+            // The whole point: silence past the budget is NOTICED. Before the
+            // watchdog this was 0 - the attempt succeeded, so nothing ever asked
+            // how long it had been quiet.
+            expect(retries.length).toBeGreaterThan(0)
+            // And the turn still completes on the attempt that follows, which is
+            // what separates a guard from a kill switch.
+            expect(value).toBe("continue")
+          }),
+        ),
+      ),
+    { config: cfg },
+  ),
+)
+
+// The companion guard: a stream that PRODUCED something and then went quiet is
+// working, not stalled, and must not be swapped away. Same 250ms of silence and
+// the same 50ms budget as the test above - the only difference is that output
+// arrived first, which is the whole distinction the tracker exists to draw.
+itBusyStream.live("session.processor effect tests silence after output is not a stall", () =>
+  provideTmpdirInstance(
+    (dir) =>
+      withStallTrigger(
+        "50",
+        withStallBudget(
+          "40",
+          Effect.gen(function* () {
+            const { processors, session, provider } = yield* boot()
+            const events = yield* EventV2Bridge.Service
+
+            const chat = yield* session.create({})
+            const parent = yield* user(chat.id, "busy")
+            const msg = yield* assistant(chat.id, parent.id, path.resolve(dir))
+            const mdl = yield* provider.getModel(ref.providerID, ref.modelID)
+            const retries: string[] = []
+            const off = yield* events.listen((evt) => {
+              if (evt.type !== SessionStatus.Event.Status.type) return Effect.void
+              const data = evt.data as typeof SessionStatus.Event.Status.data.Type
+              if (data.sessionID === chat.id && data.status.type === "retry") retries.push(data.status.message)
+              return Effect.void
+            })
+            const handle = yield* processors.create({ assistantMessage: msg, sessionID: chat.id, model: mdl })
+            const value = yield* handle.process({
+              user: {
+                id: parent.id,
+                sessionID: chat.id,
+                role: "user",
+                time: parent.time,
+                agent: parent.agent,
+                model: { providerID: ref.providerID, modelID: ref.modelID },
+              } satisfies SessionV1.User,
+              sessionID: chat.id,
+              model: mdl,
+              agent: agent(),
+              system: [],
+              messages: [{ role: "user", content: "busy" }],
+              tools: {},
+            })
+            yield* off
+
+            expect(retries).toEqual([])
+            expect(value).toBe("continue")
+          }),
+        ),
+      ),
+    { config: cfg },
+  ),
 )

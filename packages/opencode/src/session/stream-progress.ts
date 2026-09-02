@@ -24,6 +24,9 @@
  * deliberately excluded - that is our own tool execution reporting back.
  */
 
+import { Duration, Effect } from "effect"
+import { ProviderError } from "@/provider/error"
+
 /** Events that mean the model itself produced something. */
 const OUTPUT = new Set([
   "text-start",
@@ -63,6 +66,77 @@ export function tracker(now: number): Tracker {
       return seen ? 0 : Math.max(0, at - startedAt)
     },
   }
+}
+
+/**
+ * How long a stream may stay silent before the guard TRIPS - as opposed to how
+ * long it must have been silent for the fallback to CALL it a stall.
+ *
+ * These are deliberately different numbers. FallbackSwap's `STALL_AFTER_MS`
+ * (30s) is a post-mortem reading taken after a request already failed, where
+ * being generous costs nothing. This one is a live guillotine on
+ * time-to-first-token, and free tiers under load start slowly: measured
+ * 2026-08-28, Groq turns ran 41-93s end to end, and both candidate models
+ * answer a small prompt in ~20s. Tripping at 30s would swap away models that
+ * were about to answer. 60s clears that and still sits well under the ~123s
+ * Zen took to return its 504 on 2026-08-23.
+ *
+ * Trigger ABOVE judge also means anything this fires on is necessarily judged
+ * a stall rather than an ordinary retry.
+ */
+const STALL_TRIGGER_MS = 60_000
+
+/** Read per call - same reasoning and same shape as `VANGIO_STALL_AFTER_MS`. */
+export function triggerMs(): number {
+  const raw = Number.parseInt(process.env["VANGIO_STALL_TRIGGER_MS"] ?? "", 10)
+  return Number.isFinite(raw) && raw > 0 ? raw : STALL_TRIGGER_MS
+}
+
+/**
+ * Fails once the tracker has been silent past the budget, so that a stream
+ * which never errors reaches the retry policy at all.
+ *
+ * THE BUG THIS EXISTS FOR. `silentMs` is sampled at `retry.ts:234`, inside the
+ * step function of the schedule `Effect.retry` drives - and `Effect.retry` runs
+ * that schedule only when the wrapped effect FAILS. A stream that opens, goes
+ * quiet and then ends cleanly was therefore never judged at all: no failure, no
+ * retry, no sample, no swap. Measured 2026-08-28 (a 151s silent Zen stream, and
+ * a Groq `lean` that hung indefinitely); the 2026-08-23 case only ever worked
+ * because Zen eventually answered `[504]`, which IS an error.
+ *
+ * WHY IT FAILS RATHER THAN ABORTS. `processor.ts` routes interrupt-only causes
+ * AROUND `Effect.retry` (`Cause.hasInterruptsOnly`), so cancelling the stream
+ * would leave the guard exactly as blind as it is now. A failure is the only
+ * signal the retry path can see.
+ *
+ * WHY `ResponseStreamError`. It is already mapped by `MessageV2.fromError` to
+ * an `APIError` with `isRetryable: true`, and upstream already raises it for an
+ * idle stream (`plugin/openai/ws.ts:178`). Borrowing it reaches classification,
+ * the `silentMs` sample, the stall judgement and the swap without one line
+ * changed in `message-v2.ts`, `retry.ts` or `fallback-swap.ts`.
+ *
+ * WHY IT POLLS THE TRACKER, and not `Stream.timeoutOrElse` - which exists in
+ * effect 4 and looks like the obvious primitive. That timeout is checked PER
+ * PULL, so ANY event resets it, including `tool-result`, which `OUTPUT`
+ * excludes on purpose. A five-minute bash call would trip it. The tracker's
+ * `seen` latch has no such hole.
+ */
+export function watchdog(track: Tracker, now: () => number = Date.now) {
+  const budget = triggerMs()
+  // Checked often enough to be punctual, rarely enough to be free. A forced
+  // budget in a test is far smaller than the shipped one, hence the clamp.
+  const tick = Math.max(25, Math.min(budget, 1_000))
+  return Effect.gen(function* () {
+    while (true) {
+      yield* Effect.sleep(Duration.millis(tick))
+      const silent = track.silentMs(now())
+      if (silent >= budget) {
+        return yield* Effect.fail(
+          new ProviderError.ResponseStreamError(`Model produced no output for ${Math.round(silent / 1000)}s`),
+        )
+      }
+    }
+  })
 }
 
 export * as StreamProgress from "./stream-progress"
