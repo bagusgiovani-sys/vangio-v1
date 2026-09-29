@@ -21,7 +21,7 @@ export type Result = { content: string; truncated: false } | { content: string; 
 export interface Options {
   maxLines?: number
   maxBytes?: number
-  direction?: "head" | "tail"
+  direction?: "head" | "tail" | "headtail"
 }
 
 function hasTaskTool(agent?: Agent.Info) {
@@ -82,11 +82,44 @@ const layer = Layer.effect(
       }
     })
 
+    const headOnly = Effect.fn("Truncate.headOnly")(function* (
+      lines: string[],
+      maxLines: number,
+      maxBytes: number,
+      totalBytes: number,
+      agent: Agent.Info | undefined,
+    ) {
+      const out: string[] = []
+      let bytes = 0
+      let hitBytes = false
+      for (let i = 0; i < lines.length && out.length < maxLines; i++) {
+        const size = Buffer.byteLength(lines[i], "utf-8") + (i > 0 ? 1 : 0)
+        if (bytes + size > maxBytes) {
+          hitBytes = true
+          break
+        }
+        out.push(lines[i])
+        bytes += size
+      }
+      const removed = hitBytes ? totalBytes - bytes : lines.length - out.length
+      const unit = hitBytes ? "bytes" : "lines"
+      const preview = out.join("\n")
+      const file = yield* write(lines.join("\n"))
+      const hint = hasTaskTool(agent)
+        ? `The tool call succeeded but the output was truncated. Full output saved to: ${file}\nUse the Task tool to have explore agent process this file with Grep and Read (with offset/limit). Do NOT read the full file yourself - delegate to save context.`
+        : `The tool call succeeded but the output was truncated. Full output saved to: ${file}\nUse Grep to search the full content or Read with offset/limit to view specific sections.`
+      return {
+        content: `${preview}\n\n...${removed} ${unit} truncated...\n\n${hint}`,
+        truncated: true,
+        outputPath: file,
+      } as const
+    })
+
     const output = Effect.fn("Truncate.output")(function* (text: string, options: Options = {}, agent?: Agent.Info) {
       const resolved = yield* limits()
       const maxLines = options.maxLines ?? resolved.maxLines
       const maxBytes = options.maxBytes ?? resolved.maxBytes
-      const direction = options.direction ?? "head"
+      const direction = options.direction ?? "head" // default flip happens in Task 2
       const lines = text.split("\n")
       const totalBytes = Buffer.byteLength(text, "utf-8")
 
@@ -94,31 +127,70 @@ const layer = Layer.effect(
         return { content: text, truncated: false } as const
       }
 
+      if (direction === "headtail") {
+        const halfLines = Math.floor(maxLines / 2)
+        const headLimit = halfLines
+        const tailLimit = maxLines - halfLines // ties go to tail
+        const halfBytes = Math.floor(maxBytes / 2)
+
+        // Head pass: forward
+        const head: string[] = []
+        let headBytes = 0
+        for (let i = 0; i < lines.length && head.length < headLimit; i++) {
+          const size = Buffer.byteLength(lines[i], "utf-8") + (i > 0 ? 1 : 0)
+          if (headBytes + size > halfBytes) break
+          head.push(lines[i])
+          headBytes += size
+        }
+
+        // Tail pass: backward, starting past what the head consumed
+        const tail: string[] = []
+        let tailBytes = 0
+        for (let i = lines.length - 1; i >= head.length && tail.length < tailLimit; i--) {
+          const size = Buffer.byteLength(lines[i], "utf-8") + (tail.length > 0 ? 1 : 0)
+          if (tailBytes + size > halfBytes) break
+          tail.unshift(lines[i])
+          tailBytes += size
+        }
+
+        // Overlap fallback: head+tail cover the full input → head-only for the whole budget
+        if (head.length + tail.length >= lines.length) {
+          return yield* headOnly(lines, maxLines, maxBytes, totalBytes, agent)
+        }
+
+        const removedLines = lines.length - head.length - tail.length
+        const removedBytes = totalBytes - headBytes - tailBytes
+        const preview =
+          head.join("\n") + `\n\n...[${removedLines} lines omitted, ${removedBytes} bytes removed]...\n\n` + tail.join("\n")
+        const file = yield* write(text)
+        const hint = hasTaskTool(agent)
+          ? `The tool call succeeded but the output was truncated in the middle. First ${head.length} lines and last ${tail.length} lines shown; ${removedLines} lines omitted. Full output saved to: ${file}\nUse the Task tool to have explore agent process this file with Grep and Read (with offset/limit). Do NOT read the full file yourself - delegate to save context.`
+          : `The tool call succeeded but the output was truncated in the middle. First ${head.length} lines and last ${tail.length} lines shown; ${removedLines} lines omitted. Full output saved to: ${file}\nUse Grep to search the full content or Read with offset/limit to inspect the omitted middle.`
+
+        return {
+          content: `${preview}\n\n${hint}`,
+          truncated: true,
+          outputPath: file,
+        } as const
+      }
+
+      // Existing head/tail behavior preserved
+      if (direction === "head") {
+        return yield* headOnly(lines, maxLines, maxBytes, totalBytes, agent)
+      }
+
+      // direction === "tail"
       const out: string[] = []
-      let i = 0
       let bytes = 0
       let hitBytes = false
-
-      if (direction === "head") {
-        for (i = 0; i < lines.length && i < maxLines; i++) {
-          const size = Buffer.byteLength(lines[i], "utf-8") + (i > 0 ? 1 : 0)
-          if (bytes + size > maxBytes) {
-            hitBytes = true
-            break
-          }
-          out.push(lines[i])
-          bytes += size
+      for (let i = lines.length - 1; i >= 0 && out.length < maxLines; i--) {
+        const size = Buffer.byteLength(lines[i], "utf-8") + (out.length > 0 ? 1 : 0)
+        if (bytes + size > maxBytes) {
+          hitBytes = true
+          break
         }
-      } else {
-        for (i = lines.length - 1; i >= 0 && out.length < maxLines; i--) {
-          const size = Buffer.byteLength(lines[i], "utf-8") + (out.length > 0 ? 1 : 0)
-          if (bytes + size > maxBytes) {
-            hitBytes = true
-            break
-          }
-          out.unshift(lines[i])
-          bytes += size
-        }
+        out.unshift(lines[i])
+        bytes += size
       }
 
       const removed = hitBytes ? totalBytes - bytes : lines.length - out.length
@@ -131,10 +203,7 @@ const layer = Layer.effect(
         : `The tool call succeeded but the output was truncated. Full output saved to: ${file}\nUse Grep to search the full content or Read with offset/limit to view specific sections.`
 
       return {
-        content:
-          direction === "head"
-            ? `${preview}\n\n...${removed} ${unit} truncated...\n\n${hint}`
-            : `...${removed} ${unit} truncated...\n\n${hint}\n\n${preview}`,
+        content: `...${removed} ${unit} truncated...\n\n${hint}\n\n${preview}`,
         truncated: true,
         outputPath: file,
       } as const

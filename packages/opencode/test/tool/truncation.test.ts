@@ -100,6 +100,74 @@ describe("Truncate", () => {
       }),
     )
 
+    it.live("truncates from headtail when direction is headtail", () =>
+      Effect.gen(function* () {
+        const svc = yield* Truncate.Service
+        const lines = Array.from({ length: 10 }, (_, i) => `line${i}`).join("\n")
+        const result = yield* svc.output(lines, { maxLines: 4, direction: "headtail" })
+
+        expect(result.truncated).toBe(true)
+        expect(result.content).toContain("line0")
+        expect(result.content).toContain("line1")
+        expect(result.content).toContain("line8")
+        expect(result.content).toContain("line9")
+        expect(result.content).not.toContain("line4")
+        expect(result.content).not.toContain("line5")
+        expect(result.content).toMatch(/\.{3}\[\d+ lines omitted, \d+ bytes removed\]\.{3}/)
+      }),
+    )
+
+    it.live("headtail ties go to the tail on odd budgets", () =>
+      Effect.gen(function* () {
+        const svc = yield* Truncate.Service
+        const lines = Array.from({ length: 10 }, (_, i) => `line${i}`).join("\n")
+        const result = yield* svc.output(lines, { maxLines: 5, direction: "headtail" })
+
+        // 5 total: floor(5/2)=2 head, 5-2=3 tail
+        expect(result.content).toContain("line0")
+        expect(result.content).toContain("line1")
+        expect(result.content).not.toContain("line2")
+        expect(result.content).toContain("line7")
+        expect(result.content).toContain("line8")
+        expect(result.content).toContain("line9")
+      }),
+    )
+
+    it.live("headtail falls back to head when head+tail would cover full input", () =>
+      Effect.gen(function* () {
+        const svc = yield* Truncate.Service
+        const lines = Array.from({ length: 4 }, (_, i) => `line${i}`).join("\n")
+        // maxLines=6 > input length 4 → fits, no truncation happens at all
+        const result = yield* svc.output(lines, { maxLines: 6, direction: "headtail" })
+        expect(result.truncated).toBe(false)
+        expect(result.content).toBe(lines)
+      }),
+    )
+
+    it.live("headtail with empty input passes through", () =>
+      Effect.gen(function* () {
+        const svc = yield* Truncate.Service
+        const result = yield* svc.output("", { direction: "headtail" })
+        expect(result.truncated).toBe(false)
+        expect(result.content).toBe("")
+      }),
+    )
+
+    it.live("headtail enforces byte budget per half", () =>
+      Effect.gen(function* () {
+        const svc = yield* Truncate.Service
+        // Each line is 100 bytes; 20 lines = 2100 bytes with newlines
+        const line = "a".repeat(100)
+        const content = Array.from({ length: 20 }, () => line).join("\n")
+        const result = yield* svc.output(content, { maxBytes: 404, direction: "headtail" })
+
+        expect(result.truncated).toBe(true)
+        // budget admits 2 full lines per half → 4 total lines of 100 a's
+        const matches = result.content.match(/a{100}/g)
+        expect(matches?.length).toBe(4)
+      }),
+    )
+
     test("uses default MAX_LINES and MAX_BYTES", () => {
       expect(Truncate.MAX_LINES).toBe(2000)
       expect(Truncate.MAX_BYTES).toBe(50 * 1024)
