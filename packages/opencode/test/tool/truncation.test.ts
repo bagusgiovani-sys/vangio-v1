@@ -159,6 +159,7 @@ describe("Truncate", () => {
         // Each line is 100 bytes; 20 lines = 2100 bytes with newlines
         const line = "a".repeat(100)
         const content = Array.from({ length: 20 }, () => line).join("\n")
+        // 404 → halfBytes=202; line0 (100 bytes) + line1 (100+1 newline byte) = 201 ≤ 202, so 2 lines fit per half.
         const result = yield* svc.output(content, { maxBytes: 404, direction: "headtail" })
 
         expect(result.truncated).toBe(true)
