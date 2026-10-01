@@ -2776,7 +2776,7 @@ tiers recover — and per rule 2 **nothing about the trim gets called done until
    `preferElsewhere` and `satisfies()`, and Caveman is lossy on models that already fail tool calls.
    This is architectural: it gets questions, approaches and a spec before any code.
 
-## RESUME HERE (2026-08-29) — the tool trim is VERIFIED and closed; the headline number was corrected down
+## Session state — RESUME HERE (2026-08-29) — the tool trim is VERIFIED and closed; the headline number was corrected down — supersedes every earlier block
 
 Yesterday's two blocked items are both closed. The blocker was real and it was not ours: both tiers
 had recovered by this morning and every run below went through on the first attempt.
@@ -2853,3 +2853,65 @@ the saving the trim buys.** Quote the win as an average, never as a promise abou
 tokens per request and the trim took ~14% of it. Further tool trimming has little left to give —
 the remaining ten tools are the ones actually on the path. Growth, not floor, is where the next real
 saving is.
+
+## RESUME HERE (2026-10-01) — tool-output compression landed in three tasks + a fix pass
+
+The headline from the 08-29 block — *"growth, not floor, is where the next real saving is"* — is now
+closed through its first lever. The three-task plan designed for it (`docs/superpowers/plans/2026-09-29-tool-output-compression.md`,
+spec `docs/superpowers/specs/2026-09-29-tool-output-compression-design.md`) shipped end-to-end today.
+
+### What landed
+
+Four commits on `dev`:
+
+- `03dcc138f8` — Task 1: `headtail` direction added to `Truncate.output` as a mechanism, default
+  unchanged. Head half + omission marker + tail half, with an overlap fallback that drops to
+  head-only when head+tail would cover the whole input.
+- `0e2c354ac9` — Task 2: default direction flipped from `head` to `headtail`. The framework win,
+  reaches every tool that calls `Truncate.output(...)` without an explicit direction.
+- `0868009199` — Task 3: `read.ts` `MAX_BYTES` dropped from 50 KB to 8 KB. `lines()` rewritten to
+  collect head + tail via ring-buffer eviction in a single stream pass. Output stage preserves the
+  `<path>/<type>/<content>` wrapper across every branch and emits a middle-omission marker in the
+  LLM-visible content.
+- `795ba28885` — Fix pass from the whole-branch review: `display.text` now carries the omission
+  marker so ACP clients (TUI) render the gap instead of silently jumping line numbers.
+
+### What's not done, in order
+
+1. **Post-implementation measurement (plan §1).** Run 2-3 real sessions and compare
+   `SUM(LENGTH(state.output)) GROUP BY session_id` in `opencode-local.db` before and after. The
+   spec estimated ~50-70 KB saved per turn on sessions with multiple large `read` calls. This is
+   the only outstanding verification; the TDD gates covered the shape invariants, but the token-
+   impact number is still a spec prediction, not a measurement.
+2. **Step 8 of Task 3 — ConPTY corpus smoke against the 55 KB `build-progress.md` example.**
+   Deferred by the executor. The TDD gates for Task 3 (wrapper preservation, headtail marker,
+   EOF marker, offset+limit interaction, empty file, single-long-line, LSP `<system-reminder>`
+   placement) exercise every shape invariant Step 8 would have smoke-tested. Still worth running
+   once as a corpus sanity check — a prior session took four runs to find a TUI defect because
+   `--version` had been treated as proof.
+3. **Minor-deferred findings (seven items)** recorded in the plan's ledger at
+   `.superpowers/sdd/2026-09-29-tool-output-compression/progress.md` under `## Final review`.
+   None blocks merge. The most load-bearing is the pre-existing UTF-8-not-flushed-at-EOF at
+   `read.ts:161-163` — unchanged by this plan, but surfaced during review; a trailing
+   `decoder.decode()` call after the stream closes would address it.
+
+### Environment left behind
+
+- `~/.config/vangio/opencode.json` **unchanged today**. The 08-28 tool trim rollback point
+  (`opencode.json.bak-2026-08-28-pre-trim`) is still the one.
+- `dev` pushed to `origin/dev` at `795ba28885`. Working tree clean. Active paradigm: `gryphon`.
+- No stale `vangio serve`. Ports 4211/4747 free.
+- Plan workspace at `.superpowers/sdd/2026-09-29-tool-output-compression/` — the ledger there
+  records every ruling made during execution (two in Task 1, one in Task 2, two in Task 3, plus
+  the final-review assessment). Delete when post-impl measurement lands.
+
+### What this plan quietly resolves about the broader growth problem
+
+The 08-29 block measured the per-request floor at ~5,800-6,300 tokens and said further tool
+trimming "has little left to give." This plan's lever is different: it caps per-tool-call
+*output* size, which the floor measurement never counted — because the floor is the request-at-
+turn-start, before any tool ran. On a session with 5-10 `read` tool calls, each returning up to
+50 KB today, dropping to 8 KB (plus the Truncate framework default affecting bash/webfetch/grep)
+should compound into the 50-70 KB-per-turn number the spec estimated. The 108,535-input-token
+turn mentioned in the 08-29 block was the kind of session this plan targets. Measurement will
+confirm or refute; the mechanism is now in place either way.
