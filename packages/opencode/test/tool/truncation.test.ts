@@ -34,7 +34,7 @@ describe("Truncate", () => {
         const result = yield* svc.output(content)
 
         expect(result.truncated).toBe(true)
-        expect(result.content).toContain("truncated...")
+        expect(result.content).toMatch(/\.{3}\[\d+ lines omitted, \d+ bytes removed\]\.{3}/)
         if (result.truncated) expect(result.outputPath).toBeDefined()
       }),
     )
@@ -57,7 +57,7 @@ describe("Truncate", () => {
         const result = yield* svc.output(lines, { maxLines: 10 })
 
         expect(result.truncated).toBe(true)
-        expect(result.content).toContain("...90 lines truncated...")
+        expect(result.content).toMatch(/\.{3}\[\d+ lines omitted, \d+ bytes removed\]\.{3}/)
       }),
     )
 
@@ -68,21 +68,34 @@ describe("Truncate", () => {
         const result = yield* svc.output(content, { maxBytes: 100 })
 
         expect(result.truncated).toBe(true)
-        expect(result.content).toContain("truncated...")
+        expect(result.content).toMatch(/\.{3}\[\d+ lines omitted, \d+ bytes removed\]\.{3}/)
       }),
     )
 
-    it.live("truncates from head by default", () =>
+    it.live("truncates from headtail by default", () =>
       Effect.gen(function* () {
         const svc = yield* Truncate.Service
         const lines = Array.from({ length: 10 }, (_, i) => `line${i}`).join("\n")
-        const result = yield* svc.output(lines, { maxLines: 3 })
+        const result = yield* svc.output(lines, { maxLines: 4 })
 
         expect(result.truncated).toBe(true)
         expect(result.content).toContain("line0")
         expect(result.content).toContain("line1")
-        expect(result.content).toContain("line2")
-        expect(result.content).not.toContain("line9")
+        expect(result.content).toContain("line8")
+        expect(result.content).toContain("line9")
+        expect(result.content).toMatch(/\.{3}\[\d+ lines omitted, \d+ bytes removed\]\.{3}/)
+      }),
+    )
+
+    it.live("headtail hint mentions middle omission", () =>
+      Effect.gen(function* () {
+        const svc = yield* Truncate.Service
+        const lines = Array.from({ length: 100 }, (_, i) => `line${i}`).join("\n")
+        const result = yield* svc.output(lines, { maxLines: 10 })
+
+        expect(result.truncated).toBe(true)
+        expect(result.content).toContain("truncated in the middle")
+        expect(result.content).toContain("lines omitted")
       }),
     )
 
@@ -201,7 +214,7 @@ describe("Truncate", () => {
           const content = Array.from({ length: 100 }, (_, i) => `line${i}`).join("\n")
           const result = yield* (yield* Truncate.Service).output(content)
           expect(result.truncated).toBe(true)
-          expect(result.content).toContain("...90 lines truncated...")
+          expect(result.content).toMatch(/\.{3}\[\d+ lines omitted, \d+ bytes removed\]\.{3}/)
         }),
       )
 
@@ -212,7 +225,7 @@ describe("Truncate", () => {
           const content = "a".repeat(1000)
           const result = yield* (yield* Truncate.Service).output(content)
           expect(result.truncated).toBe(true)
-          expect(result.content).toContain("bytes truncated...")
+          expect(result.content).toMatch(/\.{3}\[\d+ lines omitted, \d+ bytes removed\]\.{3}/)
         }),
       )
 
@@ -234,7 +247,7 @@ describe("Truncate", () => {
         const svc = yield* Truncate.Service
         const fsys = yield* FSUtil.Service
         const content = yield* fsys.readFileString(path.join(FIXTURES_DIR, "models-api.json"))
-        const result = yield* svc.output(content)
+        const result = yield* svc.output(content, { direction: "head" })
 
         expect(result.truncated).toBe(true)
         expect(result.content).toContain("bytes truncated...")

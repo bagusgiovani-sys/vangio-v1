@@ -119,7 +119,7 @@ const layer = Layer.effect(
       const resolved = yield* limits()
       const maxLines = options.maxLines ?? resolved.maxLines
       const maxBytes = options.maxBytes ?? resolved.maxBytes
-      const direction = options.direction ?? "head" // default flip happens in Task 2
+      const direction = options.direction ?? "headtail"
       const lines = text.split("\n")
       const totalBytes = Buffer.byteLength(text, "utf-8")
 
