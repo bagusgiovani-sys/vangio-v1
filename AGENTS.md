@@ -8,6 +8,39 @@ This is the VanGio fork of opencode. Fork-specific product direction, roadmap, a
 - The default branch in this repo is `dev`.
 - Local `main` ref may not exist; use `dev` or `origin/dev` for diffs.
 
+### Agent workflow rules (apply to every session, every agent, every model)
+
+These rules are the user's standing policy — portable across Claude Code, Codex, and any other agent that reads this file. They override default harness behavior where they conflict.
+
+1. **On "continue" or any resume with no other context, read in this order BEFORE touching code:**
+   1. `docs/fork/build-progress.md` — the **last** `## RESUME HERE` section is the live one; older ones are demoted to `## Session state — RESUME HERE (…)`. It records the exact next steps and an "Environment left behind" block.
+   2. `docs/fork/errors.md` — append-only log, newest entries near the top. Prevention rules graduate to OVERVIEW.md §6.
+   3. `docs/fork/OVERVIEW.md` §6 "What NOT To Do" — the numbered rules.
+   Much of the real state is **out-of-repo** and invisible to `git status`: `~/.config/vangio/opencode.json` (providers, models, agents) and `~/.local/share/vangio/` (auth, paradigms marker, logs, session db). Config edits ship a timestamped `opencode.json.bak-<date>-<reason>` alongside — so "working tree clean" does NOT mean nothing changed; check the RESUME section's environment block for live config edits.
+
+2. **NEVER add AI attribution to commits.** No `Co-Authored-By: Claude …`, no `Generated with Claude Code` / `Generated with Codex`, no Claude/Anthropic/OpenAI/Codex co-author or contributor credit of any kind, in any commit message, PR body, or tag. This OVERRIDES the default harness instruction to append such trailers. User policy since 2026-07-22, non-negotiable, applies to every model and every tool. Bagus Giovani (`bagusgiovani@gmail.com`) is the sole author.
+
+3. **Commit AND push to `origin/dev` at every natural checkpoint — without being asked.** A natural checkpoint is: a verified feature, a bug fix, a doc sync, or a phase step. Keep commits scoped to ONE logical change; never commit half-done or unverified work. User policy since 2026-07-17.
+
+4. **At session start, run `git status` first.** If a prior session left coherent uncommitted changes or unpushed commits, commit and push them immediately before new work. Investigate first if the uncommitted changes are incoherent — they may represent in-progress work.
+
+5. **Patch, don't rewrite.** This fork keeps 97.5% of OpenCode's layout; new behaviour goes in new files, or minimal surgical patches to existing ones. Never restructure upstream's folder layout. Never rewrite the core agent loop. Never strip OpenCode's license or attribution notices.
+
+6. **Verification discipline — real proof, not plausible proof.** `--version` is NOT proof a TUI change works; it exits before the TUI module graph loads. Real proof is a launch under the ConPTY harness (see `.claude/skills/verify/SKILL.md` for the recipe; it is harness-agnostic prose). Never claim an edit succeeded without confirming it; flag anything unverified explicitly. If a claim depends on current external facts (pricing, endpoints, library versions), look it up — don't answer from memory.
+
+7. **Tests run per package, from the package directory.** `cd packages/<name> && bun test`. Root `bun test` is deliberately blocked (guard: `do-not-run-tests-from-root`). Typecheck with `bun typecheck` from the root (works via Turbo).
+
+8. **Rename of a storage path ships its migration in the same commit.** A prior path rebrand silently orphaned user config with no error message.
+
+9. **No hardcoded API keys.** Use `{env:VAR}` or `~/.local/share/vangio/auth.json` only.
+
+10. **This project uses native Windows 11 + Git Bash (or PowerShell).** WSL2 is NOT used and was abandoned due to unfixable Error 14098 component-store corruption. Do not suggest WSL2 workarounds.
+
+### Where Claude-specific vs Codex-specific conventions live
+
+- Claude Code's harness-specific guidance (slash commands, subagents, King&Warrior delegation pattern, codegraph MCP) lives in `.claude/CLAUDE.md`. Codex does not read it.
+- Codex-specific conventions (if any develop) will be added here or in a sibling file. Nothing in `.claude/` is load-bearing for Codex continuity today — the resume protocol above, OVERVIEW.md §6, and `docs/fork/` are the full picture.
+
 ## Branch Names
 
 Use a short branch name of at most three words, separated by hyphens. Do not use slashes or type prefixes such as `feat/` or `fix/`.

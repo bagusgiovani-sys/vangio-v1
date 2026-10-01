@@ -6,10 +6,10 @@
   "license": "MIT",
   "scripts": {
     "typecheck": "tsgo --noEmit",
-    "dev": "vite dev",
-    "build": "vite build",
-    "build:cloudflare": "OPENCODE_DEPLOYMENT_TARGET=cloudflare vite build",
-    "start": "vite start",
+    "dev": "node init && vite dev",
+    "build": "node init && vite build",
+    "build:cloudflare": "node init && OPENCODE_DEPLOYMENT_TARGET=cloudflare vite build",
+    "start": "node init && vite start",
     "shell-prod": "sst shell --target Teams --stage production"
   },
   "dependencies": {

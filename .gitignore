@@ -3,7 +3,6 @@ node_modules
 .worktrees
 .sst
 .idea
-.vscode
 .codex
 *~
 playground

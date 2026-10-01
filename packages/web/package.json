@@ -4,10 +4,10 @@
   "license": "MIT",
   "version": "1.18.19",
   "scripts": {
-    "dev": "astro dev",
-    "dev:remote": "VITE_API_URL=https://api.opencode.ai astro dev",
-    "start": "astro dev",
-    "build": "astro build",
+    "dev": "node init && astro dev",
+    "dev:remote": "node init && VITE_API_URL=https://api.opencode.ai astro dev",
+    "start": "node init && astro dev",
+    "build": "node init && astro build",
     "preview": "astro preview",
     "astro": "astro"
   },

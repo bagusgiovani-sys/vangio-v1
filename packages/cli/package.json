@@ -11,8 +11,8 @@
     "bin"
   ],
   "scripts": {
-    "build": "bun run script/build.ts",
-    "dev": "bun run src/index.ts",
+    "build": "node init && bun run script/build.ts",
+    "dev": "node init && bun run src/index.ts",
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {

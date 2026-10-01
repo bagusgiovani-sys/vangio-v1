@@ -15,9 +15,9 @@
   "scripts": {
     "typecheck": "tsgo -b",
     "typecheck:e2e": "tsgo -p e2e/tsconfig.json",
-    "start": "vite",
-    "dev": "vite",
-    "build": "vite build",
+    "start": "node init && vite",
+    "dev": "node init && vite",
+    "build": "node init && vite build",
     "serve": "vite preview",
     "test": "bun run test:unit && bun run test:browser",
     "test:unit": "bun test --conditions=solid --only-failures --preload ./happydom.ts ./src",

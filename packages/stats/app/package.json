@@ -7,9 +7,9 @@
   "license": "MIT",
   "scripts": {
     "typecheck": "tsgo --noEmit",
-    "dev": "vite dev --host 0.0.0.0",
-    "build": "vite build",
-    "start": "vite start"
+    "dev": "node init && vite dev --host 0.0.0.0",
+    "build": "node init && vite build",
+    "start": "node init && vite start"
   },
   "dependencies": {
     "@ibm/plex": "6.4.1",

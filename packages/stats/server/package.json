@@ -10,7 +10,7 @@
     ".": "./src/server.ts"
   },
   "scripts": {
-    "start": "bun src/server.ts",
+    "start": "node init && bun src/server.ts",
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
