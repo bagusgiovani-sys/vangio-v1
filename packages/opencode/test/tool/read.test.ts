@@ -323,40 +323,8 @@ describe("tool.read truncation", () => {
 
       const result = yield* run({ filePath: path.join(test.directory, "large.json") })
       expect(result.metadata.truncated).toBe(true)
-      expect(result.output).toContain("Output capped at")
-      expect(result.output).toContain("Use offset=")
-    }),
-  )
-
-  it.instance("stops streaming after the byte cap", () =>
-    Effect.gen(function* () {
-      const test = yield* TestInstance
-      const filepath = path.join(test.directory, "huge.txt")
-      const content = `${"x".repeat(80)}\n`.repeat(50_000)
-      yield* put(filepath, content)
-
-      const fs = yield* FSUtil.Service
-      const counter = { bytes: 0 }
-      const result = yield* run({ filePath: filepath }).pipe(
-        Effect.provideService(
-          FSUtil.Service,
-          FSUtil.Service.of({
-            ...fs,
-            stream: (file, options) =>
-              fs.stream(file, options).pipe(
-                Stream.tap((chunk) =>
-                  Effect.sync(() => {
-                    counter.bytes += chunk.length
-                  }),
-                ),
-              ),
-          }),
-        ),
-      )
-
-      expect(result.metadata.truncated).toBe(true)
-      expect(result.output).toContain("Output capped at")
-      expect(counter.bytes).toBeLessThan(Buffer.byteLength(content, "utf-8") / 2)
+      expect(result.output).toMatch(/\.{3}\[\d+ lines omitted\]\.{3}/)
+      expect(result.output).toContain("Middle omitted; use offset=")
     }),
   )
 
@@ -367,8 +335,10 @@ describe("tool.read truncation", () => {
       yield* put(path.join(test.directory, "many-lines.txt"), lines)
 
       const result = yield* run({ filePath: path.join(test.directory, "many-lines.txt"), limit: 10 })
-      expect(result.metadata.truncated).toBe(true)
-      expect(result.output).toContain("Showing lines 1-10 of 100")
+      // limit=10 bounds the read window to the first 10 lines; headtail (5 head + 5 tail) is
+      // contiguous within that window, so the output shows lines 1-10 with no middle marker
+      // and a "Use offset=11 to continue" hint.
+      expect(result.output).toContain("Showing lines 1-10")
       expect(result.output).toContain("Use offset=11")
       expect(result.output).toContain("line0")
       expect(result.output).toContain("line9")
@@ -603,6 +573,114 @@ describe("tool.read binary detection", () => {
 
       const err = yield* fail(dir, { filePath: path.join(dir, "module.wasm") })
       expect(err.message).toContain("Cannot read binary file")
+    }),
+  )
+})
+
+describe("tool.read headtail truncation", () => {
+  it.live("passes through small files unchanged", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const filepath = path.join(dir, "small.txt")
+      const content = Array.from({ length: 20 }, (_, i) => `line${i}`).join("\n")
+      yield* put(filepath, content)
+
+      const result = yield* exec(dir, { filePath: filepath })
+
+      expect(result.output).toContain("<path>")
+      expect(result.output).toContain("<content>")
+      expect(result.output).toContain("</content>")
+      expect(result.output).toContain("1: line0")
+      expect(result.output).toContain("20: line19")
+      expect(result.output).toContain("(End of file - total 20 lines)")
+      expect(result.output).not.toContain("[lines omitted")
+      expect(result.metadata.truncated).toBe(false)
+    }),
+  )
+
+  it.live("produces wrapper-preserved headtail on large files", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const filepath = path.join(dir, "large.txt")
+      // Each line ~43 bytes; 500 lines ~22 KB. Above the new 8 KB cap.
+      const content = Array.from({ length: 500 }, (_, i) => `this is line ${i} with padding text abcdefg`).join("\n")
+      yield* put(filepath, content)
+
+      const result = yield* exec(dir, { filePath: filepath })
+
+      expect(result.output).toMatch(/<path>[^<]+<\/path>/)
+      expect(result.output).toContain("<type>file</type>")
+      expect(result.output).toContain("<content>")
+      expect(result.output).toContain("</content>")
+
+      expect(result.output).toContain("1: this is line 0 with padding text abcdefg")
+      expect(result.output).toContain("500: this is line 499 with padding text abcdefg")
+
+      expect(result.output).toMatch(/\.{3}\[\d+ lines omitted\]\.{3}/)
+      expect(result.output).toContain("Middle omitted; use offset=")
+      expect(result.metadata.truncated).toBe(true)
+    }),
+  )
+
+  it.live("places LSP system-reminder (when present) after </content>", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const filepath = path.join(dir, "large.ts")
+      const content = Array.from({ length: 500 }, (_, i) => `export const line${i} = ${i};`).join("\n")
+      yield* put(filepath, content)
+
+      const result = yield* exec(dir, { filePath: filepath })
+
+      const contentClose = result.output.lastIndexOf("</content>")
+      const reminderOpen = result.output.indexOf("<system-reminder>")
+      if (reminderOpen !== -1) {
+        expect(reminderOpen).toBeGreaterThan(contentClose)
+      }
+    }),
+  )
+
+  it.live("handles single-long-line files without emitting a middle marker", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const filepath = path.join(dir, "oneline.txt")
+      const content = "a".repeat(60 * 1024)
+      yield* put(filepath, content)
+
+      const result = yield* exec(dir, { filePath: filepath })
+
+      expect(result.output).toContain("<content>")
+      expect(result.output).toContain("</content>")
+      expect(result.output).toMatch(/1: a+/)
+      expect(result.output).not.toMatch(/\.{3}\[\d+ lines omitted/)
+    }),
+  )
+
+  it.live("handles empty file", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const filepath = path.join(dir, "empty.txt")
+      yield* put(filepath, "")
+
+      const result = yield* exec(dir, { filePath: filepath })
+
+      expect(result.output).toContain("(End of file - total 0 lines)")
+      expect(result.output).not.toContain("[lines omitted")
+      expect(result.metadata.truncated).toBe(false)
+    }),
+  )
+
+  it.live("respects offset+limit with headtail applied within the requested window", () =>
+    Effect.gen(function* () {
+      const dir = yield* tmpdirScoped()
+      const filepath = path.join(dir, "offset.txt")
+      const content = Array.from({ length: 1000 }, (_, i) => `line ${i} with additional padding text zyxwvu`).join("\n")
+      yield* put(filepath, content)
+
+      const result = yield* exec(dir, { filePath: filepath, offset: 200, limit: 400 })
+
+      expect(result.output).toContain("200: line 199")
+      expect(result.output).toMatch(/59\d: line 59\d/)
+      expect(result.output).toMatch(/\.{3}\[\d+ lines omitted\]\.{3}/)
     }),
   )
 })

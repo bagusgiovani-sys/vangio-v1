@@ -13,7 +13,7 @@ import { isPdfAttachment, sniffAttachmentMime } from "@/util/media"
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
 const MAX_LINE_SUFFIX = `... (line truncated to ${MAX_LINE_LENGTH} chars)`
-const MAX_BYTES = 50 * 1024
+const MAX_BYTES = 8 * 1024
 const MAX_BYTES_LABEL = `${MAX_BYTES / 1024} KB`
 const SAMPLE_BYTES = 4096
 const SUPPORTED_IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
@@ -136,14 +136,28 @@ export const ReadTool = Tool.define<
 
     const lines = Effect.fn("ReadTool.lines")(function* (filepath: string, opts: { limit: number; offset: number }) {
       const start = opts.offset - 1
-      const raw: string[] = []
-      const flags = { bytes: 0, count: 0, cut: false, more: false, done: false }
+      const halfLines = Math.floor(opts.limit / 2)
+      const headLimit = halfLines
+      const tailLimit = opts.limit - halfLines // ties go to tail
+      const halfBytes = Math.floor(MAX_BYTES / 2)
+
+      const head: string[] = []
+      const tail: string[] = []
+      const flags = {
+        headBytes: 0,
+        tailBytes: 0,
+        count: 0,
+        truncated: false,
+        done: false,
+        headComplete: false,
+      }
+      let headLastNumber = opts.offset - 1
 
       // Note: prefer manual TextDecoder over Stream.decodeText — when the source stream
       // ends without flushing, decodeText drops the final unterminated line. We also
       // avoid Stream.runForEachWhile (it currently swallows the final unterminated
       // line of the upstream splitLines pipeline) and use a tagged error to stop the
-      // upstream file stream as soon as the byte cap is reached.
+      // upstream file stream once we are past the requested window.
       const decoder = new TextDecoder("utf-8")
       yield* fs.stream(filepath).pipe(
         Stream.map((bytes) => decoder.decode(bytes, { stream: true })),
@@ -151,32 +165,54 @@ export const ReadTool = Tool.define<
         Stream.runForEach((text) =>
           Effect.gen(function* () {
             if (flags.done) return yield* new ReadStop()
+            // Stop before incrementing count so file.count reflects the last line
+            // actually inside the requested window (not one past it).
+            if (flags.count >= start + opts.limit) {
+              flags.done = true
+              return yield* new ReadStop()
+            }
             flags.count += 1
             if (flags.count <= start) return
 
-            if (raw.length >= opts.limit) {
-              flags.more = true
-              return
-            }
-
             const line = text.length > MAX_LINE_LENGTH ? text.substring(0, MAX_LINE_LENGTH) + MAX_LINE_SUFFIX : text
-            const size = Buffer.byteLength(line, "utf-8") + (raw.length > 0 ? 1 : 0)
-            if (flags.bytes + size <= MAX_BYTES) {
-              raw.push(line)
-              flags.bytes += size
-              return
+            const lineByteSize = Buffer.byteLength(line, "utf-8")
+
+            // Head phase: collect until head line budget hit OR head byte cap hit
+            if (!flags.headComplete && head.length < headLimit) {
+              const size = lineByteSize + (head.length > 0 ? 1 : 0)
+              if (flags.headBytes + size <= halfBytes) {
+                head.push(line)
+                flags.headBytes += size
+                headLastNumber = flags.count
+                return
+              }
+              flags.headComplete = true
             }
 
-            flags.cut = true
-            flags.more = true
-            flags.done = true
-            return yield* new ReadStop()
+            // Tail phase: ring buffer evicting from the front. truncated flips ONLY on eviction.
+            const size = lineByteSize + (tail.length > 0 ? 1 : 0)
+            tail.push(line)
+            flags.tailBytes += size
+            while (tail.length > tailLimit || flags.tailBytes > halfBytes) {
+              const removed = tail.shift()!
+              const removedSize = Buffer.byteLength(removed, "utf-8") + (tail.length > 0 ? 1 : 0)
+              flags.tailBytes -= removedSize
+              flags.truncated = true
+            }
           }),
         ),
         Effect.catchTag("ReadStop", () => Effect.void),
       )
 
-      return { raw, count: flags.count, cut: flags.cut, more: flags.more, offset: opts.offset }
+      return {
+        raw: head,
+        tail,
+        count: flags.count,
+        truncated: flags.truncated,
+        done: flags.done,
+        offset: opts.offset,
+        headLastNumber,
+      }
     })
 
     const isBinaryFile = (filepath: string, bytes: Uint8Array) => {
@@ -336,17 +372,32 @@ export const ReadTool = Tool.define<
       }
 
       let output = [`<path>${filepath}</path>`, `<type>file</type>`, "<content>\n"].join("\n")
-      output += file.raw.map((line, i) => `${i + file.offset}: ${line}`).join("\n")
 
-      const last = file.offset + file.raw.length - 1
-      const next = last + 1
-      const truncated = file.more || file.cut
-      if (file.cut) {
-        output += `\n\n(Output capped at ${MAX_BYTES_LABEL}. Showing lines ${file.offset}-${last}. Use offset=${next} to continue.)`
-      } else if (file.more) {
-        output += `\n\n(Showing lines ${file.offset}-${last} of ${file.count}. Use offset=${next} to continue.)`
+      const headLast = file.headLastNumber
+      const tailFirst = file.count - file.tail.length + 1
+      const hasHeadtailGap = file.truncated && file.raw.length > 0 && file.tail.length > 0 && tailFirst > headLast + 1
+
+      if (hasHeadtailGap) {
+        const headBlock = file.raw.map((line, i) => `${i + file.offset}: ${line}`).join("\n")
+        const tailBlock = file.tail.map((line, i) => `${tailFirst + i}: ${line}`).join("\n")
+        const removedLines = file.count - file.raw.length - file.tail.length
+        output += `${headBlock}\n\n...[${removedLines} lines omitted]...\n\n${tailBlock}`
+        output += `\n\n(End of file - total ${file.count} lines. Middle omitted; use offset=${headLast + 1} to inspect.)`
+      } else if (file.truncated && file.raw.length === 0 && file.tail.length > 0) {
+        const tailBlock = file.tail.map((line, i) => `${tailFirst + i}: ${line}`).join("\n")
+        output += tailBlock
+        output += `\n\n(End of file - total ${file.count} lines. Head omitted due to size; use offset=1 to re-read from the beginning.)`
       } else {
-        output += `\n\n(End of file - total ${file.count} lines)`
+        // Contiguous window: head + tail concatenate with no gap. Fires for small-fit windows
+        // and for the no-truncation case (tail may be empty).
+        const all = file.raw.concat(file.tail)
+        output += all.map((line, i) => `${i + file.offset}: ${line}`).join("\n")
+        if (file.done) {
+          const last = file.offset + all.length - 1
+          output += `\n\n(Showing lines ${file.offset}-${last}. Use offset=${last + 1} to continue.)`
+        } else {
+          output += `\n\n(End of file - total ${file.count} lines)`
+        }
       }
       output += "\n</content>"
 
@@ -361,16 +412,16 @@ export const ReadTool = Tool.define<
         output,
         metadata: {
           preview: file.raw.slice(0, 20).join("\n"),
-          truncated,
+          truncated: file.truncated,
           loaded: loaded.map((item) => item.filepath),
           display: {
             type: "file" as const,
             path: filepath,
-            text: file.raw.join("\n"),
+            text: file.raw.concat(file.tail).join("\n"),
             lineStart: file.offset,
-            lineEnd: last,
+            lineEnd: file.count,
             totalLines: file.count,
-            truncated,
+            truncated: file.truncated,
           },
         },
       }
