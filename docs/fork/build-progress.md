@@ -2876,6 +2876,48 @@ Four commits on `dev`:
 - `795ba28885` — Fix pass from the whole-branch review: `display.text` now carries the omission
   marker so ACP clients (TUI) render the gap instead of silently jumping line numbers.
 
+### Rulings taken during execution
+
+The plan's ledger (`.superpowers/sdd/2026-09-29-tool-output-compression/progress.md`) was
+deleted per the executing-plans skill once the final review was clean. The rulings it recorded
+are inlined here so a future session on any harness can audit the deviations from the brief:
+
+1. **Task 1 — test constant `maxBytes: 400 → 404`** (`truncation.test.ts:163`). The brief's
+   assertion arithmetic ignored newline-overhead accounting (`size + (i > 0 ? 1 : 0)`), so
+   `halfBytes=200` only fit 1 line of 100+101 bytes, not 2. Fix is arithmetic, not semantic;
+   `404` → `halfBytes=202` admits two lines per half. The constant has a load-bearing comment
+   (commit `e18af4814e`).
+2. **Task 1 — switch anchored tail regex to a count-based match.** The brief wrote
+   `/a{100}\na{100}$/` with `$` anchor, but headtail returns `preview + \n\n + hint`, so
+   content ends with hint text, not tail. Replaced with `const matches = result.content.match(/a{100}/g); expect(matches?.length).toBe(4)` — preserves the semantic intent (byte budget
+   admits 2 lines per half) and is anchor-free.
+3. **Task 2 — brief's claim that `toContain("truncated...")` would still match headtail was
+   false.** The headtail marker is `...[N lines omitted, M bytes removed]...` with no literal
+   "truncated..." substring. Three truncation tests at `truncation.test.ts:29/64/223` updated
+   to assert the new headtail marker regex. The fourth failing test ("large single-line file
+   truncates with byte message", `:245`) was pinned to `direction: "head"` because its name
+   explicitly regression-guards the head-only byte-cut shape.
+4. **Task 3 — three coupled defects in the brief's ring-buffer `lines()` + output stage.**
+   See OVERVIEW.md §6 rule 23 and `errors.md [2026-10-01 17:00]` for the full write-up. Short
+   form: (a) count incremented before window check → off-by-one on `file.count`; (b)
+   `truncated` flag flipped on every tail push instead of only on evictions → windows that
+   fully fit silently dropped the tail; (c) missing contiguous-window branch in the output
+   stage → head+tail with no gap emitted head only. All three fixed with RED→GREEN coverage
+   in the new live tests at `read.test.ts:613-725`.
+5. **Task 3 — four pre-existing truncation tests updated, one deleted.** The deleted test
+   (`"stops streaming after the byte cap"`) asserted `counter.bytes < content.length / 2` —
+   a performance guarantee incompatible with ring-buffer tail collection, bounded in practice
+   by `DEFAULT_READ_LIMIT=2000` lines. The three updated tests had their assertions moved
+   from the old "Output capped at" / "bytes truncated..." hints to the new headtail marker;
+   "truncates by line count when limit is specified" dropped "of 100" from
+   `"Showing lines 1-10 of 100"` because the new design stops at `start+limit` and so cannot
+   honestly report file total.
+6. **Final review — `display.text` lacking omission marker promoted from "Minor" to
+   "Important" and fixed in a one-pass commit** (`795ba28885`). The reviewer flagged it as
+   Important; re-graded by effect (TUI shows numbered lines with a silent jump — a real UX
+   bug a reasonable user would notice), kept at Important, fixed with RED→GREEN. The seven
+   other findings re-graded to Minor and deferred (list below).
+
 ### What's not done, in order
 
 1. **Post-implementation measurement (plan §1).** Run 2-3 real sessions and compare
@@ -2883,17 +2925,35 @@ Four commits on `dev`:
    spec estimated ~50-70 KB saved per turn on sessions with multiple large `read` calls. This is
    the only outstanding verification; the TDD gates covered the shape invariants, but the token-
    impact number is still a spec prediction, not a measurement.
-2. **Step 8 of Task 3 — ConPTY corpus smoke against the 55 KB `build-progress.md` example.**
+2. **Step 8 of Task 3 — ConPTY corpus smoke against the ~84 KB `build-progress.md` example.**
    Deferred by the executor. The TDD gates for Task 3 (wrapper preservation, headtail marker,
    EOF marker, offset+limit interaction, empty file, single-long-line, LSP `<system-reminder>`
    placement) exercise every shape invariant Step 8 would have smoke-tested. Still worth running
    once as a corpus sanity check — a prior session took four runs to find a TUI defect because
    `--version` had been treated as proof.
-3. **Minor-deferred findings (seven items)** recorded in the plan's ledger at
-   `.superpowers/sdd/2026-09-29-tool-output-compression/progress.md` under `## Final review`.
-   None blocks merge. The most load-bearing is the pre-existing UTF-8-not-flushed-at-EOF at
-   `read.ts:161-163` — unchanged by this plan, but surfaced during review; a trailing
-   `decoder.decode()` call after the stream closes would address it.
+3. **Minor-deferred findings from the final review.** None blocks merge. In descending order
+   of likely user impact:
+   - **UTF-8 decoder not flushed at EOF** (`read.ts:161-163`, pre-existing — not introduced by
+     this plan but surfaced during review). A file ending mid-multibyte-sequence silently drops
+     the trailing partial codepoint. Fix: trailing `decoder.decode()` call after the stream
+     closes.
+   - **Pathological-case streaming cost.** The ring buffer streams to the window boundary.
+     Bounded by `DEFAULT_READ_LIMIT=2000` in realistic use (~120 KB for a 1M-line JSONL file
+     at ~60 B/line). A user who passes `limit: 100000` on a 60 MB file gets a 60 MB stream.
+     Rare and user-asked-for; could add a `limit > N × DEFAULT_READ_LIMIT` fallback to
+     head-only if it bites.
+   - **Offset+limit hint precision** when user passed a non-default `offset+limit`. The hint
+     "Middle omitted; use offset=${headLast + 1} to inspect" is correct for whole-file reads
+     but imprecise within an explicit window.
+   - **`headLimit = halfLines` redundant** at `truncate.ts:132` and `read.ts:140`. Cosmetic
+     collapse candidate.
+   - **Byte-accounting micro-opt** on eviction (`read.ts:198`): `Buffer.byteLength(removed, "utf-8")` recomputed per eviction. Ring buffer ≤1000 entries makes this negligible.
+   - **`display.lineEnd: file.count` semantics vary per branch** (natural EOF = total lines;
+     window-exhausted = last window line). Comment would help.
+   - **Hint wording asymmetry** between head-only ("truncated") and headtail ("truncated in
+     the middle") — cosmetic voice difference.
+   - **Two separate `tool.read truncation` describe blocks** in `read.test.ts` — consolidating
+     would reduce confusion.
 
 ### Environment left behind
 
