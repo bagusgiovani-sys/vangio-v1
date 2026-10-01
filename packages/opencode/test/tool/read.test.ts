@@ -619,6 +619,13 @@ describe("tool.read headtail truncation", () => {
       expect(result.output).toMatch(/\.{3}\[\d+ lines omitted\]\.{3}/)
       expect(result.output).toContain("Middle omitted; use offset=")
       expect(result.metadata.truncated).toBe(true)
+
+      // display.text (shown to ACP clients / TUI) must carry the same omission marker
+      // as the authoritative output — otherwise clients render numbered lines with a
+      // silent gap in the middle.
+      const display = result.metadata.display as { type: "file"; text: string }
+      expect(display.type).toBe("file")
+      expect(display.text).toMatch(/\.{3}\[\d+ lines omitted\]\.{3}/)
     }),
   )
 

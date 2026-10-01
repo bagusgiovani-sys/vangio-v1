@@ -371,22 +371,27 @@ export const ReadTool = Tool.define<
         )
       }
 
-      let output = [`<path>${filepath}</path>`, `<type>file</type>`, "<content>\n"].join("\n")
-
       const headLast = file.headLastNumber
       const tailFirst = file.count - file.tail.length + 1
       const hasHeadtailGap = file.truncated && file.raw.length > 0 && file.tail.length > 0 && tailFirst > headLast + 1
 
+      // displayText matches the output body shape (minus line-number prefixes) so ACP
+      // clients render the same middle-omission marker as the authoritative tool output.
+      let displayText: string
+      let output = [`<path>${filepath}</path>`, `<type>file</type>`, "<content>\n"].join("\n")
       if (hasHeadtailGap) {
         const headBlock = file.raw.map((line, i) => `${i + file.offset}: ${line}`).join("\n")
         const tailBlock = file.tail.map((line, i) => `${tailFirst + i}: ${line}`).join("\n")
         const removedLines = file.count - file.raw.length - file.tail.length
-        output += `${headBlock}\n\n...[${removedLines} lines omitted]...\n\n${tailBlock}`
+        const marker = `...[${removedLines} lines omitted]...`
+        output += `${headBlock}\n\n${marker}\n\n${tailBlock}`
         output += `\n\n(End of file - total ${file.count} lines. Middle omitted; use offset=${headLast + 1} to inspect.)`
+        displayText = `${file.raw.join("\n")}\n\n${marker}\n\n${file.tail.join("\n")}`
       } else if (file.truncated && file.raw.length === 0 && file.tail.length > 0) {
         const tailBlock = file.tail.map((line, i) => `${tailFirst + i}: ${line}`).join("\n")
         output += tailBlock
         output += `\n\n(End of file - total ${file.count} lines. Head omitted due to size; use offset=1 to re-read from the beginning.)`
+        displayText = file.tail.join("\n")
       } else {
         // Contiguous window: head + tail concatenate with no gap. Fires for small-fit windows
         // and for the no-truncation case (tail may be empty).
@@ -398,6 +403,7 @@ export const ReadTool = Tool.define<
         } else {
           output += `\n\n(End of file - total ${file.count} lines)`
         }
+        displayText = all.join("\n")
       }
       output += "\n</content>"
 
@@ -417,7 +423,7 @@ export const ReadTool = Tool.define<
           display: {
             type: "file" as const,
             path: filepath,
-            text: file.raw.concat(file.tail).join("\n"),
+            text: displayText,
             lineStart: file.offset,
             lineEnd: file.count,
             totalLines: file.count,
