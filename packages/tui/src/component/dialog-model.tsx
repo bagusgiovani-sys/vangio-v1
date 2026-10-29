@@ -8,12 +8,42 @@ import { DialogVariant } from "./dialog-variant"
 import * as fuzzysort from "fuzzysort"
 import { useConnected } from "./use-connected"
 import { useSync } from "../context/sync"
+import { useSDK } from "../context/sdk"
+import { useProject } from "../context/project"
+import { useToast } from "../ui/toast"
+import { hasRoleModels, MODEL_ROLES, roleModelPatch, type ModelRole } from "../util/role-models"
 
-export function DialogModel(props: { providerID?: string }) {
+export function DialogModel(props: { providerID?: string; role?: ModelRole }) {
   const local = useLocal()
   const sync = useSync()
   const dialog = useDialog()
+  if (props.role || props.providerID || !hasRoleModels(sync.data.agent)) return <ModelPicker {...props} />
+  return (
+    <DialogSelect
+      title="Switch model by role"
+      placeholder="Choose King, Warrior, or Scout"
+      options={MODEL_ROLES.map((role) => {
+        const model = role === "king" ? local.model.current() : sync.data.agent.find((agent) => agent.name === role)?.model
+        return {
+          value: role,
+          title: role[0].toUpperCase() + role.slice(1),
+          description: model ? `${model.providerID}/${model.modelID}` : "Not configured",
+        }
+      })}
+      onSelect={(option) => dialog.replace(() => <ModelPicker role={option.value} />)}
+    />
+  )
+}
+
+function ModelPicker(props: { providerID?: string; role?: ModelRole }) {
+  const local = useLocal()
+  const sync = useSync()
+  const dialog = useDialog()
+  const sdk = useSDK()
+  const project = useProject()
+  const toast = useToast()
   const [query, setQuery] = createSignal("")
+  const [saving, setSaving] = createSignal(false)
 
   const connected = useConnected()
   const providers = createDialogProviderOptions()
@@ -134,12 +164,19 @@ export function DialogModel(props: { providerID?: string }) {
   )
 
   const title = createMemo(() => {
+    if (saving()) return "Saving role model..."
+    if (props.role) return `Select model for ${props.role[0].toUpperCase() + props.role.slice(1)}`
     const value = provider()
     if (!value) return "Select model"
     return value.name
   })
 
   function onSelect(providerID: string, modelID: string) {
+    if (saving()) return
+    if (props.role) {
+      void saveRole(props.role, { providerID, modelID })
+      return
+    }
     local.model.set({ providerID, modelID }, { recent: true })
     const list = local.model.variant.list()
     const cur = local.model.variant.selected()
@@ -154,9 +191,46 @@ export function DialogModel(props: { providerID?: string }) {
     dialog.clear()
   }
 
+  async function saveRole(role: ModelRole, model: { providerID: string; modelID: string }) {
+    setSaving(true)
+    const workspace = project.workspace.current()
+    let saved = false
+    try {
+      // Config updates dispose the instance. Never knowingly interrupt an agent
+      // just to change the model used for its next task.
+      const status = await sdk.client.session.status({ workspace }, { throwOnError: true })
+      if (Object.values(status.data).some((value) => value.type !== "idle")) {
+        toast.show({ variant: "warning", message: "Wait for running tasks to finish before switching role models." })
+        return
+      }
+      await sdk.client.config.update({ workspace, config: roleModelPatch(role, model) }, { throwOnError: true })
+      saved = true
+      const agents = await sdk.client.app.agents({ workspace }, { throwOnError: true })
+      sync.set("agent", agents.data)
+      const names = role === "king" ? ["build", "plan"] : [role]
+      if (!names.every((name) => agents.data.some((agent) =>
+        agent.name === name && agent.model?.providerID === model.providerID && agent.model.modelID === model.modelID,
+      ))) throw new Error("The runtime did not confirm the selected model. Check agent configuration overrides.")
+      if (role === "king") {
+        local.model.set(model, { agent: "build", recent: true })
+        local.model.set(model, { agent: "plan" })
+      }
+      toast.show({ variant: "success", message: `${role[0].toUpperCase() + role.slice(1)} model saved for this project. Applies to subsequent tasks.` })
+      dialog.clear()
+    } catch (error) {
+      toast.show({
+        variant: "error",
+        message: `${saved ? "Role model saved, but activation could not be confirmed" : "Could not save role model"}: ${error instanceof Error ? error.message : String(error)}`,
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <DialogSelect<ReturnType<typeof options>[number]["value"]>
       options={options()}
+      locked={saving()}
       actions={[
         {
           command: "model.dialog.provider",
@@ -178,7 +252,11 @@ export function DialogModel(props: { providerID?: string }) {
       flat={true}
       skipFilter={true}
       title={title()}
-      current={local.model.current()}
+      current={
+        props.role && props.role !== "king"
+          ? sync.data.agent.find((agent) => agent.name === props.role)?.model
+          : local.model.current()
+      }
     />
   )
 }

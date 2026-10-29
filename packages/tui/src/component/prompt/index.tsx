@@ -58,6 +58,7 @@ import { usePromptWorkspace } from "./workspace"
 import { usePromptMove } from "./move"
 import { readLocalAttachment } from "./local-attachment"
 import { useLocation } from "../../context/location"
+import { RoleModels } from "../role-models"
 
 registerOpencodeSpinner()
 
@@ -1349,6 +1350,7 @@ export function Prompt(props: PromptProps) {
   return (
     <>
       <box ref={(r: BoxRenderable) => (anchor = r)} visible={props.visible !== false} width="100%">
+        <RoleModels sessionID={props.sessionID} />
         <box
           width="100%"
           border={["left"]}

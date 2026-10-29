@@ -317,7 +317,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           setModelStore("recent", recentModels(next, modelStore.recent))
           save()
         },
-        set(model: { providerID: string; modelID: string }, options?: { recent?: boolean }) {
+        set(model: { providerID: string; modelID: string }, options?: { recent?: boolean; agent?: string }) {
           batch(() => {
             if (!isModelValid(model)) {
               toast.show({
@@ -327,7 +327,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               })
               return
             }
-            const a = agent.current()
+            const a = options?.agent ? sync.data.agent.find((item) => item.name === options.agent) : agent.current()
             if (!a) return
             setModelStore("model", a.name, model)
             if (options?.recent) {
