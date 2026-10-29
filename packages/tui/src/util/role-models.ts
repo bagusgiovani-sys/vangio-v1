@@ -26,7 +26,7 @@ export function runningRoleModel(input: {
   if (!input.sessionID) return
   const active = input.sessions
     .filter((session) => {
-      if (!session.model || !input.status[session.id] || input.status[session.id].type === "idle") return false
+      if (!session.model || input.status[session.id]?.type === "idle" || !input.status[session.id]) return false
       if (input.role === "king") return session.id === input.sessionID
       return session.parentID === input.sessionID && session.agent === input.role
     })
