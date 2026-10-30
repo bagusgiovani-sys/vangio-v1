@@ -675,24 +675,24 @@ const tui: TuiPlugin = async (api) => {
       },
       {
         name: "paradigm.craft",
-        title: "Craft paradigm",
-        desc: "Create a new paradigm - choose heads and a model for each",
+        title: "Craft paradigm (coming soon)",
+        desc: "Custom schemata are coming soon",
         category: "VanGio",
         namespace: "palette",
         slashName: "craft",
         run() {
-          api.ui.dialog.replace(() => <Craft api={api} />)
+          api.ui.toast({ title: "Coming soon", message: "Custom schemata creation is postponed while we verify Gryphon and automatic backup switching." })
         },
       },
       {
         name: "paradigm.clone",
-        title: "Clone paradigm",
-        desc: "Copy an existing paradigm under a new name",
+        title: "Clone paradigm (coming soon)",
+        desc: "Custom schemata are coming soon",
         category: "VanGio",
         namespace: "palette",
         slashName: "clone",
         run() {
-          api.ui.dialog.replace(() => <Clone api={api} />)
+          api.ui.toast({ title: "Coming soon", message: "Custom schemata creation is postponed while we verify Gryphon and automatic backup switching." })
         },
       },
     ],

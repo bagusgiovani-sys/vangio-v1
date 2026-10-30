@@ -50,9 +50,7 @@ export namespace Fallback {
     limit: { output: number }
     capabilities: { toolcall: boolean; attachment: boolean }
     /**
-     * Absent means models.dev published no price, which the fork already reads
-     * as free everywhere else (see resolve.isFree()'s KNOWN GAP note). Keep
-     * that reading rather than refusing to consider the model.
+     * Missing pricing is unknown, not evidence that a model is free.
      */
     cost?: { input: number; output: number }
   }
@@ -75,7 +73,7 @@ export namespace Fallback {
 
   export type Skip = {
     entry: string
-    why: "malformed" | "exhausted" | "unresolvable" | "needs" | "provider-exhausted"
+    why: "malformed" | "exhausted" | "unresolvable" | "needs" | "provider-exhausted" | "not-free"
   }
 
   export type Attempt<M> = {
@@ -149,6 +147,7 @@ export namespace Fallback {
     exhaustedProviders?: ReadonlySet<string>
     swapsUsed: number
     cap?: number
+    allowPaid?: boolean
     lookup: (providerID: string, modelID: string) => M | undefined
   }): Attempt<M> {
     const skipped: Skip[] = []
@@ -177,6 +176,10 @@ export namespace Fallback {
         skipped.push({ entry, why: "unresolvable" })
         continue
       }
+      if (!input.allowPaid && !isFree(model)) {
+        skipped.push({ entry, why: "not-free" })
+        continue
+      }
       if (!satisfies(model, input.needs)) {
         skipped.push({ entry, why: "needs" })
         continue
@@ -195,7 +198,7 @@ export namespace Fallback {
   }
 
   function isFree(model: Judgeable): boolean {
-    if (!model.cost) return true
+    if (!model.cost || model.providerID.endsWith("-coding-plan")) return false
     return model.cost.input === 0 && model.cost.output === 0
   }
 
@@ -290,6 +293,7 @@ export namespace Fallback {
     failed: Ref
     reason: Reason
     chain: readonly string[] | undefined
+    fallbackPolicy?: "declared-only"
     needs?: Needs
     exhausted: ReadonlySet<string>
     exhaustedProviders?: ReadonlySet<string>
@@ -301,6 +305,7 @@ export namespace Fallback {
   }): Attempt<M> {
     const declared = resolveStatic({ ...input, chain: input.chain ?? [] })
     if (declared.resolution || declared.capped) return declared
+    if (input.fallbackPolicy === "declared-only") return declared
 
     const derived = resolveDerived(input)
     return {

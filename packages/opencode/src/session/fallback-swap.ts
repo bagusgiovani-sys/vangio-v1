@@ -110,6 +110,7 @@ export namespace FallbackSwap {
   export type Declaration = {
     needs?: Fallback.Needs
     fallback?: string[]
+    fallbackPolicy?: "declared-only"
     auto: boolean
   }
 
@@ -126,6 +127,7 @@ export namespace FallbackSwap {
   export function readDeclaration(options: unknown): Declaration {
     if (!isRecord(options)) return { auto: true }
     const result: Declaration = { auto: options["shiftAuto"] !== false }
+    if (options["fallbackPolicy"] === "declared-only") result.fallbackPolicy = "declared-only"
 
     const fallback = options["fallback"]
     if (Array.isArray(fallback) && fallback.every((e) => typeof e === "string" && e.length > 0)) {
@@ -340,6 +342,7 @@ export namespace FallbackSwap {
           failed,
           reason,
           chain: declared.fallback,
+          fallbackPolicy: declared.fallbackPolicy,
           needs: declared.needs,
           exhausted: state.exhausted,
           exhaustedProviders: state.exhaustedProviders,

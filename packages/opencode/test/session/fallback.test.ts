@@ -15,6 +15,7 @@ function model(ref: string, over: Partial<Fallback.Judgeable> = {}): Fake {
     id,
     providerID,
     name: id,
+    cost: { input: 0, output: 0 },
     limit: { output: 128_000 },
     capabilities: { toolcall: true, attachment: false },
     ...over,
@@ -28,6 +29,26 @@ function registry(...models: Fake[]) {
 }
 
 const failed = model("opencode/deepseek-v4-flash-free")
+
+test("declared-only pairs stop after backup exhaustion without consulting the catalog", () => {
+  const backup = model("other/backup", { cost: { input: 0, output: 0 } })
+  const base = {
+    head: "king",
+    failed,
+    reason: "free_tier_limit" as const,
+    chain: ["other/backup"],
+    fallbackPolicy: "declared-only" as const,
+    exhausted: new Set<string>(),
+    swapsUsed: 0,
+    lookup: registry(backup),
+    catalog: (): Fake[] => { throw new Error("must not inspect undeclared models") },
+  }
+  expect(Fallback.resolve(base).resolution?.model).toBe(backup)
+  expect(Fallback.resolve({ ...base, failed: backup, swapsUsed: 1, exhausted: new Set(["other/backup"]) }).resolution).toBeUndefined()
+  expect(Fallback.resolve({ ...base, chain: [] }).resolution).toBeUndefined()
+  expect(Fallback.resolve({ ...base, chain: undefined }).resolution).toBeUndefined()
+  expect(Fallback.resolve({ ...base, lookup: registry() }).resolution).toBeUndefined()
+})
 
 function attempt(over: Partial<Parameters<typeof Fallback.resolveStatic<Fake>>[0]> = {}) {
   return Fallback.resolveStatic<Fake>({
@@ -312,11 +333,10 @@ describe("Fallback.resolve - declared first, derived as the failsafe", () => {
     expect(resolve({ catalog: catalogue(paid), allowPaid: true }).resolution?.model.id).toBe("claude-sonnet-5")
   })
 
-  // Matches resolve.isFree()'s existing reading elsewhere in the fork: absent
-  // pricing is free, rather than a reason to crash or to refuse.
-  test("reads a model with no published price as free", () => {
-    const unpriced = zen("hy3-free")
-    expect(resolve({ catalog: catalogue(unpriced) }).resolution?.model.id).toBe("hy3-free")
+  // Unknown pricing cannot authorize a free-only fallback.
+  test("rejects a model with no published price", () => {
+    const unpriced = zen("hy3-free", { cost: undefined })
+    expect(resolve({ catalog: catalogue(unpriced) }).resolution).toBeUndefined()
   })
 
   // F3/Q1: a Zen daily limit may be ONE bucket shared by every default-limit
@@ -379,7 +399,7 @@ describe("Fallback.resolve - declared first, derived as the failsafe", () => {
 // work, so leaving it is unmotivated and empirically worse.
 describe("Fallback provider preference depends on why the model died", () => {
   const zenSpare = model("opencode/hy3-free")
-  const elsewhere = model("zhipuai-coding-plan/glm-4.7")
+  const elsewhere = model("groq/free-test")
 
   test("a rate limit leaves the provider that walled us", () => {
     const out = Fallback.resolveDerived<Fake>({
@@ -389,7 +409,7 @@ describe("Fallback provider preference depends on why the model died", () => {
       exhausted: new Set(),
       catalog: () => [zenSpare, elsewhere],
     })
-    expect(out?.model.providerID).toBe("zhipuai-coding-plan")
+    expect(out?.model.providerID).toBe("groq")
   })
 
   test("a retirement stays on the provider that still works", () => {
@@ -411,6 +431,25 @@ describe("Fallback provider preference depends on why the model died", () => {
       exhausted: new Set(),
       catalog: () => [elsewhere],
     })
-    expect(out?.model.providerID).toBe("zhipuai-coding-plan")
+    expect(out?.model.providerID).toBe("groq")
   })
+})
+
+describe("free-only fallback guards", () => {
+  for (const candidate of [
+    model("paid/model", { cost: { input: 1, output: 2 } }),
+    model("unknown/model", { cost: undefined }),
+    model("zhipuai-coding-plan/glm-5v-turbo"),
+  ]) {
+    test(`rejects ${candidate.providerID} in declared and derived chains`, () => {
+      const ref = candidate.providerID + "/" + candidate.id
+      const out = attempt({ chain: [ref], lookup: registry(candidate) })
+      expect(out.resolution).toBeUndefined()
+      expect(out.skipped).toEqual([{ entry: ref, why: "not-free" }])
+      expect(Fallback.resolveDerived({
+        head: "king", failed, reason: "free_tier_limit",
+        exhausted: new Set(), catalog: () => [candidate],
+      })).toBeUndefined()
+    })
+  }
 })

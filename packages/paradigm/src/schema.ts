@@ -22,6 +22,7 @@ export type Head = {
   needs?: Needs
   /** Ordered substitutes, tried in order when this head's model hits a wall. */
   fallback?: string[]
+  fallbackPolicy?: "declared-only"
 }
 
 export type Paradigm = {
@@ -144,6 +145,10 @@ export function parseParadigm(input: unknown): ParseResult {
       // silently dropped fallback entry makes a chain look longer than it is
       // and only shows up at the moment it was supposed to help.
       const fallback = parseFallback(id, value["fallback"], errors)
+      const fallbackPolicy = value["fallbackPolicy"]
+      if (fallbackPolicy !== undefined && fallbackPolicy !== "declared-only") {
+        errors.push(`head "${id}" fallbackPolicy must be declared-only`)
+      }
       const needs = parseNeeds(id, value["needs"], errors)
 
       heads[id] = {
@@ -153,6 +158,7 @@ export function parseParadigm(input: unknown): ParseResult {
         prompt: typeof value["prompt"] === "string" ? value["prompt"] : undefined,
         ...(needs ? { needs } : {}),
         ...(fallback ? { fallback } : {}),
+        ...(fallbackPolicy === "declared-only" ? { fallbackPolicy } : {}),
       }
     }
   }

@@ -34,6 +34,7 @@ function headOptions(head: Head, paradigm: Paradigm): Record<string, unknown> | 
   const options: Record<string, unknown> = {}
   if (head.needs) options["needs"] = head.needs
   if (head.fallback) options["fallback"] = head.fallback
+  if (head.fallbackPolicy) options["fallbackPolicy"] = head.fallbackPolicy
   if (paradigm.shift?.auto === false) options["shiftAuto"] = false
   return Object.keys(options).length > 0 ? options : undefined
 }

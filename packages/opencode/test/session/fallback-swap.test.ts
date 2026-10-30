@@ -11,6 +11,11 @@ import { Fallback } from "../../src/session/fallback"
 // a thrown exception would turn a degraded model into a dead session.
 
 describe("FallbackSwap.readDeclaration", () => {
+  test("preserves declared-only even if its chain is missing or malformed", () => {
+    for (const fallback of [undefined, [], "bad", [123]]) {
+      expect(FallbackSwap.readDeclaration({ fallbackPolicy: "declared-only", fallback }).fallbackPolicy).toBe("declared-only")
+    }
+  })
   test("reads a well-formed declaration", () => {
     expect(
       FallbackSwap.readDeclaration({
@@ -156,6 +161,27 @@ function harness(opts: {
 const wall = { reason: "free_tier_limit" as const, attempt: 1, error: {} as any }
 
 describe("FallbackSwap.hook", () => {
+  test("declared-only switches once, then stops without selecting a third model", async () => {
+    const { hook, streamInput, published } = harness({
+      options: { fallbackPolicy: "declared-only", fallback: ["opencode/backup"] },
+      catalog: [model("opencode/backup"), model("opencode/undeclared")],
+    })
+    expect((await Effect.runPromise(hook(wall)))?.swapped).toBe(true)
+    expect(streamInput.model.id).toBe("backup")
+    expect((await Effect.runPromise(hook({ ...wall, attempt: 2 })))?.swapped).toBe(false)
+    expect(streamInput.model.id).toBe("backup")
+    expect(published).toHaveLength(1)
+  })
+
+  test("declared-only rejects paid backups without falling through to a free third model", async () => {
+    const { hook, streamInput, published } = harness({
+      options: { fallbackPolicy: "declared-only", fallback: ["opencode/paid"] },
+      catalog: [model("opencode/paid", { cost: { input: 1, output: 1 } }), model("opencode/free")],
+    })
+    expect((await Effect.runPromise(hook(wall)))?.swapped).toBe(false)
+    expect(streamInput.model.id).toBe("deepseek-v4-flash-free")
+    expect(published).toHaveLength(0)
+  })
   test("declines anything that is not a wall, so a 503 never swaps a model", async () => {
     const { hook, streamInput } = harness({})
     const out = await Effect.runPromise(hook({ ...wall, reason: undefined }))
@@ -328,27 +354,27 @@ describe("FallbackSwap.hook on a model that just keeps failing", () => {
   // discard the other six Zen models over a single blip.
   test("keeps trusting the provider after a single model fails", async () => {
     const { hook, streamInput } = harness({
-      from: "zhipuai-coding-plan/glm-4.7",
-      catalog: [model("zhipuai-coding-plan/glm-5.2"), model("opencode/hy3-free")],
+      from: "free-provider/primary",
+      catalog: [model("free-provider/backup"), model("opencode/hy3-free")],
     })
     await Effect.runPromise(hook({ ...noReason, attempt: 3 }))
-    expect(streamInput.model.providerID).toBe("zhipuai-coding-plan")
-    expect(streamInput.model.id).toBe("glm-5.2")
+    expect(streamInput.model.providerID).toBe("free-provider")
+    expect(streamInput.model.id).toBe("backup")
   })
 
   // Two different models failing the same way is a PROVIDER problem - which is
   // exactly what no balance and a bad key look like from here.
   test("writes the provider off once a second of its models fails the same way", async () => {
     const { hook, streamInput } = harness({
-      from: "zhipuai-coding-plan/glm-4.7",
+      from: "free-provider/primary",
       catalog: [
-        model("zhipuai-coding-plan/glm-5.2"),
-        model("zhipuai-coding-plan/glm-5.3"),
+        model("free-provider/backup"),
+        model("free-provider/third"),
         model("opencode/hy3-free"),
       ],
     })
     await Effect.runPromise(hook({ ...noReason, attempt: 3 }))
-    expect(streamInput.model.providerID).toBe("zhipuai-coding-plan")
+    expect(streamInput.model.providerID).toBe("free-provider")
     await Effect.runPromise(hook({ ...noReason, attempt: 4 }))
     expect(streamInput.model.providerID).toBe("opencode")
   })
