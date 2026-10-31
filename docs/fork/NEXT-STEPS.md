@@ -10,8 +10,10 @@ Status: scoped and inspected; core delivery is NOT complete.
 > catalog cannot currently be read by the managed agent (`vangio models` fails
 > at the user config directory). Production-loop fixtures now cover role
 > continuation, persisted backups, isolation and terminal pair exhaustion.
-> Six live free bindings and installed acceptance remain open. Resume from the latest report rather than
-> reapplying old patches.
+> The current TUI also passes isolated ConPTY checks for visible switches,
+> typed follow-up prompts, King picker saves and terminal pair exhaustion.
+> Six live free bindings and installed acceptance remain open. Resume from the
+> latest report rather than reapplying old patches.
 
 ## 1. Read this first
 

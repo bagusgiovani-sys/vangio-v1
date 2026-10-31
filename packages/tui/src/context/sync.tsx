@@ -297,6 +297,20 @@ export const {
           break
         }
 
+        case "session.next.model.switched": {
+          const result = search(store.session, event.properties.sessionID, (s) => s.id)
+          if (!result.found) break
+          setStore(
+            "session",
+            result.index,
+            produce((session) => {
+              session.model = event.properties.model
+              session.time.updated = event.properties.timestamp
+            }),
+          )
+          break
+        }
+
         case "session.next.moved": {
           const result = search(store.session, event.properties.sessionID, (s) => s.id)
           if (!result.found) break

@@ -2,6 +2,26 @@
 > Append-only. Never edit existing entries. Never delete.
 > Read this at the start of every coding session.
 
+## [2026-10-31] The TUI reselected an exhausted primary after a successful switch
+#[fallback] #[tui] #[continuation] #[fixed]
+**Context:** Actual ConPTY launch of current source with an isolated configuration
+and a localhost provider returning a quota error on the primary.
+**Error:** The first prompt switched correctly, but the next typed prompt sent
+the primary again. The observed request sequence was primary, backup, primary.
+**Root cause:** The TUI sync store did not consume `session.next.model.switched`.
+The local selector retained the original model, and prompt submission explicitly
+sent it, taking precedence over the runtime's saved-backup selection.
+**Fix:** Apply model-switch events to the matching session row and select a saved
+declared backup for that same role. Manual selections remain scoped to their
+session and role, and a subsequent automatic switch supersedes them.
+**Prevention:** Test a second prompt typed through the real TUI after switching.
+Backend tests that omit the model field do not cover a client that always sends
+its current selection. Verify exact HTTP models as well as visible terminal text.
+**Files affected:** packages/tui/src/context/{sync,local}.tsx,
+packages/tui/src/util/role-models.ts and related tests. The repeatable ConPTY
+procedure is packages/tui/script/verify-gryphon-fallback.cjs.
+---
+
 ## [2026-10-31] Declared-pair exhaustion retried a failed backup, and resumed turns restored the primary
 #[fallback] #[retry] #[continuation] #[fixed]
 **Context:** Core Gryphon acceptance through the production prompt loop, processor,

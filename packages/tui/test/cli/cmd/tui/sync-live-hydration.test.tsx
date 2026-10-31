@@ -33,6 +33,67 @@ function global(payload: GlobalEvent["payload"]): GlobalEvent {
   return { directory: "/tmp/other", project: "proj_test", payload }
 }
 
+test("model-switch events update the active child without changing its parent or sibling", async () => {
+  await using tmp = await tmpdir()
+  await Bun.write(`${tmp.path}/kv.json`, "{}")
+  const { app, emit, sync } = await mount(undefined, tmp.path)
+  try {
+    for (const id of ["root", "child", "sibling"]) {
+      emit(
+        global({
+          id: `evt_${id}`,
+          type: "session.updated",
+          properties: {
+            sessionID: id,
+            info: {
+              ...session,
+              id,
+              slug: id,
+              projectID: "proj_test",
+              agent: id === "root" ? "build" : "scout",
+              parentID: id === "root" ? undefined : "root",
+              model: { providerID: "free", id: "primary" },
+            },
+          },
+        }),
+      )
+    }
+    await wait(() => sync.data.session.some((item) => item.id === "sibling"))
+    emit(
+      global({
+        id: "evt_unknown_switch",
+        type: "session.next.model.switched",
+        properties: {
+          sessionID: "unknown",
+          messageID: "msg_unknown_switch",
+          timestamp: 99,
+          model: { providerID: "free", id: "backup" },
+        },
+      }),
+    )
+    emit(
+      global({
+        id: "evt_child_switch",
+        type: "session.next.model.switched",
+        properties: {
+          sessionID: "child",
+          messageID: "msg_child_switch",
+          timestamp: 99,
+          model: { providerID: "free", id: "backup" },
+        },
+      }),
+    )
+    await wait(() => sync.session.get("child")?.model?.id === "backup")
+    expect(sync.session.get("child")?.agent).toBe("scout")
+    expect(sync.session.get("child")?.time.updated).toBe(99)
+    expect(sync.session.get("root")?.model?.id).toBe("primary")
+    expect(sync.session.get("sibling")?.model?.id).toBe("primary")
+    expect(sync.session.get("unknown")).toBeUndefined()
+  } finally {
+    app.renderer.destroy()
+  }
+})
+
 test("live messages use creation time with an ID tie-break", async () => {
   await using tmp = await tmpdir()
   await Bun.write(`${tmp.path}/kv.json`, "{}")

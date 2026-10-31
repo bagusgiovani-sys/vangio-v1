@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { hasRoleModels, roleModelPatch, runningRoleModel } from "../../tui/src/util/role-models"
+import { hasRoleModels, roleModelPatch, runningRoleModel, sessionRoleModel } from "../../tui/src/util/role-models"
 import { applyParadigm } from "../src/index"
 import type { Paradigm } from "../src/schema"
 
@@ -14,6 +14,22 @@ const paradigm: Paradigm = {
   routing: [],
   discipline: {},
 }
+
+test("session backups survive stale selections while later manual choices remain effective", () => {
+  const primary = { providerID: "free", modelID: "primary" }
+  const backup = { providerID: "free", modelID: "backup" }
+  const agent = { name: "build", options: { fallbackPolicy: "declared-only", fallback: ["free/backup"] } }
+  const session = { agent: "build", model: { providerID: "free", id: "backup" } }
+  expect(sessionRoleModel({ agent, session })).toEqual(backup)
+  expect(sessionRoleModel({ agent, session, selection: { model: primary, baseline: primary } })).toEqual(backup)
+  expect(sessionRoleModel({ agent, session, selection: { model: primary, baseline: backup } })).toEqual(primary)
+  expect(sessionRoleModel({ agent, session: { ...session, agent: "scout" } })).toBeUndefined()
+  expect(sessionRoleModel({ agent: { ...agent, options: {} }, session })).toBeUndefined()
+  expect(
+    sessionRoleModel({ agent, session: { agent: "build", model: { providerID: "free", id: "undeclared" } } }),
+  ).toBeUndefined()
+  expect(sessionRoleModel({ agent })).toBeUndefined()
+})
 
 describe("role model selection", () => {
   test("only offers role switching when the three role agents exist", () => {
@@ -40,9 +56,20 @@ describe("role model selection", () => {
   })
 })
 
-function session(id: string, agent: string, parentID?: string): Parameters<typeof runningRoleModel>[0]["sessions"][number] {
+function session(
+  id: string,
+  agent: string,
+  parentID?: string,
+): Parameters<typeof runningRoleModel>[0]["sessions"][number] {
   return {
-    id, agent, parentID, slug: id, projectID: "project", directory: ".", title: id, version: "1",
+    id,
+    agent,
+    parentID,
+    slug: id,
+    projectID: "project",
+    directory: ".",
+    title: id,
+    version: "1",
     model: { providerID: "free", id: `${agent}-backup` },
     time: { created: 1, updated: 2 },
   }
@@ -50,10 +77,24 @@ function session(id: string, agent: string, parentID?: string): Parameters<typeo
 
 test("running model reflects a child backup, excluding other parents and idle history", () => {
   const sessions = [session("root", "build"), session("child", "scout", "root"), session("other", "scout", "elsewhere")]
-  expect(runningRoleModel({ role: "scout", sessionID: "root", sessions, status: { child: { type: "busy" }, other: { type: "busy" } } }))
-    .toEqual({ providerID: "free", modelID: "scout-backup" })
-  expect(runningRoleModel({ role: "scout", sessionID: "root", sessions, status: { child: { type: "idle" }, other: { type: "busy" } } }))
-    .toBeUndefined()
-  expect(runningRoleModel({ role: "king", sessionID: "root", sessions, status: { root: { type: "busy" } } }))
-    .toEqual({ providerID: "free", modelID: "build-backup" })
+  expect(
+    runningRoleModel({
+      role: "scout",
+      sessionID: "root",
+      sessions,
+      status: { child: { type: "busy" }, other: { type: "busy" } },
+    }),
+  ).toEqual({ providerID: "free", modelID: "scout-backup" })
+  expect(
+    runningRoleModel({
+      role: "scout",
+      sessionID: "root",
+      sessions,
+      status: { child: { type: "idle" }, other: { type: "busy" } },
+    }),
+  ).toBeUndefined()
+  expect(runningRoleModel({ role: "king", sessionID: "root", sessions, status: { root: { type: "busy" } } })).toEqual({
+    providerID: "free",
+    modelID: "build-backup",
+  })
 })

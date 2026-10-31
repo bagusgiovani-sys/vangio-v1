@@ -1,4 +1,4 @@
-import { createStore } from "solid-js/store"
+import { createStore, produce } from "solid-js/store"
 import { createSimpleContext } from "./helper"
 import { batch, createEffect, createMemo } from "solid-js"
 import { useSync } from "./sync"
@@ -13,6 +13,7 @@ import { useTheme } from "./theme"
 import { useToast } from "../ui/toast"
 import { useRoute } from "./route"
 import { usePermission } from "./permission"
+import { sessionRoleModel, type RoleModelSelection } from "../util/role-models"
 
 export type LocalTheme = {
   secondary: RGBA
@@ -137,6 +138,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     function createModel() {
       const [modelStore, setModelStore] = createStore<{
         ready: boolean
+        selection: Record<string, RoleModelSelection>
         model: Record<
           string,
           {
@@ -155,6 +157,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         variant: Record<string, string | undefined>
       }>({
         ready: false,
+        selection: {},
         model: {},
         recent: [],
         favorite: [],
@@ -233,10 +236,31 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         }
       })
 
+      event.on("session.next.model.switched", (evt) => {
+        setModelStore(
+          "selection",
+          produce((selection) => {
+            Object.keys(selection)
+              .filter((key) => key.startsWith(`${evt.properties.sessionID}/`))
+              .forEach((key) => {
+                delete selection[key]
+              })
+          }),
+        )
+      })
+
       const currentModel = createMemo(() => {
         const a = agent.current()
+        const sessionID = route.data.type === "session" ? route.data.sessionID : undefined
+        const session = sessionID ? sync.session.get(sessionID) : undefined
         return (
           getFirstValidModel(
+            () =>
+              sessionRoleModel({
+                agent: a,
+                session,
+                selection: sessionID && a ? modelStore.selection[`${sessionID}/${a.name}`] : undefined,
+              }),
             () => a && modelStore.model[a.name],
             () => a && a.model,
             fallbackModel,
@@ -329,6 +353,17 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             }
             const a = options?.agent ? sync.data.agent.find((item) => item.name === options.agent) : agent.current()
             if (!a) return
+            if (route.data.type === "session") {
+              const session = sync.session.get(route.data.sessionID)
+              if (session?.agent === a.name && a.options.fallbackPolicy === "declared-only") {
+                setModelStore("selection", `${route.data.sessionID}/${a.name}`, {
+                  model,
+                  baseline: session.model
+                    ? { providerID: session.model.providerID, modelID: session.model.id }
+                    : undefined,
+                })
+              }
+            }
             setModelStore("model", a.name, model)
             if (options?.recent) {
               setModelStore("recent", recentModels(model, modelStore.recent))

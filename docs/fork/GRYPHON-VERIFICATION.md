@@ -106,6 +106,51 @@ Additional receipts in the outer workspace: `verification/resumed-backup-red.log
 `verification/subtask-baseline.log`, `verification/subtask-fixture-tests.log`,
 and `verification/prompt-final-tests.log`.
 
+## Terminal continuation follow-up, 2026-10-31
+
+Actual ConPTY verification found an additional client defect after the runtime
+checkpoint: the next typed prompt explicitly reselected the primary. Before the
+fix, the localhost provider recorded `primary, backup, primary`. The TUI sync
+store now applies native model-switch events to the matching session. Its local
+selector uses that same role's saved declared backup while retaining explicit
+manual selection behavior. Parent/sibling session models and configured role
+bindings are not changed by the event.
+
+The corrected first two ConPTY cases pass: visible automatic switch followed by
+a second typed prompt on the backup (`primary, backup, backup`), and visible
+pair exhaustion after exactly `primary, backup`. The explanation wraps across
+terminal lines, which the harness checks as rendered fragments.
+
+Reproduce on native Windows from the repository root:
+
+```powershell
+node packages/tui/script/verify-gryphon-fallback.cjs ../verification
+```
+
+This launches original source against a localhost provider with isolated XDG
+directories and test credentials. It writes raw terminal logs and a JSON receipt
+to the supplied output directory (a fresh temporary directory if omitted).
+It does not install plugins or access the user's live provider configuration.
+`BUN_BINARY` can select a Bun executable outside the default user install.
+
+Current regression evidence: TUI context/sync suites **12 pass, 0 fail, 28
+assertions**; paradigm suite **248 pass, 0 fail, 649 assertions**; TUI and paradigm
+package typechecks pass. TUI tests used isolated XDG directories because imports
+otherwise encounter the denied user config directory.
+
+Final ConPTY receipt: **3 pass, 0 fail**. The King picker case opens `/models`,
+selects King and the primary, confirms the save, observes another automatic
+switch, and types another prompt. Its exact request sequence is
+`primary, backup, primary, backup, backup`. Manual selection is honored; a later
+automatic switch invalidates that old manual choice so it cannot become active
+again when the session returns to the same backup.
+
+Receipts: outer workspace `verification/gryphon-live-terminal-result.json`,
+`verification/gryphon-{resume,exhaust,manual}-terminal.txt`, and
+`verification/tui-fallback-regression.log`. These are local-provider source
+checks. Installed-user plugin/config acceptance, Worker/Scout picker interaction,
+picker busy/error flows and the six live model bindings remain pending.
+
 ## Provider research, 2026-10-31
 
 - [OpenCode Console models](https://opencode.ai/v2/docs/console/models/) lists
