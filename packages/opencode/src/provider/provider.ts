@@ -690,7 +690,7 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
                   status: "active",
                   headers: {},
                   options: { workflowRef: m.ref },
-                  cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+                  cost: { input: 0, output: 0, known: false, cache: { read: 0, write: 0 } },
                   limit: { context: m.context, output: m.output },
                   capabilities: {
                     temperature: false,
@@ -1028,6 +1028,9 @@ const ProviderCostTier = Schema.Struct({
 const ProviderCost = Schema.Struct({
   input: Schema.Finite,
   output: Schema.Finite,
+  // Accounting still uses numeric defaults; admission must distinguish them
+  // from prices actually supplied by a catalog or config.
+  known: optional(Schema.Boolean),
   cache: ProviderCacheCost,
   tiers: optional(Schema.Array(ProviderCostTier)),
   experimentalOver200K: optional(
@@ -1192,6 +1195,7 @@ function cost(c: ModelsDev.Model["cost"]): Model["cost"] {
   const result: Model["cost"] = {
     input: c?.input ?? 0,
     output: c?.output ?? 0,
+    known: c?.input !== undefined && c?.output !== undefined,
     cache: {
       read: c?.cache_read ?? 0,
       write: c?.cache_write ?? 0,
@@ -1517,8 +1521,12 @@ const layer = Layer.effect(
                     : false),
               },
               cost: {
+                ...existingModel?.cost,
                 input: model?.cost?.input ?? existingModel?.cost?.input ?? 0,
                 output: model?.cost?.output ?? existingModel?.cost?.output ?? 0,
+                known:
+                  (model.cost?.input !== undefined && model.cost?.output !== undefined) ||
+                  existingModel?.cost.known === true,
                 cache: {
                   read: model?.cost?.cache_read ?? existingModel?.cost?.cache.read ?? 0,
                   write: model?.cost?.cache_write ?? existingModel?.cost?.cache.write ?? 0,

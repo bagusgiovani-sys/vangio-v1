@@ -3,6 +3,15 @@
 Updated: 2026-10-29. Audience: the next coding agent, including Sol or Luna.
 Status: scoped and inspected; core delivery is NOT complete.
 
+> Latest continuation: [GRYPHON-VERIFICATION.md](GRYPHON-VERIFICATION.md),
+> 2026-10-31. The October 30 source patches and local verification are complete;
+> earlier patch/dependency blockers below are historical. October 31 adds
+> provider price provenance and opt-in `freeOnly` role admission. The installed
+> catalog cannot currently be read by the managed agent (`vangio models` fails
+> at the user config directory). Six live free bindings, role continuation and
+> installed acceptance remain open. Resume from the latest report rather than
+> reapplying old patches.
+
 ## 1. Read this first
 
 The user wants a small, reliable VanGio on the existing OpenCode fork:

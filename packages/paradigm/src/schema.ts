@@ -23,6 +23,8 @@ export type Head = {
   /** Ordered substitutes, tried in order when this head's model hits a wall. */
   fallback?: string[]
   fallbackPolicy?: "declared-only"
+  /** Reject paid or unknown-price models before any provider request. */
+  freeOnly?: boolean
 }
 
 export type Paradigm = {
@@ -149,6 +151,10 @@ export function parseParadigm(input: unknown): ParseResult {
       if (fallbackPolicy !== undefined && fallbackPolicy !== "declared-only") {
         errors.push(`head "${id}" fallbackPolicy must be declared-only`)
       }
+      const freeOnly = value["freeOnly"]
+      if (freeOnly !== undefined && typeof freeOnly !== "boolean") {
+        errors.push(`head "${id}" freeOnly must be a boolean`)
+      }
       const needs = parseNeeds(id, value["needs"], errors)
 
       heads[id] = {
@@ -159,6 +165,7 @@ export function parseParadigm(input: unknown): ParseResult {
         ...(needs ? { needs } : {}),
         ...(fallback ? { fallback } : {}),
         ...(fallbackPolicy === "declared-only" ? { fallbackPolicy } : {}),
+        ...(typeof freeOnly === "boolean" ? { freeOnly } : {}),
       }
     }
   }
@@ -171,9 +178,10 @@ export function parseParadigm(input: unknown): ParseResult {
     ? input["routing"].filter((r): r is string => typeof r === "string")
     : []
   const discipline = isRecord(input["discipline"])
-    ? (Object.fromEntries(
-        Object.entries(input["discipline"]).filter(([, v]) => typeof v === "string"),
-      ) as Record<string, string>)
+    ? (Object.fromEntries(Object.entries(input["discipline"]).filter(([, v]) => typeof v === "string")) as Record<
+        string,
+        string
+      >)
     : {}
 
   const shift = parseShift(input["shift"], errors)
@@ -190,9 +198,7 @@ export function parseParadigm(input: unknown): ParseResult {
       routing,
       discipline,
       ...(shift ? { shift } : {}),
-      ...(typeof input["goal"] === "string" && input["goal"].length > 0
-        ? { goal: input["goal"] }
-        : {}),
+      ...(typeof input["goal"] === "string" && input["goal"].length > 0 ? { goal: input["goal"] } : {}),
     },
   }
 }

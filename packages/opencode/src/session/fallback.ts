@@ -52,7 +52,14 @@ export namespace Fallback {
     /**
      * Missing pricing is unknown, not evidence that a model is free.
      */
-    cost?: { input: number; output: number }
+    cost?: {
+      input: number
+      output: number
+      known?: boolean
+      cache?: { read: number; write: number }
+      tiers?: readonly { input: number; output: number; cache?: { read: number; write: number } }[]
+      experimentalOver200K?: { input: number; output: number; cache?: { read: number; write: number } }
+    }
   }
 
   /**
@@ -197,9 +204,19 @@ export namespace Fallback {
     return { skipped }
   }
 
-  function isFree(model: Judgeable): boolean {
-    if (!model.cost || model.providerID.endsWith("-coding-plan")) return false
-    return model.cost.input === 0 && model.cost.output === 0
+  /** Catalog price eligibility; account free entitlement still requires live verification. */
+  export function isFree(model: Pick<Judgeable, "cost" | "providerID">): boolean {
+    if (!model.cost || model.cost.known === false || model.providerID.endsWith("-coding-plan")) return false
+    return [
+      model.cost,
+      ...(model.cost.tiers ?? []),
+      ...(model.cost.experimentalOver200K ? [model.cost.experimentalOver200K] : []),
+    ].every(
+      (price) =>
+        price.input === 0 &&
+        price.output === 0 &&
+        (!price.cache || (price.cache.read === 0 && price.cache.write === 0)),
+    )
   }
 
   /**

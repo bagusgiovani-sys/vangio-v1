@@ -29,6 +29,7 @@ import * as OtelTracer from "@effect/opentelemetry/Tracer"
 import { LLMAISDK } from "./llm/ai-sdk"
 import { LLMNativeRuntime } from "./llm/native-runtime"
 import { LLMRequestPrep } from "./llm/request"
+import { Fallback } from "./fallback"
 
 export const OUTPUT_TOKEN_MAX = ProviderTransform.OUTPUT_TOKEN_MAX
 
@@ -83,6 +84,13 @@ const live: Layer.Layer<
     const flags = yield* RuntimeFlags.Service
 
     const run = Effect.fn("LLM.run")(function* (input: StreamRequest) {
+      if (input.agent.options.freeOnly === true && !Fallback.isFree(input.model)) {
+        return yield* Effect.fail(
+          new Error(
+            `${input.agent.name} requires a free model; ${input.model.providerID}/${input.model.id} has paid or unverified pricing. No provider request was sent.`,
+          ),
+        )
+      }
       yield* Effect.logInfo("stream", {
         providerID: input.model.providerID,
         modelID: input.model.id,

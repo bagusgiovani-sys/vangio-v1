@@ -41,10 +41,14 @@ test("declared-only pairs stop after backup exhaustion without consulting the ca
     exhausted: new Set<string>(),
     swapsUsed: 0,
     lookup: registry(backup),
-    catalog: (): Fake[] => { throw new Error("must not inspect undeclared models") },
+    catalog: (): Fake[] => {
+      throw new Error("must not inspect undeclared models")
+    },
   }
   expect(Fallback.resolve(base).resolution?.model).toBe(backup)
-  expect(Fallback.resolve({ ...base, failed: backup, swapsUsed: 1, exhausted: new Set(["other/backup"]) }).resolution).toBeUndefined()
+  expect(
+    Fallback.resolve({ ...base, failed: backup, swapsUsed: 1, exhausted: new Set(["other/backup"]) }).resolution,
+  ).toBeUndefined()
   expect(Fallback.resolve({ ...base, chain: [] }).resolution).toBeUndefined()
   expect(Fallback.resolve({ ...base, chain: undefined }).resolution).toBeUndefined()
   expect(Fallback.resolve({ ...base, lookup: registry() }).resolution).toBeUndefined()
@@ -165,7 +169,11 @@ describe("Fallback.resolveStatic", () => {
     test("skips a model that cannot call tools when the head needs tools", () => {
       const blind = model("opencode/a", { capabilities: { toolcall: false, attachment: false } })
       const able = model("opencode/b")
-      const out = attempt({ chain: ["opencode/a", "opencode/b"], needs: { tools: true }, lookup: registry(blind, able) })
+      const out = attempt({
+        chain: ["opencode/a", "opencode/b"],
+        needs: { tools: true },
+        lookup: registry(blind, able),
+      })
       expect(out.resolution?.model.id).toBe("b")
     })
 
@@ -439,6 +447,9 @@ describe("free-only fallback guards", () => {
   for (const candidate of [
     model("paid/model", { cost: { input: 1, output: 2 } }),
     model("unknown/model", { cost: undefined }),
+    model("defaulted/model", { cost: { input: 0, output: 0, known: false } }),
+    model("cache-priced/model", { cost: { input: 0, output: 0, cache: { read: 1, write: 0 } } }),
+    model("tier-priced/model", { cost: { input: 0, output: 0, tiers: [{ input: 1, output: 2 }] } }),
     model("zhipuai-coding-plan/glm-5v-turbo"),
   ]) {
     test(`rejects ${candidate.providerID} in declared and derived chains`, () => {
@@ -446,10 +457,15 @@ describe("free-only fallback guards", () => {
       const out = attempt({ chain: [ref], lookup: registry(candidate) })
       expect(out.resolution).toBeUndefined()
       expect(out.skipped).toEqual([{ entry: ref, why: "not-free" }])
-      expect(Fallback.resolveDerived({
-        head: "king", failed, reason: "free_tier_limit",
-        exhausted: new Set(), catalog: () => [candidate],
-      })).toBeUndefined()
+      expect(
+        Fallback.resolveDerived({
+          head: "king",
+          failed,
+          reason: "free_tier_limit",
+          exhausted: new Set(),
+          catalog: () => [candidate],
+        }),
+      ).toBeUndefined()
     })
   }
 })

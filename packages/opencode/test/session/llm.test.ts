@@ -563,6 +563,7 @@ type Capture = {
 
 const state = {
   server: null as ReturnType<typeof Bun.serve> | null,
+  requests: 0,
   queue: [] as Array<{
     path: string
     response: Response | ((req: Request, capture: Capture) => Response)
@@ -640,6 +641,7 @@ beforeAll(() => {
   state.server = Bun.serve({
     port: 0,
     async fetch(req) {
+      state.requests += 1
       const next = state.queue.shift()
       if (!next) {
         return new Response("unexpected request", { status: 500 })
@@ -662,6 +664,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   state.queue.length = 0
+  state.requests = 0
 })
 
 afterAll(() => {
@@ -752,6 +755,82 @@ function createEventResponse(chunks: unknown[], includeDone = false) {
 }
 
 describe("session.llm.stream", () => {
+  for (const name of ["build", "plan", "warrior", "scout"]) {
+    for (const kind of ["free", "paid", "unknown", "subscription", "opt-out"] as const) {
+      const providerID = kind === "subscription" ? "policy-coding-plan" : "policy-test"
+      it.instance(
+        `freeOnly ${name} ${kind} admission happens before transport`,
+        () =>
+          Effect.gen(function* () {
+            const model = yield* Provider.use.getModel(ProviderV2.ID.make(providerID), ModelV2.ID.make("policy-model"))
+            const sessionID = SessionID.make(`session-free-${name}-${kind}`)
+            const agent = {
+              name,
+              mode: name === "warrior" || name === "scout" ? "subagent" : "primary",
+              options: kind === "opt-out" ? {} : { freeOnly: true },
+              permission: [{ permission: "edit", pattern: "*", action: name === "scout" ? "deny" : "allow" }],
+            } satisfies Agent.Info
+            const allowed = kind === "free" || kind === "opt-out"
+            const request = allowed
+              ? waitRequest(
+                  "/chat/completions",
+                  new Response(createChatStream("Hello"), {
+                    headers: { "Content-Type": "text/event-stream" },
+                  }),
+                )
+              : undefined
+            const exit = yield* drain({
+              sessionID,
+              model,
+              agent,
+              tools: {},
+              system: ["Keep the role's permissions."],
+              messages: [{ role: "user", content: "Hello" }],
+              user: {
+                id: MessageID.make(`msg-free-${name}-${kind}`),
+                sessionID,
+                role: "user",
+                time: { created: Date.now() },
+                agent: name,
+                model: { providerID: model.providerID, modelID: model.id },
+              },
+            }).pipe(Effect.exit)
+            if (allowed) {
+              expect(Exit.isSuccess(exit)).toBe(true)
+              expect((yield* Effect.promise(() => request!)).body.model).toBe("policy-model")
+              expect(state.requests).toBe(1)
+              return
+            }
+            expect(Exit.isFailure(exit)).toBe(true)
+            if (!Exit.isFailure(exit)) throw new Error("expected policy refusal")
+            expect(Cause.pretty(exit.cause)).toContain(`${name} requires a free model`)
+            expect(state.requests).toBe(0)
+          }),
+        {
+          config: () => ({
+            enabled_providers: [providerID],
+            provider: {
+              [providerID]: {
+                npm: "@ai-sdk/openai-compatible",
+                env: [],
+                models: {
+                  "policy-model": {
+                    name: "Policy fixture",
+                    tool_call: true,
+                    limit: { context: 32000, output: 4000 },
+                    ...(kind === "unknown"
+                      ? {}
+                      : { cost: { input: kind === "paid" || kind === "opt-out" ? 1 : 0, output: 0 } }),
+                  },
+                },
+                options: { apiKey: "test-key", baseURL: `${state.server!.url.origin}/v1` },
+              },
+            },
+          }),
+        },
+      )
+    }
+  }
   const vivgridFixture = { providerID: "vivgrid", modelID: "gemini-3.1-pro-preview" }
   it.instance(
     "sends temperature, tokens, and reasoning options for openai-compatible models",

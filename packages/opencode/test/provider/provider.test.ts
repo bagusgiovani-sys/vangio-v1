@@ -15,6 +15,7 @@ import { Config } from "@/config/config"
 import { Env } from "../../src/env"
 import { Plugin } from "../../src/plugin/index"
 import { Provider } from "@/provider/provider"
+import { Fallback } from "@/session/fallback"
 
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Filesystem } from "@/util/filesystem"
@@ -419,6 +420,8 @@ it.instance(
     expect(model.cost.output).toBe(0)
     expect(model.cost.cache.read).toBe(0)
     expect(model.cost.cache.write).toBe(0)
+    expect(model.cost.known).toBe(false)
+    expect(Fallback.isFree(model)).toBe(false)
   }),
   {
     config: {
@@ -681,6 +684,7 @@ it.instance(
     expect(model.cost.output).toBe(15)
     expect(model.cost.cache.read).toBe(2.5)
     expect(model.cost.cache.write).toBe(7.5)
+    expect(model.cost.known).toBe(true)
   }),
   {
     config: {
@@ -952,6 +956,31 @@ it.instance(
           env: ["SINGLE_ENV_KEY"],
           models: { "model-1": { name: "Model 1", tool_call: true, limit: { context: 8000, output: 2000 } } },
           options: { baseURL: "https://api.example.com/v1" },
+        },
+      },
+    },
+  },
+)
+
+it.instance(
+  "model cost overrides retain catalog tiers for free admission",
+  Effect.gen(function* () {
+    const providers = yield* list
+    const model = providers[ProviderV2.ID.make("requesty")].models["google/gemini-2.5-pro"]
+    expect(model.cost.input).toBe(0)
+    expect(model.cost.output).toBe(0)
+    expect(model.cost.known).toBe(true)
+    expect(model.cost.tiers?.[0]?.input).toBe(2.5)
+    expect(model.cost.experimentalOver200K?.output).toBe(15)
+    expect(Fallback.isFree(model)).toBe(false)
+  }),
+  {
+    config: {
+      enabled_providers: ["requesty"],
+      provider: {
+        requesty: {
+          models: { "google/gemini-2.5-pro": { cost: { input: 0, output: 0, cache_read: 0, cache_write: 0 } } },
+          options: { apiKey: "test-key" },
         },
       },
     },
