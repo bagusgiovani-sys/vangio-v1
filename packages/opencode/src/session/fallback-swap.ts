@@ -21,7 +21,7 @@
  * session. Anything unreadable is ignored, which drops through to the derived
  * failsafe - the correct outcome rather than an error.
  */
-import { Clock, DateTime, Effect } from "effect"
+import { DateTime, Effect } from "effect"
 import { SessionMessage } from "@opencode-ai/schema/session-message"
 import { SessionEvent } from "@opencode-ai/schema/session-event"
 import { TuiEvent } from "@opencode-ai/schema/tui-event"
@@ -149,19 +149,7 @@ export namespace FallbackSwap {
     return result
   }
 
-  /**
-   * When the free tier reopens. Zen's daily counter is keyed on a UTC date
-   * (`ipRateLimiter.ts:19`), so the wall lifts at the next UTC midnight - which
-   * is arithmetic the client can do without any header, and F4 says no header
-   * is ever coming.
-   */
-  export function resetsAt(now: number): Date {
-    const next = new Date(now)
-    next.setUTCHours(24, 0, 0, 0)
-    return next
-  }
-
-  export function terminalMessage(head: string, tried: number, now: number, reason: Fallback.Reason = "free_tier_limit"): string {
+  export function terminalMessage(head: string, tried: number, reason: Fallback.Reason = "free_tier_limit"): string {
     const attempted = tried > 0 ? `${tried} substitute${tried === 1 ? "" : "s"} tried` : "no usable substitute found"
     // A retirement does not reset - saying "resets at 00:00 UTC" would be a
     // straightforward lie, and the user would sit waiting for a model that is
@@ -175,9 +163,8 @@ export namespace FallbackSwap {
     if (reason === "stalled") {
       return `${head} stopped responding and could not be degraded (${attempted}). Try again, or bind it to a faster model.`
     }
-    const reset = resetsAt(now)
-    const hours = Math.max(1, Math.round((reset.getTime() - now) / 3_600_000))
-    return `${head} hit its free-tier limit and could not be degraded (${attempted}). The limit resets at 00:00 UTC, about ${hours}h from now.`
+    const limit = reason === "account_rate_limit" ? "account rate limit" : "free-tier limit"
+    return `${head} hit its ${limit} and could not be degraded (${attempted}). No eligible backup is available. Check the provider's usage limits before retrying.`
   }
 
   type SessionState = {
@@ -272,7 +259,7 @@ export namespace FallbackSwap {
     reason: Fallback.Reason,
     failed: Fallback.Ref,
     opts: { exhaustProvider?: boolean } = {},
-  ): Effect.Effect<{ model: Provider.Model | undefined; note: string }> {
+  ): Effect.Effect<{ model: Provider.Model | undefined; note: string; terminal?: boolean }> {
     return Effect.gen(function* () {
       const agent = yield* deps.agents.get(deps.agentName).pipe(Effect.catchCause(() => Effect.succeed(undefined)))
       const declared = readDeclaration(agent?.options)
@@ -331,82 +318,85 @@ export namespace FallbackSwap {
       const reachable = deps.catalog
         ? yield* deps.catalog.model
             .available()
-            .pipe(Effect.catchCause(() => Effect.succeed(undefined as readonly { id: string; providerID: string }[] | undefined)))
+            .pipe(
+              Effect.catchCause(() =>
+                Effect.succeed(undefined as readonly { id: string; providerID: string }[] | undefined),
+              ),
+            )
         : undefined
       const allowed = reachable ? new Set(reachable.map((entry) => entry.providerID + "/" + entry.id)) : undefined
       const catalog = allowed ? resolved.filter((model) => allowed.has(model.providerID + "/" + model.id)) : resolved
       const byRef = new Map(catalog.map((model) => [model.providerID + "/" + model.id, model]))
 
-        const attempt = Fallback.resolve<Provider.Model>({
-          head: deps.agentName,
-          failed,
-          reason,
-          chain: declared.fallback,
-          fallbackPolicy: declared.fallbackPolicy,
-          needs: declared.needs,
-          exhausted: state.exhausted,
-          exhaustedProviders: state.exhaustedProviders,
-          swapsUsed: state.swaps,
-          lookup: (providerID, modelID) => byRef.get(providerID + "/" + modelID),
-          catalog: () => catalog,
-        })
+      const attempt = Fallback.resolve<Provider.Model>({
+        head: deps.agentName,
+        failed,
+        reason,
+        chain: declared.fallback,
+        fallbackPolicy: declared.fallbackPolicy,
+        needs: declared.needs,
+        exhausted: state.exhausted,
+        exhaustedProviders: state.exhaustedProviders,
+        swapsUsed: state.swaps,
+        lookup: (providerID, modelID) => byRef.get(providerID + "/" + modelID),
+        catalog: () => catalog,
+      })
 
-        for (const skip of attempt.skipped) {
-          yield* Effect.logWarning("fallback entry skipped", {
-            "session.id": deps.sessionID,
-            head: deps.agentName,
-            entry: skip.entry,
-            why: skip.why,
-          })
-        }
-
-        if (!attempt.resolution) {
-          yield* Effect.logWarning("fallback exhausted", {
-            "session.id": deps.sessionID,
-            head: deps.agentName,
-            capped: attempt.capped ?? false,
-            derivedBecause: attempt.derivedBecause,
-          })
-          return {
-            model: undefined,
-            note: terminalMessage(deps.agentName, attempt.skipped.length, yield* Clock.currentTimeMillis, reason),
-          }
-        }
-
-        const next = attempt.resolution.model
-        state.exhausted.add(failed.providerID + "/" + failed.id)
-        state.swaps += 1
-
-        // Q3: and this is what makes it outlive the attempt, the step, and a
-        // restart - the loop prefers the session row once it moves mid-turn.
-        yield* deps.events
-          .publish(SessionEvent.ModelSwitched, {
-            sessionID: deps.sessionID,
-            messageID: SessionMessage.ID.create(),
-            timestamp: yield* DateTime.now,
-            model: { id: ModelV2.ID.make(next.id), providerID: ProviderV2.ID.make(next.providerID) },
-          })
-          .pipe(Effect.ignore)
-
-        yield* Effect.logInfo("fallback swap", {
+      for (const skip of attempt.skipped) {
+        yield* Effect.logWarning("fallback entry skipped", {
           "session.id": deps.sessionID,
           head: deps.agentName,
-          from: failed.providerID + "/" + failed.id,
-          to: next.providerID + "/" + next.id,
-          source: attempt.resolution.source,
+          entry: skip.entry,
+          why: skip.why,
         })
+      }
 
-        return { model: next, note: attempt.resolution.note }
+      if (!attempt.resolution) {
+        yield* Effect.logWarning("fallback exhausted", {
+          "session.id": deps.sessionID,
+          head: deps.agentName,
+          capped: attempt.capped ?? false,
+          derivedBecause: attempt.derivedBecause,
+        })
+        return {
+          model: undefined,
+          note: terminalMessage(deps.agentName, attempt.skipped.length, reason),
+          terminal: declared.fallbackPolicy === "declared-only",
+        }
+      }
+
+      const next = attempt.resolution.model
+      state.exhausted.add(failed.providerID + "/" + failed.id)
+      state.swaps += 1
+
+      // Q3: and this is what makes it outlive the attempt, the step, and a
+      // restart - the loop prefers the session row once it moves mid-turn.
+      yield* deps.events
+        .publish(SessionEvent.ModelSwitched, {
+          sessionID: deps.sessionID,
+          messageID: SessionMessage.ID.create(),
+          timestamp: yield* DateTime.now,
+          model: { id: ModelV2.ID.make(next.id), providerID: ProviderV2.ID.make(next.providerID) },
+        })
+        .pipe(Effect.ignore)
+
+      yield* Effect.logInfo("fallback swap", {
+        "session.id": deps.sessionID,
+        head: deps.agentName,
+        from: failed.providerID + "/" + failed.id,
+        to: next.providerID + "/" + next.id,
+        source: attempt.resolution.source,
       })
+
+      return { model: next, note: attempt.resolution.note }
+    })
   }
 
   /**
    * Retry-policy entry point: a rate limit. Installs the substitute by mutating
    * `streamInput.model`, which is the F2 mechanism itself rather than a copy.
    */
-  export function hook(
-    deps: Services & { streamInput: { model: Provider.Model } },
-  ): SessionRetry.SwapHook {
+  export function hook(deps: Services & { streamInput: { model: Provider.Model } }): SessionRetry.SwapHook {
     return (info) =>
       Effect.gen(function* () {
         const walled = !!info.reason && ELIGIBLE.has(info.reason)
@@ -433,7 +423,7 @@ export namespace FallbackSwap {
           // account-wide - so trying its sibling is a slower way to fail.
           exhaustProvider: persistent,
         })
-        if (!out.model) return { swapped: false, message: out.note }
+        if (!out.model) return { swapped: false, message: out.note, ...(out.terminal ? { terminal: true } : {}) }
         deps.streamInput.model = out.model
         return { swapped: true, message: out.note }
       })
@@ -453,9 +443,7 @@ export namespace FallbackSwap {
    * Returns undefined to mean "carry on dying" - the caller keeps its existing
    * error path untouched when nothing can be rescued.
    */
-  export function rescueRetired(
-    deps: Services & { failed: Fallback.Ref },
-  ): Effect.Effect<Provider.Model | undefined> {
+  export function rescueRetired(deps: Services & { failed: Fallback.Ref }): Effect.Effect<Provider.Model | undefined> {
     return Effect.gen(function* () {
       const out = yield* degrade(deps, "model_gone", deps.failed)
       return out.model

@@ -664,7 +664,9 @@ const layer = Layer.effect(
         throw error
       }
 
-      const model = input.model ?? ag.model ?? (yield* currentModel(input.sessionID))
+      const current = yield* sessions.get(input.sessionID).pipe(Effect.orDie)
+      const model =
+        input.model ?? SwitchedModel.declaredBackup(ag, current) ?? ag.model ?? (yield* currentModel(input.sessionID))
       const same = ag.model && model.providerID === ag.model.providerID && model.modelID === ag.model.modelID
       const full =
         !input.variant && ag.variant && same
@@ -690,7 +692,6 @@ const layer = Layer.effect(
         format: input.format,
       }
 
-      const current = yield* sessions.get(input.sessionID).pipe(Effect.orDie)
       if (
         current.agent !== info.agent ||
         current.model?.providerID !== info.model.providerID ||
@@ -1162,8 +1163,12 @@ const layer = Layer.effect(
             }).pipe(Effect.ignore, Effect.forkIn(scope))
 
           // VanGio: a swap published mid-turn beats the model this turn was sent with.
+          const saved = yield* SwitchedModel.read(db, sessionID)
+          const agent = yield* agents.get(lastUser.agent)
           const chosen =
-            SwitchedModel.switched(modelAtTurnStart, yield* SwitchedModel.read(db, sessionID)) ?? lastUser.model
+            SwitchedModel.switched(modelAtTurnStart, saved) ??
+            SwitchedModel.declaredBackup(agent, { agent: session.agent, model: saved }) ??
+            lastUser.model
           const model = yield* getModel(chosen.providerID, chosen.modelID, sessionID, lastUser.agent)
           const task = tasks.pop()
 
@@ -1193,7 +1198,6 @@ const layer = Layer.effect(
             continue
           }
 
-          const agent = yield* agents.get(lastUser.agent)
           if (!agent) {
             const available = (yield* agents.list()).filter((a) => !a.hidden).map((a) => a.name)
             const hint = available.length ? ` Available agents: ${available.join(", ")}` : ""

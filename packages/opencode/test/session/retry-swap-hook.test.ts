@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
-import { Effect, Schema } from "effect"
+import { Cause, Effect, Exit, Schema } from "effect"
 import { SessionRetry } from "../../src/session/retry"
 
 // The retry-side half of Paradigm Shift stage one
@@ -102,12 +102,43 @@ describe("session.retry fallback hook", () => {
   // upsell - the fork's own terminal message replaces it.
   test("an unswapped outcome still drops the upsell and replaces the message", async () => {
     const { decision, started } = await decide(() =>
-      Effect.succeed({ swapped: false, message: "king exhausted its fallback chain; free tier resets at 00:00 UTC" }),
+      Effect.succeed({ swapped: false, message: "king exhausted its fallback chain" }),
     )
     expect(decision.action).toBeUndefined()
     expect(decision.message).toContain("exhausted")
     // Not swapped, so the real wall still applies - waiting it out is correct here.
     expect(decision.next - started).toBeGreaterThan(1_000_000)
+  })
+
+  test("terminal exhaustion stops immediately and preserves the role's explanation", async () => {
+    let attempts = 0
+    const seen: Seen[] = []
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        attempts++
+        if (attempts === 1) return yield* Effect.fail(freeTierError())
+        return "unexpected retry"
+      }).pipe(
+        Effect.retry(
+          SessionRetry.policy({
+            provider: "opencode",
+            parse,
+            swap: () =>
+              Effect.succeed({ swapped: false, terminal: true, message: "scout: no eligible backup is available" }),
+            set: (info) =>
+              Effect.sync(() => {
+                seen.push(info)
+              }),
+          }),
+        ),
+        Effect.exit,
+      ),
+    )
+    expect(attempts).toBe(1)
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (!Exit.isFailure(exit)) throw new Error("expected terminal exhaustion")
+    expect(Cause.pretty(exit.cause)).toContain("scout: no eligible backup is available")
+    expect(seen[0]?.action).toBeUndefined()
   })
 
   test("a hook that declines leaves upstream behaviour exactly as it was", async () => {

@@ -850,6 +850,154 @@ it.instance("loop continues when finish is tool-calls", () =>
   }),
 )
 
+function pairedConfig(url: string, role: string) {
+  return {
+    ...providerCfg(url),
+    provider: {
+      test: {
+        ...providerCfg(url).provider.test,
+        models: {
+          ...cfg.provider.test.models,
+          "backup-model": { ...cfg.provider.test.models["test-model"], id: "backup-model" },
+          "undeclared-model": { ...cfg.provider.test.models["test-model"], id: "undeclared-model" },
+        },
+      },
+    },
+    agent: {
+      [role]: {
+        mode: role === "warrior" || role === "scout" ? "subagent" : "primary",
+        model: "test/test-model",
+        prompt: `role-contract-${role}: preserve completed work and permissions`,
+        permission: { edit: role === "scout" || role === "plan" ? "deny" : "allow" },
+        options: { fallback: ["test/backup-model"], fallbackPolicy: "declared-only", freeOnly: true },
+      },
+    },
+  } satisfies Partial<ConfigV1.Info>
+}
+
+for (const role of ["build", "plan", "warrior", "scout"]) {
+  it.instance(
+    `declared-only ${role} quota handoff preserves completed tools and session isolation`,
+    () =>
+      Effect.gen(function* () {
+        const { dir, llm } = yield* useServerConfig((url) => pairedConfig(url, role))
+        const fs = yield* FSUtil.Service
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const parent = yield* sessions.create({
+          title: "Supervisor",
+          agent: "build",
+          model: { providerID: ref.providerID, id: ref.modelID },
+        })
+        const sibling = yield* sessions.create({
+          title: "Other role",
+          parentID: parent.id,
+          agent: "warrior",
+          model: { providerID: ref.providerID, id: ref.modelID },
+        })
+        const chat = yield* sessions.create({ title: "Handoff", parentID: parent.id, agent: role })
+        const file = path.join(dir, "handoff.txt")
+        const writable = role === "build" || role === "warrior"
+        yield* writeText(file, "original-context-sentinel")
+        yield* prompt.prompt({
+          sessionID: chat.id,
+          agent: role,
+          model: ref,
+          noReply: true,
+          parts: [{ type: "text", text: "Complete the fixture task once; original-task-sentinel." }],
+        })
+        yield* llm.tool(
+          writable ? "write" : "read",
+          writable ? { filePath: file, content: "completed-mutation-sentinel" } : { filePath: file },
+        )
+        yield* llm.error(429, { error: { type: "FreeUsageLimitError", message: "Free usage exceeded" } })
+        yield* llm.tool("read", { filePath: file })
+        yield* llm.text("Handoff complete")
+
+        const result = yield* prompt.loop({ sessionID: chat.id })
+        const hits = yield* llm.hits
+        expect(hits.map((hit) => hit.body.model)).toEqual(["test-model", "test-model", "backup-model", "backup-model"])
+        expect(yield* llm.pending).toBe(0)
+        expect(result.info.role).toBe("assistant")
+        expect(result.parts.some((part) => part.type === "text" && part.text === "Handoff complete")).toBe(true)
+        if (result.info.role !== "assistant") throw new Error("expected assistant")
+        for (const hit of hits.slice(2)) {
+          const body = JSON.stringify(hit.body)
+          expect(body).toContain("original-task-sentinel")
+          expect(body).toContain(`role-contract-${role}`)
+          expect(body).toContain(writable ? "completed-mutation-sentinel" : "original-context-sentinel")
+          if (!writable) {
+            const tools = hit.body.tools as { function: { name: string } }[]
+            expect(tools.some((tool) => tool.function.name === "write" || tool.function.name === "edit")).toBe(false)
+          }
+        }
+        const messages = yield* sessions.messages({ sessionID: chat.id })
+        const completed = messages
+          .flatMap((message) => message.parts)
+          .filter((part) => part.type === "tool" && part.state.status === "completed")
+        expect(completed).toHaveLength(2)
+        expect(completed.filter((part) => part.type === "tool" && part.tool === "write")).toHaveLength(writable ? 1 : 0)
+        expect((yield* sessions.get(chat.id)).model).toMatchObject({ providerID: "test", id: "backup-model" })
+        expect((yield* sessions.get(parent.id)).model).toMatchObject({ providerID: "test", id: "test-model" })
+        expect((yield* sessions.get(sibling.id)).model).toMatchObject({ providerID: "test", id: "test-model" })
+        expect(yield* fs.readFileString(file)).toBe(
+          writable ? "completed-mutation-sentinel" : "original-context-sentinel",
+        )
+        // Simulate resuming an unfinished loop after the switch was persisted.
+        yield* sessions.updateMessage({ ...result.info, finish: "tool-calls" })
+        yield* llm.text("Resumed unfinished step")
+        yield* prompt.loop({ sessionID: chat.id })
+        expect((yield* llm.hits).at(-1)?.body.model).toBe("backup-model")
+        yield* llm.text("Resumed on backup")
+        yield* prompt.prompt({
+          sessionID: chat.id,
+          agent: role,
+          parts: [{ type: "text", text: "Continue the same task after resuming this session." }],
+        })
+        expect((yield* llm.hits).at(-1)?.body.model).toBe("backup-model")
+        yield* llm.text("Explicit primary selection")
+        yield* prompt.prompt({
+          sessionID: chat.id,
+          agent: role,
+          model: ref,
+          parts: [{ type: "text", text: "Use the primary I explicitly selected." }],
+        })
+        expect((yield* llm.hits).at(-1)?.body.model).toBe("test-model")
+      }),
+    30_000,
+  )
+
+  it.instance(
+    `declared-only ${role} stops after both models exhaust their quota`,
+    () =>
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig((url) => pairedConfig(url, role))
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const chat = yield* sessions.create({ title: "Exhaustion", agent: role })
+        yield* prompt.prompt({
+          sessionID: chat.id,
+          agent: role,
+          model: ref,
+          noReply: true,
+          parts: [{ type: "text", text: "Stop clearly when both models are unavailable." }],
+        })
+        yield* llm.error(429, { error: { type: "FreeUsageLimitError", message: "Free usage exceeded" } })
+        yield* llm.error(429, { error: { type: "FreeUsageLimitError", message: "Free usage exceeded" } })
+        const result = yield* prompt.loop({ sessionID: chat.id })
+        expect((yield* llm.hits).map((hit) => hit.body.model)).toEqual(["test-model", "backup-model"])
+        expect(result.info.role).toBe("assistant")
+        if (result.info.role !== "assistant") throw new Error("expected assistant")
+        expect(result.info.error).toBeDefined()
+        expect(JSON.stringify(result.info.error)).toContain(role)
+        expect(JSON.stringify(result.info.error)).toContain("No eligible backup is available")
+        expect(JSON.stringify(result.info.error)).not.toContain("00:00 UTC")
+        expect(yield* llm.pending).toBe(0)
+      }),
+    30_000,
+  )
+}
+
 it.instance("glob tool keeps instance context during prompt runs", () =>
   Effect.gen(function* () {
     const { dir, llm } = yield* useServerConfig(providerCfg)
@@ -924,6 +1072,7 @@ it.instance("failed subtask preserves metadata on error tool state", () =>
       agent: {
         general: {
           model: "test/missing-model",
+          options: { shiftAuto: false },
         },
       },
     }))

@@ -13,7 +13,9 @@ import { Fallback } from "../../src/session/fallback"
 describe("FallbackSwap.readDeclaration", () => {
   test("preserves declared-only even if its chain is missing or malformed", () => {
     for (const fallback of [undefined, [], "bad", [123]]) {
-      expect(FallbackSwap.readDeclaration({ fallbackPolicy: "declared-only", fallback }).fallbackPolicy).toBe("declared-only")
+      expect(FallbackSwap.readDeclaration({ fallbackPolicy: "declared-only", fallback }).fallbackPolicy).toBe(
+        "declared-only",
+      )
     }
   })
   test("reads a well-formed declaration", () => {
@@ -65,43 +67,29 @@ describe("FallbackSwap.readDeclaration", () => {
   })
 })
 
-describe("FallbackSwap.resetsAt", () => {
-  // F3/F4: Zen's daily counter is keyed on a UTC date and no header ever
-  // reaches the client, so the reset time is arithmetic rather than a reading.
-  test("lands on the next UTC midnight", () => {
-    const noon = Date.UTC(2026, 7, 20, 12, 30, 15, 500)
-    expect(FallbackSwap.resetsAt(noon).toISOString()).toBe("2026-08-21T00:00:00.000Z")
-  })
-
-  test("moves to the following day rather than returning the moment itself", () => {
-    const midnight = Date.UTC(2026, 7, 20, 0, 0, 0, 0)
-    expect(FallbackSwap.resetsAt(midnight).toISOString()).toBe("2026-08-21T00:00:00.000Z")
-  })
-})
-
 describe("FallbackSwap.terminalMessage", () => {
-  const noon = Date.UTC(2026, 7, 20, 12, 0, 0, 0)
-
-  test("names the head, what was tried, and when the wall lifts", () => {
-    const message = FallbackSwap.terminalMessage("king", 2, noon)
+  test("names the head and attempts without inventing a provider reset", () => {
+    const message = FallbackSwap.terminalMessage("king", 2)
     expect(message).toContain("king")
     expect(message).toContain("2 substitutes tried")
-    expect(message).toContain("00:00 UTC")
-    expect(message).toContain("12h")
+    expect(message).toContain("free-tier limit")
+    expect(message).not.toContain("00:00 UTC")
+    expect(message).not.toContain("resets")
   })
 
   test("says so plainly when there was nothing to try", () => {
-    expect(FallbackSwap.terminalMessage("scout", 0, noon)).toContain("no usable substitute found")
+    expect(FallbackSwap.terminalMessage("scout", 0)).toContain("no usable substitute found")
   })
 
   test("does not pluralise a single attempt", () => {
-    expect(FallbackSwap.terminalMessage("king", 1, noon)).toContain("1 substitute tried")
+    expect(FallbackSwap.terminalMessage("king", 1)).toContain("1 substitute tried")
   })
 
-  // Never promise a reset "in 0h" - just under the wire still reads as an hour.
-  test("never reports less than an hour", () => {
-    const almost = Date.UTC(2026, 7, 20, 23, 59, 0, 0)
-    expect(FallbackSwap.terminalMessage("king", 1, almost)).toContain("about 1h")
+  test("account rate exhaustion is described separately from a free-tier limit", () => {
+    const message = FallbackSwap.terminalMessage("king", 1, "account_rate_limit")
+    expect(message).toContain("account rate limit")
+    expect(message).not.toContain("free-tier limit")
+    expect(message).not.toContain("resets")
   })
 })
 
@@ -127,11 +115,7 @@ function model(ref: string, over: Record<string, unknown> = {}) {
   }
 }
 
-function harness(opts: {
-  options?: Record<string, unknown>
-  catalog?: ReturnType<typeof model>[]
-  from?: string
-}) {
+function harness(opts: { options?: Record<string, unknown>; catalog?: ReturnType<typeof model>[]; from?: string }) {
   const published: any[] = []
   const streamInput = { model: model(opts.from ?? "opencode/deepseek-v4-flash-free") as any }
   const catalog = opts.catalog ?? [model("opencode/nemotron-3.5-lightning-free")]
@@ -149,7 +133,9 @@ function harness(opts: {
     provider: { list: () => Effect.succeed(models) } as any,
     // Everything this fake registry holds is reachable - credentials are a
     // separate concern with its own describe block below.
-    catalog: { model: { available: () => Effect.succeed(catalog.map((m) => ({ id: m.id, providerID: m.providerID }))) } } as any,
+    catalog: {
+      model: { available: () => Effect.succeed(catalog.map((m) => ({ id: m.id, providerID: m.providerID }))) },
+    } as any,
     events: {
       publish: (def: any, data: any) => Effect.sync(() => void published.push({ type: def?.type, ...data })),
     } as any,
@@ -234,7 +220,8 @@ describe("FallbackSwap.hook", () => {
     const { hook, streamInput, published } = harness({ catalog: [] })
     const out = await Effect.runPromise(hook(wall))
     expect(out?.swapped).toBe(false)
-    expect(out?.message).toContain("00:00 UTC")
+    expect(out?.message).not.toContain("00:00 UTC")
+    expect(out?.message).toContain("no usable substitute found")
     expect(streamInput.model.id).toBe("deepseek-v4-flash-free")
     expect(published).toHaveLength(0)
   })
@@ -275,7 +262,9 @@ describe("FallbackSwap.rescueRetired", () => {
             failed: { id: "laguna-s-2.1-free", providerID: "opencode" },
             agents: { get: () => Effect.succeed({ options: opts.options ?? {} }) } as any,
             provider: { list: () => Effect.succeed(models) } as any,
-            catalog: { model: { available: () => Effect.succeed(catalog.map((m) => ({ id: m.id, providerID: m.providerID }))) } } as any,
+            catalog: {
+              model: { available: () => Effect.succeed(catalog.map((m) => ({ id: m.id, providerID: m.providerID }))) },
+            } as any,
             events: {
               publish: (def: any, data: any) => Effect.sync(() => void published.push({ type: def?.type, ...data })),
             } as any,
@@ -311,7 +300,10 @@ describe("FallbackSwap.rescueRetired", () => {
   test("honours the head's needs when rescuing, not just any live model", async () => {
     const { run } = rescue({
       options: { needs: { attachment: true } },
-      catalog: [model("opencode/blind"), model("opencode/seeing", { capabilities: { toolcall: true, attachment: true } })],
+      catalog: [
+        model("opencode/blind"),
+        model("opencode/seeing", { capabilities: { toolcall: true, attachment: true } }),
+      ],
     })
     expect(String((await run())?.id)).toBe("seeing")
   })
@@ -321,7 +313,7 @@ describe("FallbackSwap.terminalMessage for a retirement", () => {
   // "The limit resets at 00:00 UTC" would be a plain lie about a retired
   // model - the user would wait for something that is never coming back.
   test("does not promise a reset that will never come", () => {
-    const message = FallbackSwap.terminalMessage("scout", 1, Date.now(), "model_gone")
+    const message = FallbackSwap.terminalMessage("scout", 1, "model_gone")
     expect(message).toContain("no longer exists")
     expect(message).toContain("Rebind")
     expect(message).not.toContain("resets")
@@ -367,11 +359,7 @@ describe("FallbackSwap.hook on a model that just keeps failing", () => {
   test("writes the provider off once a second of its models fails the same way", async () => {
     const { hook, streamInput } = harness({
       from: "free-provider/primary",
-      catalog: [
-        model("free-provider/backup"),
-        model("free-provider/third"),
-        model("opencode/hy3-free"),
-      ],
+      catalog: [model("free-provider/backup"), model("free-provider/third"), model("opencode/hy3-free")],
     })
     await Effect.runPromise(hook({ ...noReason, attempt: 3 }))
     expect(streamInput.model.providerID).toBe("free-provider")
@@ -602,7 +590,7 @@ describe("FallbackSwap wording for a stall", () => {
   })
 
   test("the terminal message does not claim a stalled model is gone", () => {
-    const m = FallbackSwap.terminalMessage("king", 0, Date.UTC(2026, 7, 25, 12, 0, 0), "stalled")
+    const m = FallbackSwap.terminalMessage("king", 0, "stalled")
     expect(m).not.toContain("no longer exists")
     expect(m).toContain("stopped responding")
   })
@@ -610,15 +598,13 @@ describe("FallbackSwap wording for a stall", () => {
   // A stall says nothing about the provider's credentials, so it must not
   // report a free-tier reset time either.
   test("the terminal message does not promise a reset for a stall", () => {
-    const m = FallbackSwap.terminalMessage("king", 0, Date.UTC(2026, 7, 25, 12, 0, 0), "stalled")
+    const m = FallbackSwap.terminalMessage("king", 0, "stalled")
     expect(m).not.toContain("00:00 UTC")
   })
 
   test("a stall with no substitute reports the stall rather than a retirement", async () => {
     const { hook } = harness({ catalog: [] })
-    const out = await Effect.runPromise(
-      hook({ reason: undefined, attempt: 1, error: {} as any, silentMs: 123_000 }),
-    )
+    const out = await Effect.runPromise(hook({ reason: undefined, attempt: 1, error: {} as any, silentMs: 123_000 }))
     expect(out?.swapped).toBe(false)
     expect(out?.message).not.toContain("no longer exists")
     expect(out?.message).toContain("stopped responding")
@@ -644,9 +630,7 @@ describe("FallbackSwap stall threshold override", () => {
       const { hook, streamInput } = harness({})
       // 200ms is nowhere near the 30s default, so this can only pass if the
       // override is being read.
-      const out = await Effect.runPromise(
-        hook({ reason: undefined, attempt: 1, error: {} as any, silentMs: 200 }),
-      )
+      const out = await Effect.runPromise(hook({ reason: undefined, attempt: 1, error: {} as any, silentMs: 200 }))
       expect(out?.swapped).toBe(true)
       expect(streamInput.model.id).toBe("nemotron-3.5-lightning-free")
     }))
@@ -654,9 +638,7 @@ describe("FallbackSwap stall threshold override", () => {
   test("a junk value falls back to the shipped budget", () =>
     withEnv("not-a-number", async () => {
       const { hook, streamInput } = harness({})
-      const out = await Effect.runPromise(
-        hook({ reason: undefined, attempt: 1, error: {} as any, silentMs: 200 }),
-      )
+      const out = await Effect.runPromise(hook({ reason: undefined, attempt: 1, error: {} as any, silentMs: 200 }))
       expect(out).toBeUndefined()
       expect(streamInput.model.id).toBe("deepseek-v4-flash-free")
     }))

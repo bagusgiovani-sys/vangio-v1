@@ -18,11 +18,22 @@ import { SwitchedModel } from "../../src/session/switched-model"
 
 const zen = { id: "deepseek-v4-flash-free", providerID: "opencode", variant: "default" }
 
+test("saved backups apply only to the same role's declared pair", () => {
+  const agent = { name: "scout", options: { fallbackPolicy: "declared-only", fallback: ["other/backup"] } }
+  const current = { agent: "scout", model: { providerID: "other", id: "backup", variant: "default" } }
+  expect(plain(SwitchedModel.declaredBackup(agent, current))).toEqual({ providerID: "other", modelID: "backup" })
+  expect(SwitchedModel.declaredBackup(undefined, current)).toBeUndefined()
+  expect(SwitchedModel.declaredBackup({ ...agent, options: {} }, current)).toBeUndefined()
+  expect(SwitchedModel.declaredBackup(agent, { ...current, agent: "warrior" })).toBeUndefined()
+  expect(SwitchedModel.declaredBackup(agent, { ...current, model: zen })).toBeUndefined()
+  expect(SwitchedModel.declaredBackup(agent, { agent: "scout" })).toBeUndefined()
+})
+
 // providerID and modelID come back branded, which no plain object literal can
 // satisfy. Widening to strings keeps whole-object equality - so an unexpected
 // extra key still fails - without scattering casts through every assertion.
 function plain(choice: SwitchedModel.Choice | undefined) {
-  return choice ? { ...choice } as Record<string, string> : undefined
+  return choice ? ({ ...choice } as Record<string, string>) : undefined
 }
 
 describe("SwitchedModel.switched", () => {
@@ -58,9 +69,13 @@ describe("SwitchedModel.switched", () => {
   // measured on this machine's DB, both spellings are present across sessions.
   // prompt.ts:677 and core/session.ts:400 both already treat them as equal, and
   // reading them as a switch would swap the model on every single step.
-  test("reads an absent variant and \"default\" as the same variant", () => {
-    expect(SwitchedModel.switched({ id: "a", providerID: "p" }, { id: "a", providerID: "p", variant: "default" })).toBeUndefined()
-    expect(SwitchedModel.switched({ id: "a", providerID: "p", variant: "default" }, { id: "a", providerID: "p" })).toBeUndefined()
+  test('reads an absent variant and "default" as the same variant', () => {
+    expect(
+      SwitchedModel.switched({ id: "a", providerID: "p" }, { id: "a", providerID: "p", variant: "default" }),
+    ).toBeUndefined()
+    expect(
+      SwitchedModel.switched({ id: "a", providerID: "p", variant: "default" }, { id: "a", providerID: "p" }),
+    ).toBeUndefined()
   })
 
   test("returns the new model when only the variant moves", () => {
@@ -74,8 +89,11 @@ describe("SwitchedModel.switched", () => {
 
   // currentModel() (prompt.ts:625) normalises the same way, so a switch resolved
   // here is shaped exactly like one resolved for a fresh prompt.
-  test("drops a \"default\" variant from the result rather than passing it on", () => {
-    const swapped = SwitchedModel.switched({ id: "a", providerID: "p" }, { id: "b", providerID: "p", variant: "default" })
+  test('drops a "default" variant from the result rather than passing it on', () => {
+    const swapped = SwitchedModel.switched(
+      { id: "a", providerID: "p" },
+      { id: "b", providerID: "p", variant: "default" },
+    )
     expect(plain(swapped)).toEqual({ providerID: "p", modelID: "b" })
     expect(swapped).not.toHaveProperty("variant")
   })

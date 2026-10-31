@@ -56,6 +56,56 @@ and test credentials. They are not live-provider tool-use evidence.
 | Scout primary | TBD | Pending | Unknown | 0/3 | Pending | Unverified |
 | Scout backup | TBD | Pending | Unknown | 0/3 | Pending | Unverified |
 
+## Production continuation and exhaustion, 2026-10-31
+
+New localhost HTTP fixtures exercise the production prompt loop, processor,
+LLM transport, retry schedule and session projector for Build, Plan, Warrior and
+Scout. They exposed two defects and failed before the corresponding repairs:
+
+- Exhaustion of a declared pair produced a third request to its failed backup.
+  A terminal hook result now stops the retry schedule when a declared-only
+  chain is exhausted. The persisted error includes the role and the lack of an
+  eligible backup. No seventh model is selected even when a free third model
+  exists in the fixture's catalog.
+- A resumed prompt restored the configured primary instead of the saved backup.
+  Declared-only roles now honor a saved backup in that same role's chain when
+  restarting a loop from stored state or creating an implicit new turn.
+  Explicit model selection still takes precedence.
+
+The eight integration cases verify original task text, role instructions,
+completed tool inputs/results, one completed write for writable roles, no
+write/edit tool exposure for Plan/Scout after handoff, subsequent backup tool
+steps, resumed loops and new turns, and unchanged parent/sibling model rows.
+Read-only role fixture files remain unchanged. These tests do not launch a new
+OS process or prove live provider availability.
+
+Exhaustion messages now distinguish account limits from free-tier limits and
+omit an unsupported universal midnight reset. Retirement and stall wording
+remain specific to those failures.
+
+The initial combined seven-suite run reported 227 pass, 14 skip, 1 fail. The
+failure was an existing subtask error-metadata fixture expecting a missing
+model to fail while automatic rescue was enabled. The same failure reproduced
+with all four runtime files temporarily restored to committed `4a06c359c2`;
+current source was then restored byte for byte. The fixture now explicitly
+disables automatic shifting for that error-path test. Its focused run passes
+all eight assertions. Final results are recorded below.
+
+Final validation: complete prompt suite **52 pass, 14 skip, 0 fail, 279
+assertions**. The six fallback/retry suites passed their 176 tests in the
+preceding combined run; that run's sole failure was the now-corrected subtask
+fixture. Across these latest runs: **228 passing tests and 14 skips**. The final
+OpenCode package typecheck passes. Skips are recorded, not counted as passes.
+
+The pricing checkpoint was committed and pushed to `origin/dev` as
+`4a06c359c2`. This continuation checkpoint contains the bounded-exhaustion and
+persisted-backup fixes, their tests, the fixture correction and this report.
+
+Additional receipts in the outer workspace: `verification/resumed-backup-red.log`,
+`verification/role-continuation-final.log`, `verification/bounded-exhaustion-tests.log`,
+`verification/subtask-baseline.log`, `verification/subtask-fixture-tests.log`,
+and `verification/prompt-final-tests.log`.
+
 ## Provider research, 2026-10-31
 
 - [OpenCode Console models](https://opencode.ai/v2/docs/console/models/) lists
@@ -78,10 +128,13 @@ mkdir 'C:\Users\kodec\.config\vangio'`. The managed agent cannot currently
 access the user config directory. The user has been asked to run the command in
 their ordinary Windows terminal to distinguish installed-host access from the
 agent environment. No ACLs, SSH trust settings or credentials were changed.
+A read-only file-open probe confirmed access denied on
+`C:\Users\kodec\.config\vangio\opencode.json` without reading or printing its contents.
 
-Next: finish deterministic role continuation and exhaustion acceptance through
-production retry/processor code, then obtain the actual configured catalog and
-run three real role-appropriate tool turns for each proposed binding. Preserve
+Next: obtain the actual configured catalog and run three real role-appropriate
+tool turns for each proposed binding. Deterministic role continuation and
+bounded exhaustion now have production-loop fixtures. Visible installed-TUI
+switch/exhaustion acceptance and the live six-model matrix remain pending. Preserve
 the warrior output requirement until realistic implementation evidence supports
 changing it. Install only after verified pairs are established. Phone/Tailscale
 remains gated on completion of the core acceptance in NEXT-STEPS.md.

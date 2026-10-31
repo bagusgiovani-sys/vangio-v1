@@ -84,10 +84,19 @@ export namespace SwitchedModel {
     }
   }
 
+  /** A resumed declared pair keeps its saved backup until the user selects a model. */
+  export function declaredBackup(
+    agent: { name: string; options: Record<string, unknown> } | undefined,
+    current: { agent?: string; model?: Row },
+  ): Choice | undefined {
+    if (!agent || current.agent !== agent.name || agent.options.fallbackPolicy !== "declared-only") return undefined
+    if (!current.model || !Array.isArray(agent.options.fallback)) return undefined
+    if (!agent.options.fallback.includes(`${current.model.providerID}/${current.model.id}`)) return undefined
+    return switched(undefined, current.model)
+  }
+
   function same(a: Row, b: Row): boolean {
     if (!a || !b) return a === b
-    return (
-      a.providerID === b.providerID && a.id === b.id && (a.variant ?? "default") === (b.variant ?? "default")
-    )
+    return a.providerID === b.providerID && a.id === b.id && (a.variant ?? "default") === (b.variant ?? "default")
   }
 }

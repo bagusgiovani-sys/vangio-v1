@@ -192,7 +192,7 @@ function parseJSON(value: unknown) {
  *
  * Returning undefined leaves upstream behaviour completely untouched.
  */
-export type SwapOutcome = { swapped: boolean; message: string }
+export type SwapOutcome = { swapped: boolean; message: string; terminal?: boolean }
 export type SwapHook = (input: {
   reason: RetryReason | undefined
   attempt: number
@@ -234,9 +234,11 @@ export function policy(opts: {
               silentMs: opts.silentMs?.(),
             })
           : undefined
-        const wait = swap?.swapped
-          ? delay(meta.attempt)
-          : delay(meta.attempt, SessionV1.APIError.isInstance(error) ? error : undefined)
+        const wait = swap?.terminal
+          ? 0
+          : swap?.swapped
+            ? delay(meta.attempt)
+            : delay(meta.attempt, SessionV1.APIError.isInstance(error) ? error : undefined)
         const now = yield* Clock.currentTimeMillis
         yield* opts.set({
           attempt: meta.attempt,
@@ -244,6 +246,7 @@ export function policy(opts: {
           action: swap ? undefined : retry.action,
           next: now + wait,
         })
+        if (swap?.terminal) return yield* Effect.fail(new Error(swap.message))
         return [meta.attempt, Duration.millis(wait)] as [number, Duration.Duration]
       })
     }),

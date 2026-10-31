@@ -2,6 +2,32 @@
 > Append-only. Never edit existing entries. Never delete.
 > Read this at the start of every coding session.
 
+## [2026-10-31] Declared-pair exhaustion retried a failed backup, and resumed turns restored the primary
+#[fallback] #[retry] #[continuation] #[fixed]
+**Context:** Core Gryphon acceptance through the production prompt loop, processor,
+AI SDK transport, retry schedule and session projector, with localhost HTTP fixtures.
+**Error:** After primary and backup each returned `FreeUsageLimitError`, a third
+request went to the exhausted backup. Separately, a resumed prompt selected the
+configured primary even though the session row recorded its backup. Exhaustion
+messages also promised an unsupported universal midnight reset.
+**Root cause:** The retry schedule treated every unswapped hook result as another
+retry, including a declared chain with no candidates. Model selection preferred
+the configured agent model on new prompts, and the loop's baseline comparison
+only recognized switches made during that loop invocation.
+**Fix:** Declared-only exhaustion carries an explicit terminal outcome through the
+hook and retry schedule. It stops with the role-specific explanation. A persisted
+backup in the same role's declared chain survives resumed loops and implicit new
+turns; explicit model selection retains precedence. Limit messages distinguish
+account limits from free-tier limits and do not invent reset times.
+**Prevention:** Verify the complete retry caller after testing a selector or hook.
+An adapter returning "no model" does not prove its caller will stop. Exercise
+both a fresh loop reading persisted state and a new prompt, not just a switch
+within one running turn. Assert exact HTTP request counts after exhaustion.
+**Files affected:** packages/opencode/src/session/{fallback-swap,retry,prompt,switched-model}.ts
+and corresponding session tests. Local provider fixtures are distinct from live
+provider and installed TUI acceptance.
+---
+
 ## Entry Format
 ---
 ## [YYYY-MM-DD HH:MM] [Short title]
