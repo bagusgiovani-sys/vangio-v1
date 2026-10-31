@@ -132,6 +132,13 @@ directories and test credentials. It writes raw terminal logs and a JSON receipt
 to the supplied output directory (a fresh temporary directory if omitted).
 It does not install plugins or access the user's live provider configuration.
 `BUN_BINARY` can select a Bun executable outside the default user install.
+The fixture directory is also passed explicitly as the CLI project argument;
+Bun's `--cwd` sets the runtime/package directory and does not isolate project
+config writes by itself. An earlier picker run generated a test-only
+`packages/opencode/config.json`; its fixture model bindings were checked and
+that generated file was removed. The corrected three-case run passes and a
+follow-up check confirms the saved config exists in the scratch project while
+the checkout config file is absent.
 
 Current regression evidence: TUI context/sync suites **12 pass, 0 fail, 28
 assertions**; paradigm suite **248 pass, 0 fail, 649 assertions**; TUI and paradigm

@@ -2,6 +2,22 @@
 > Append-only. Never edit existing entries. Never delete.
 > Read this at the start of every coding session.
 
+## [2026-10-31] Bun's package cwd was also used as the terminal test's project directory
+#[verification] #[tui] #[isolation] #[fixed]
+**Context:** Native ConPTY verification of the King model picker save flow.
+**Error:** The harness isolated its XDG directories but launched Bun with the
+OpenCode package as `--cwd`. The picker wrote a new test-only config.json there.
+**Root cause:** ConPTY's working-directory option did not override Bun's explicit
+`--cwd`, and the CLI had no positional project-directory argument.
+**Fix:** Pass the scratch directory explicitly after src/index.ts. Verify the
+generated checkout file contains only the fixture role models and remove it.
+Repeat all three ConPTY cases; confirm the picker config exists in the scratch
+project and the checkout artifact is absent. Both checks passed.
+**Prevention:** Isolate the CLI project path as well as user config/data/cache
+paths when exercising configuration writes. Check the working tree afterward.
+**Files affected:** packages/tui/script/verify-gryphon-fallback.cjs.
+---
+
 ## [2026-10-31] The TUI reselected an exhausted primary after a successful switch
 #[fallback] #[tui] #[continuation] #[fixed]
 **Context:** Actual ConPTY launch of current source with an isolated configuration

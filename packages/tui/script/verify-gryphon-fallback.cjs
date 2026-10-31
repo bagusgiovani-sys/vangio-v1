@@ -142,7 +142,7 @@ async function run(scenario) {
   try {
     proc = pty.spawn(
       bun,
-      ["run", "--cwd", path.join(root, "packages/opencode"), "--conditions=browser", "src/index.ts"],
+      ["run", "--cwd", path.join(root, "packages/opencode"), "--conditions=browser", "src/index.ts", directory],
       { name: "xterm-256color", cols: 140, rows: 40, cwd: directory, env },
     )
     proc.onData((data) => {
