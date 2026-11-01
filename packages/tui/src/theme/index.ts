@@ -129,8 +129,8 @@ export type ThemeJson = {
 }
 
 export const DEFAULT_THEMES: Record<string, ThemeJson> = {
-  // VanGio's own theme leads the map because it is the default - see
-  // context/theme.tsx. Everything after it is upstream's set, untouched.
+  // Keep VanGio's own theme available alongside the bundled themes.
+  // The default selection lives in context/theme.tsx.
   vangio,
   aura,
   ayu,

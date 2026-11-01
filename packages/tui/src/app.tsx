@@ -694,7 +694,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "agent.cycle",
-        title: "Agent cycle",
+        title: "Next mode",
         category: "Agent",
         hidden: true,
         run: () => {
@@ -728,7 +728,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "agent.cycle.reverse",
-        title: "Agent cycle reverse",
+        title: "Previous mode",
         category: "Agent",
         hidden: true,
         run: () => {

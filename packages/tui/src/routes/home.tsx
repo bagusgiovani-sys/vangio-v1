@@ -32,8 +32,8 @@ export function Home() {
   const tuiConfig = useTuiConfig()
   const promptMaxWidth = createMemo(() => {
     const configured = tuiConfig.prompt?.max_width
-    if (configured === "auto") return Math.max(75, Math.floor(dimensions().width * 0.7))
-    return configured ?? 75
+    if (typeof configured === "number") return configured
+    return Math.min(dimensions().width - 4, Math.max(75, Math.floor(dimensions().width * 0.9)))
   })
   let sent = false
 

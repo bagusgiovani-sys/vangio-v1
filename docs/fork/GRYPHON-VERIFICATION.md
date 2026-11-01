@@ -158,6 +158,36 @@ Receipts: outer workspace `verification/gryphon-live-terminal-result.json`,
 checks. Installed-user plugin/config acceptance, Worker/Scout picker interaction,
 picker busy/error flows and the six live model bindings remain pending.
 
+## TUI presentation follow-up, 2026-11-01
+
+User-requested presentation fixes are applied to the source used by the Windows
+`vangio.cmd` launcher:
+
+- The prompt footer now says `tab mode`. Forward/reverse command descriptions
+  and Build/Plan tips use the same wording; keybindings and behavior are unchanged.
+- The home prompt defaults to 90% of terminal width, with a 75-column minimum
+  bounded by the available space after side padding. Explicit numeric caps still
+  work; `auto` uses the same responsive behavior. Session content already fills
+  its available width.
+- The bundled `nightowl` theme is the startup default and fallback. Explicit
+  `tui.json` or saved theme choices retain precedence. No installed user settings
+  were edited; a previously selected theme can be changed with `/themes`.
+
+Verification: TUI package typecheck passes; focused theme/config/keymap tests
+report **19 pass, 0 fail, 45 assertions**. Actual source launches under native
+ConPTY with isolated configuration verify the `tab mode` footer, Tab to Plan,
+Shift+Tab to Build, and Night Owl background color. The rendered home prompt is
+**144 columns at terminal width 160** and **75 columns at width 80**. A third
+launch confirms an explicit Matrix theme and 90-column cap remain effective.
+No model requests were submitted.
+
+Local receipts: outer workspace `verification/home-presentation-result.json`,
+`verification/home-{160,80}-default-terminal.txt`, and
+`verification/home-160-matrix-terminal.txt`. Reproduce with
+`node verification/home-presentation-2026-11-01.cjs` from the outer workspace.
+These are isolated source checks; installed-user configuration acceptance and
+the six live model bindings remain pending.
+
 ## Provider research, 2026-10-31
 
 - [OpenCode Console models](https://opencode.ai/v2/docs/console/models/) lists
