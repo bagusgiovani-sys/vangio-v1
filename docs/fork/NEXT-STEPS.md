@@ -4,8 +4,11 @@ Updated: 2026-10-29. Audience: the next coding agent, including Sol or Luna.
 Status: scoped and inspected; core delivery is NOT complete.
 
 > Latest continuation: [GRYPHON-VERIFICATION.md](GRYPHON-VERIFICATION.md),
-> 2026-11-01. The latest user-requested TUI presentation fixes are verified:
-> `tab mode` label, wider responsive home prompt and Night Owl default theme.
+> 2026-11-01. Legacy fallback exhaustion now stops retries, and generic repeated failures
+> no longer claim model retirement. Four isolated ConPTY cases pass. The user's
+> live Zhipu provider failure remains undiagnosed pending expanded error text.
+> TUI presentation fixes are verified: `tab mode` label, wider responsive home
+> prompt and Night Owl default theme.
 > Explicit saved/configured themes and numeric width overrides still apply.
 > The October 30 source patches and local verification are complete;
 > earlier patch/dependency blockers below are historical. October 31 adds

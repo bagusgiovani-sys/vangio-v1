@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { Effect } from "effect"
+import { Cause, Effect, Exit, Schema } from "effect"
+import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { FallbackSwap } from "../../src/session/fallback-swap"
 import { Fallback } from "../../src/session/fallback"
+import { SessionRetry } from "../../src/session/retry"
 
 // The wiring between the paradigm's declaration and the retry seam.
 //
@@ -222,6 +224,7 @@ describe("FallbackSwap.hook", () => {
     expect(out?.swapped).toBe(false)
     expect(out?.message).not.toContain("00:00 UTC")
     expect(out?.message).toContain("no usable substitute found")
+    expect(out?.terminal).toBe(true)
     expect(streamInput.model.id).toBe("deepseek-v4-flash-free")
     expect(published).toHaveLength(0)
   })
@@ -234,6 +237,7 @@ describe("FallbackSwap.hook", () => {
     const settled = streamInput.model.id
     const out = await Effect.runPromise(hook({ ...wall, attempt: 9 }))
     expect(out?.swapped).toBe(false)
+    expect(out?.terminal).toBe(true)
     expect(streamInput.model.id).toBe(settled)
   })
 })
@@ -327,6 +331,46 @@ describe("FallbackSwap.terminalMessage for a retirement", () => {
 // without needing to understand a word of it.
 describe("FallbackSwap.hook on a model that just keeps failing", () => {
   const noReason = { reason: undefined, error: {} as any }
+
+  test("stops an unconfigured fallback without claiming that the model was retired", async () => {
+    const { hook } = harness({ catalog: [] })
+    const out = await Effect.runPromise(hook({ ...noReason, attempt: 3 }))
+    expect(out?.terminal).toBe(true)
+    expect(out?.message).toContain("failed repeatedly")
+    expect(out?.message).not.toContain("no longer exists")
+  })
+
+  test("actual retry policy stops after a derived backup fails instead of retrying it", async () => {
+    const { hook, streamInput } = harness({})
+    const attempts: string[] = []
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        attempts.push(streamInput.model.id)
+        return yield* Effect.fail(
+          new SessionV1.APIError({
+            message: "Free usage exceeded",
+            isRetryable: true,
+            statusCode: 429,
+            responseBody: JSON.stringify({ error: { type: "FreeUsageLimitError" } }),
+          }).toObject(),
+        )
+      }).pipe(
+        Effect.retry(
+          SessionRetry.policy({
+            provider: "opencode",
+            parse: Schema.decodeUnknownSync(SessionV1.APIError.Schema),
+            swap: hook,
+            set: () => Effect.void,
+          }),
+        ),
+        Effect.exit,
+      ),
+    )
+    expect(attempts).toEqual(["deepseek-v4-flash-free", "nemotron-3.5-lightning-free"])
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (!Exit.isFailure(exit)) throw new Error("expected terminal exhaustion")
+    expect(Cause.pretty(exit.cause)).toContain("No eligible backup is available")
+  })
 
   test("gives an unexplained failure real retries before giving up on it", async () => {
     const { hook, streamInput } = harness({})

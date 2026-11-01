@@ -14,11 +14,13 @@ async function run(scenario) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), `gryphon-terminal-${scenario}-`))
   const requests = []
   const expected =
-    scenario === "manual"
-      ? ["primary", "backup", "primary", "backup", "backup"]
-      : scenario === "resume"
-        ? ["primary", "backup", "backup"]
-        : ["primary", "backup"]
+    scenario === "persistent"
+      ? ["primary", "primary", "primary", "backup"]
+      : scenario === "manual"
+        ? ["primary", "backup", "primary", "backup", "backup"]
+        : scenario === "resume"
+          ? ["primary", "backup", "backup"]
+          : ["primary", "backup"]
   let output = "",
     proc,
     ended = false,
@@ -54,6 +56,11 @@ async function run(scenario) {
       res.writeHead(400)
       res.end("{}")
       finish("failed", `Request ${requests.length} expected ${expected[requests.length - 1]}, received ${body.model}.`)
+      return
+    }
+    if (!title && scenario === "persistent") {
+      res.writeHead(503, { "content-type": "application/json" })
+      res.end(JSON.stringify({ error: { message: "Provider temporarily unavailable" } }))
       return
     }
     if (!title && (body.model === "primary" || scenario === "exhaust")) {
@@ -102,7 +109,10 @@ async function run(scenario) {
   const role = (mode, readOnly = false) => ({
     mode,
     model: "gryphon-check/primary",
-    options: { fallback: ["gryphon-check/backup"], fallbackPolicy: "declared-only", freeOnly: true },
+    options:
+      scenario === "persistent"
+        ? {}
+        : { fallback: ["gryphon-check/backup"], fallbackPolicy: "declared-only", freeOnly: true },
     ...(readOnly ? { permission: { edit: "deny" } } : {}),
   })
   const env = {
@@ -125,7 +135,7 @@ async function run(scenario) {
           models: {
             primary: { ...model, name: "Primary Fixture" },
             backup: { ...model, name: "Backup Fixture" },
-            undeclared: model,
+            ...(scenario === "persistent" ? {} : { undeclared: model }),
           },
           options: { apiKey: "local-fixture-only", baseURL: `http://127.0.0.1:${server.address().port}/v1` },
         },
@@ -232,6 +242,21 @@ async function run(scenario) {
         finish("passed", "King picker honors an explicit primary choice; a later automatic switch supersedes it.")
       }
       if (
+        scenario === "persistent" &&
+        plain.includes("failed repeatedly") &&
+        plain.includes("No eligible backup is available")
+      ) {
+        if (requests.map((item) => item.model).join(",") !== expected.join(","))
+          finish("failed", "Unexpected requests after persistent failure.")
+        else if (plain.includes("model no longer available") || plain.includes("no longer exists"))
+          finish("failed", "Repeated failures were incorrectly reported as model retirement.")
+        else
+          finish(
+            "passed",
+            "Legacy configuration stops after repeated failures and reports the provider failure accurately.",
+          )
+      }
+      if (
         scenario === "exhaust" &&
         plain.includes("No eligible backup is") &&
         plain.includes("available. Check the provider's usage limits")
@@ -253,7 +278,7 @@ async function run(scenario) {
 
 ;(async () => {
   const results = []
-  for (const scenario of ["resume", "exhaust", "manual"]) results.push(await run(scenario))
+  for (const scenario of ["resume", "exhaust", "manual", "persistent"]) results.push(await run(scenario))
   const receipt = {
     results,
     scope:

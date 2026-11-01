@@ -158,6 +158,30 @@ Receipts: outer workspace `verification/gryphon-live-terminal-result.json`,
 checks. Installed-user plugin/config acceptance, Worker/Scout picker interaction,
 picker busy/error flows and the six live model bindings remain pending.
 
+## Retry-loop follow-up, 2026-11-01
+
+The user reported retry attempt 6 with a Zhipu King binding. Source inspection
+found that older agents without `fallbackPolicy: declared-only` kept retrying
+after fallback exhaustion. All handled no-replacement outcomes now stop the
+retry schedule, including auto-swap disabled. Generic repeated failures now
+say `model failed repeatedly`; they no longer claim the model was retired.
+Actual model-resolution retirement retains its separate explanation.
+
+Validation: **165 tests pass, 0 fail, 296 assertions** across fallback,
+fallback-swap, retry-swap-hook and retry suites; OpenCode package typecheck passes.
+Native ConPTY checks: **4 pass, 0 fail**, covering successful backup continuation,
+pair exhaustion, manual King selection and repeated 503 failures with no strict
+fallback policy. The last case makes exactly `primary, primary, primary, backup`
+requests, then displays terminal failure without a false retirement claim.
+Receipts: outer workspace `verification/retry-2026-11-01/`;
+reproduce with `node packages/tui/script/verify-gryphon-fallback.cjs ../verification/retry-2026-11-01`.
+
+The live provider failure is **not diagnosed**. User config access remains
+denied to the managed agent. The screenshot's `zhipuai/glm-4.5-flash` King differs
+from the bundled Gryphon primary; neither credentials nor bindings were changed.
+The user was asked to expand and paste the provider error. Restart VanGio to
+load the retry fix; installed model acceptance and the six-model gate remain open.
+
 ## TUI presentation follow-up, 2026-11-01
 
 User-requested presentation fixes are applied to the source used by the Windows

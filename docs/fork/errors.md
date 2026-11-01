@@ -2,6 +2,27 @@
 > Append-only. Never edit existing entries. Never delete.
 > Read this at the start of every coding session.
 
+## [2026-11-01] Legacy fallback exhaustion continued retries and misreported repeated errors as retirement
+#[fallback] #[retry] #[fixed]
+**Context:** User screenshot showed a Zhipu model swap followed by retry attempt 6.
+**Error:** An exhausted fallback search only marked its result terminal when the
+agent declared `fallbackPolicy: declared-only`. Older configurations and the
+auto-swap-disabled path continued retrying despite having no replacement.
+Persistent generic errors also used `model_gone`, falsely asserting retirement.
+**Fix:** All handled fallback exhaustion and auto-disabled outcomes are terminal.
+Repeated generic failures use `persistent_failure`; actual resolution retirement
+continues to use `model_gone`. Successful swaps and ordinary transient retries
+retain their existing behavior.
+**Prevention:** Exercise the real retry schedule with an agent that has no strict
+policy, and assert both request count and terminal explanation. A no-replacement
+hook result alone does not establish that its caller stops.
+**Limit:** The screenshot does not establish the underlying provider failure.
+The managed agent was denied access to the installed user config; no credentials
+or model bindings were changed. Expanded provider error is requested from user.
+**Files affected:** packages/opencode/src/session/{fallback,fallback-swap}.ts,
+test/session/fallback-swap.test.ts, packages/tui/script/verify-gryphon-fallback.cjs.
+---
+
 ## [2026-10-31] Bun's package cwd was also used as the terminal test's project directory
 #[verification] #[tui] #[isolation] #[fixed]
 **Context:** Native ConPTY verification of the King model picker save flow.

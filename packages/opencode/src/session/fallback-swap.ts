@@ -100,7 +100,9 @@ export namespace FallbackSwap {
         ? `${head} is bound to a model that no longer exists`
         : reason === "stalled"
           ? `${head} stopped responding`
-          : `${head} hit its ${reason === "free_tier_limit" ? "free-tier" : "rate"} limit`
+          : reason === "persistent_failure"
+            ? `${head}'s model failed repeatedly`
+            : `${head} hit its ${reason === "free_tier_limit" ? "free-tier" : "rate"} limit`
     // The restart caveat is not optional. The config hook fires once at boot,
     // so a paradigm chosen now cannot apply to the session asking the question,
     // and the picker's own status row already refuses to pretend otherwise.
@@ -162,6 +164,9 @@ export namespace FallbackSwap {
     // true. Say only what is known.
     if (reason === "stalled") {
       return `${head} stopped responding and could not be degraded (${attempted}). Try again, or bind it to a faster model.`
+    }
+    if (reason === "persistent_failure") {
+      return `${head}'s model failed repeatedly (${attempted}). No eligible backup is available. Check the provider error and model configuration before retrying.`
     }
     const limit = reason === "account_rate_limit" ? "account rate limit" : "free-tier limit"
     return `${head} hit its ${limit} and could not be degraded (${attempted}). No eligible backup is available. Check the provider's usage limits before retrying.`
@@ -284,7 +289,7 @@ export namespace FallbackSwap {
         }
         // Still an outcome rather than undefined, so upstream's Go upsell is
         // suppressed and this replaces it.
-        return { model: undefined, note }
+        return { model: undefined, note, terminal: true }
       }
       // Escalate on evidence, not on the first sign of trouble. ONE model
       // failing repeatedly is a model problem, and writing off its provider
@@ -361,7 +366,7 @@ export namespace FallbackSwap {
         return {
           model: undefined,
           note: terminalMessage(deps.agentName, attempt.skipped.length, reason),
-          terminal: declared.fallbackPolicy === "declared-only",
+          terminal: true,
         }
       }
 
@@ -416,7 +421,11 @@ export namespace FallbackSwap {
         // "stalled" is the more specific truth when both apply: a model that
         // went silent has not retired, and telling the user to rebind a binding
         // that was never wrong sends them after the wrong thing.
-        const why: Fallback.Reason = walled ? (info.reason as Fallback.Reason) : stalled ? "stalled" : "model_gone"
+        const why: Fallback.Reason = walled
+          ? (info.reason as Fallback.Reason)
+          : stalled
+            ? "stalled"
+            : "persistent_failure"
         const out = yield* degrade(deps, why, deps.streamInput.model, {
           // A model that keeps failing for no stated reason has usually taken
           // its whole provider down with it - no balance and a bad key are both

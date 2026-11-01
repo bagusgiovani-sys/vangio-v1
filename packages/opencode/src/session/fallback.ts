@@ -30,7 +30,7 @@
  */
 
 export namespace Fallback {
-  export type Reason = "free_tier_limit" | "account_rate_limit" | "model_gone" | "stalled"
+  export type Reason = "free_tier_limit" | "account_rate_limit" | "model_gone" | "stalled" | "persistent_failure"
 
   /** What the head's role requires, as declared in the paradigm file. */
   export type Needs = {
@@ -137,6 +137,7 @@ export namespace Fallback {
     account_rate_limit: "account rate limit",
     model_gone: "model no longer available",
     stalled: "model stopped responding",
+    persistent_failure: "model failed repeatedly",
   }
 
   export function resolveStatic<M extends Judgeable>(input: {
@@ -260,7 +261,7 @@ export namespace Fallback {
     // nothing about the provider, whose credentials are working fine. The model
     // is merely too slow right now, so a sibling on the same provider is a
     // perfectly good answer and moving accounts would be unmotivated.
-    return reason !== "model_gone" && reason !== "stalled"
+    return reason !== "model_gone" && reason !== "stalled" && reason !== "persistent_failure"
   }
 
   export function resolveDerived<M extends Judgeable>(input: {
