@@ -4,8 +4,12 @@ Updated: 2026-10-29. Audience: the next coding agent, including Sol or Luna.
 Status: scoped and inspected; core delivery is NOT complete.
 
 > Latest continuation: [GRYPHON-VERIFICATION.md](GRYPHON-VERIFICATION.md),
-> 2026-11-01. Legacy fallback exhaustion now stops retries, and generic repeated failures
-> no longer claim model retirement. Four isolated ConPTY cases pass. The user's
+> 2026-11-01. Prompt presentation and retry-loop fixes are verified.
+> Prompt metadata is now static and constrained to one line: removed the scrolling
+> description, provider text and model-name token-limit suffix. Narrow/wide ConPTY
+> checks pass; restart VanGio to load the change.
+> Legacy fallback exhaustion now stops retries; generic repeated failures no
+> longer claim model retirement. Four isolated ConPTY cases pass. The user's
 > live Zhipu provider failure remains undiagnosed pending expanded error text.
 > TUI presentation fixes are verified: `tab mode` label, wider responsive home
 > prompt and Night Owl default theme.

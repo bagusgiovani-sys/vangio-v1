@@ -158,6 +158,27 @@ Receipts: outer workspace `verification/gryphon-live-terminal-result.json`,
 checks. Installed-user plugin/config acceptance, Worker/Scout picker interaction,
 picker busy/error flows and the six live model bindings remain pending.
 
+## Static prompt metadata, 2026-11-01
+
+The user reported vertical movement in a narrow VS Code terminal. The prompt's
+agent description used a marquee updating every 150ms, beside a long model name,
+provider and paradigm label. Removed that description and its marquee from the
+prompt. Removed the redundant provider label and parenthesized model-name
+suffixes, leaving e.g. `Build · Nemotron 3.5 Lightning`. Mode, auto-permission
+indicator and selected reasoning variant remain visible. The metadata occupies
+one clipped line; the paradigm slot keeps its own space and cannot wrap it.
+
+TUI package typecheck passes. Three actual ConPTY source launches pass at 80 and
+160 columns, including a fixture named `Nemotron 3.5 Lightning (free, 262k output)`.
+The rendered label retains the model name without the suffix or agent description.
+Mode switching, responsive prompt width, Night Owl default and explicit theme/
+width overrides still pass. Updated local receipt: outer workspace
+`verification/home-presentation-result.json` and corresponding terminal logs.
+
+No provider settings or model bindings changed. The screenshot's model stall is
+a separate live-provider problem; shortening metadata does not establish a
+working King model. Restart VanGio to load the static prompt line.
+
 ## Retry-loop follow-up, 2026-11-01
 
 The user reported retry attempt 6 with a Zhipu King binding. Source inspection

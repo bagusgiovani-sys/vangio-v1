@@ -20,7 +20,6 @@ import { EmptyBorder, SplitBorder } from "../../ui/border"
 import { useTuiPaths, useTuiTerminalEnvironment } from "../../context/runtime"
 import { useClipboard } from "../../context/clipboard"
 import { Spinner } from "../spinner"
-import { Marquee } from "../marquee"
 import { useSDK } from "../../context/sdk"
 import { useRoute } from "../../context/route"
 import { useProject } from "../../context/project"
@@ -212,7 +211,12 @@ export function Prompt(props: PromptProps) {
   const workspace = usePromptWorkspace(props.sessionID)
   const move = usePromptMove({ projectID: project.project, sessionID: () => props.sessionID })
   const [cursorVersion, setCursorVersion] = createSignal(0)
-  const currentProviderLabel = createMemo(() => local.model.parsed().provider)
+  const modelLabel = createMemo(() =>
+    local.model
+      .parsed()
+      .model.replace(/\s*\([^)]*\)/g, "")
+      .trim(),
+  )
   const hasRightContent = createMemo(() => Boolean(props.right))
 
   function promptModelWarning() {
@@ -1444,55 +1448,33 @@ export function Prompt(props: PromptProps) {
               cursorStyle={tuiConfig.cursor}
               syntaxStyle={syntax()}
             />
-            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">
-              <box flexDirection="row" gap={1}>
+            <box flexDirection="row" flexShrink={0} height={2} paddingTop={1} gap={1} justifyContent="space-between">
+              <box flexGrow={1} flexShrink={1} minWidth={0} height={1} overflow="hidden">
                 <Show when={local.agent.current()} fallback={<box height={1} />}>
                   {(agent) => (
-                    <>
-                      <text fg={fadeColor(highlight(), agentMetaAlpha())}>
-                        {store.mode === "shell" ? "Shell" : Locale.titlecase(agent().name)}
-                      </text>
+                    <text height={1} wrapMode="none" fg={fadeColor(highlight(), agentMetaAlpha())}>
+                      {store.mode === "shell" ? "Shell" : Locale.titlecase(agent().name)}
                       <Show when={store.mode === "normal" && local.permission.mode === "auto"}>
-                        <text fg={fadeColor(theme.textMuted, agentMetaAlpha())}>auto</text>
+                        <span style={{ fg: fadeColor(theme.textMuted, agentMetaAlpha()) }}> auto</span>
                       </Show>
                       <Show when={store.mode === "normal"}>
-                        <box flexDirection="row" gap={1}>
-                          <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>·</text>
-                          <text
-                            flexShrink={0}
-                            fg={fadeColor(leader() ? theme.textMuted : theme.text, modelMetaAlpha())}
-                          >
-                            {local.model.parsed().model}
-                          </text>
-                          <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>{currentProviderLabel()}</text>
-                          <Show when={showVariant()}>
-                            <text fg={fadeColor(theme.textMuted, variantMetaAlpha())}>·</text>
-                            <text>
-                              <span style={{ fg: fadeColor(theme.warning, variantMetaAlpha()), bold: true }}>
-                                {local.model.variant.current()}
-                              </span>
-                            </text>
-                          </Show>
-                          <Show when={agent().description}>
-                            {(description) => (
-                              <box flexDirection="row" gap={1} flexShrink={1}>
-                                <text fg={fadeColor(theme.textMuted, modelMetaAlpha())}>·</text>
-                                <Marquee
-                                  text={description()}
-                                  width={28}
-                                  fg={fadeColor(theme.textMuted, modelMetaAlpha())}
-                                />
-                              </box>
-                            )}
-                          </Show>
-                        </box>
+                        <span style={{ fg: fadeColor(theme.textMuted, modelMetaAlpha()) }}> · </span>
+                        <span style={{ fg: fadeColor(leader() ? theme.textMuted : theme.text, modelMetaAlpha()) }}>
+                          {modelLabel()}
+                        </span>
+                        <Show when={showVariant()}>
+                          <span style={{ fg: fadeColor(theme.textMuted, variantMetaAlpha()) }}> · </span>
+                          <span style={{ fg: fadeColor(theme.warning, variantMetaAlpha()), bold: true }}>
+                            {local.model.variant.current()}
+                          </span>
+                        </Show>
                       </Show>
-                    </>
+                    </text>
                   )}
                 </Show>
               </box>
               <Show when={hasRightContent()}>
-                <box flexDirection="row" gap={1} alignItems="center">
+                <box flexDirection="row" flexShrink={0} height={1} gap={1} alignItems="center">
                   {props.right}
                 </box>
               </Show>
