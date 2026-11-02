@@ -1,8 +1,13 @@
 # Gryphon acceptance evidence
 
-Updated: 2026-10-31. Core acceptance remains incomplete.
+Updated: 2026-11-02. Core acceptance remains incomplete.
 
 ## Current source checkpoint
+
+November 2 fixes project role-model persistence and extends native terminal
+acceptance to Worker/Scout saves, busy-task refusal and failed-save recovery.
+See the dated entry below. Six live free bindings and installed acceptance
+remain pending; no user configuration or provider credentials were changed.
 
 The October 30 checkpoint verified source typechecks, fallback/retry tests and
 isolated ConPTY creation-pause and role-picker rendering. See
@@ -265,3 +270,54 @@ switch/exhaustion acceptance and the live six-model matrix remain pending. Prese
 the warrior output requirement until realistic implementation evidence supports
 changing it. Install only after verified pairs are established. Phone/Tailscale
 remains gated on completion of the core acceptance in NEXT-STEPS.md.
+
+## Project role-model persistence, 2026-11-02
+
+New Worker/Scout terminal acceptance exposed a prerequisite defect:
+`Config.update` saved `config.json`, but project discovery only reads
+`opencode.json` and `opencode.jsonc`. A changed model was written without
+becoming effective. The earlier King fixture chose its existing primary and
+therefore did not expose this mismatch.
+
+Project updates now write `opencode.json`, or patch existing `opencode.jsonc`
+in place. JSONC retains its comments and wins when both formats exist, matching
+loader precedence. Existing project settings and unrelated role bindings survive.
+Generic `config.json` files are left untouched because they may belong to other
+tooling; their contents were never loaded as project configuration.
+
+The picker fixture now puts defaults in an isolated base file rather than
+`OPENCODE_CONFIG_CONTENT`, which intentionally overrides project configuration.
+It selects a different model and requires the UI's runtime activation confirmation
+as well as the saved binding. Idle picker tests make zero provider requests.
+
+Validation:
+
+- Config suite: **99 pass, 0 fail, 170 assertions**. Three focused tests failed
+  before the fix. Coverage includes new files, existing JSON/JSONC settings,
+  preserved JSONC comments, both formats together and the empty shell sentinel.
+- OpenCode package `bun typecheck`: **pass** after the final source change.
+- Native ConPTY: the eight-case run passed seven cases. Its busy-case assertion
+  timed out because cursor movement rendered the warning without literal spaces
+  in the stripped transcript. The warning and absent config were observed.
+  After correcting only that assertion, the focused busy case passes.
+  Across those runs **all eight scenarios pass**: continuation, bounded pair
+  exhaustion, manual King selection, persistent errors, Warrior save/activation,
+  Scout save/activation, refusal during active work, and visible write failure
+  followed by successful retry. No source defect was found in the busy/error UI.
+- No generated `config.json` or `opencode.json` exists in `packages/opencode`.
+
+Receipts in the outer workspace: `verification/config-save-2026-11-02.log`,
+`verification/picker-2026-11-02-verified/gryphon-live-terminal-result.json`
+(seven passes and the original busy assertion failure), and
+`verification/picker-2026-11-02-busy/gryphon-live-terminal-result.json`
+(corrected busy-case pass). Earlier failed exploratory harness receipts remain
+separate and are not counted as acceptance passes.
+
+Reproduce all eight with `node packages/tui/script/verify-gryphon-fallback.cjs`
+from the repository root. An optional output directory and scenario names can
+limit the run. These are source tests against a localhost provider, not live
+model entitlement or installed-user acceptance.
+
+Next: obtain the installed catalog and expanded Zhipu provider error from the
+user's normal terminal, then complete the six-slot live matrix. Installed config
+access remains denied in the managed session. Phone/Tailscale remains gated.

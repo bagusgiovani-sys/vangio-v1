@@ -361,12 +361,12 @@ it.instance("updates config and preserves empty shell sentinel", () =>
     yield* writeConfigEffect(
       test.directory,
       { $schema: "https://opencode.ai/config.json", shell: "bash" },
-      "config.json",
+      "opencode.json",
     )
 
     yield* Config.Service.use((svc) => svc.update(ConfigParse.schema(ConfigV1.Info, { shell: "" }, "test:config")))
 
-    const writtenConfig = yield* FSUtil.use.readJson(path.join(test.directory, "config.json"))
+    const writtenConfig = yield* FSUtil.use.readJson(path.join(test.directory, "opencode.json"))
     expect(writtenConfig).toMatchObject({ shell: "" })
   }),
 )
@@ -897,8 +897,56 @@ it.instance("updates config and writes to file", () =>
       svc.update(ConfigParse.schema(ConfigV1.Info, { model: "updated/model" }, "test:config")),
     )
 
-    const writtenConfig = yield* FSUtil.use.readJson(path.join(test.directory, "config.json"))
+    const writtenConfig = yield* FSUtil.use.readJson(path.join(test.directory, "opencode.json"))
     expect(writtenConfig).toMatchObject({ model: "updated/model" })
+  }),
+)
+
+for (const filename of ["opencode.json", "opencode.jsonc"]) {
+  it.instance(`updates the discoverable project config ${filename} without losing settings`, () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const file = path.join(test.directory, filename)
+      yield* FSUtil.use.writeWithDirs(
+        file,
+        filename.endsWith("jsonc")
+          ? '{\n// Keep my project settings\n"username": "project-user", "agent": {"scout": {"model": "test/original"}}\n}'
+          : JSON.stringify({ username: "project-user", agent: { scout: { model: "test/original" } } }),
+      )
+      yield* Config.Service.use((svc) =>
+        svc.update(
+          ConfigParse.schema(
+            ConfigV1.Info,
+            {
+              agent: { warrior: { model: "test/backup" } },
+            },
+            "test:config",
+          ),
+        ),
+      )
+      const content = yield* FSUtil.use.readFileString(file)
+      expect(ConfigParse.jsonc(content, file)).toMatchObject({
+        username: "project-user",
+        agent: { scout: { model: "test/original" }, warrior: { model: "test/backup" } },
+      })
+      if (filename.endsWith("jsonc")) expect(content).toContain("// Keep my project settings")
+      expect(yield* FSUtil.use.existsSafe(path.join(test.directory, "config.json"))).toBe(false)
+    }),
+  )
+}
+
+it.instance("updates jsonc when both project config formats exist", () =>
+  Effect.gen(function* () {
+    const test = yield* TestInstance
+    yield* writeConfigEffect(test.directory, { model: "test/json" })
+    yield* writeConfigEffect(test.directory, { model: "test/jsonc" }, "opencode.jsonc")
+    yield* Config.Service.use((svc) =>
+      svc.update(ConfigParse.schema(ConfigV1.Info, { model: "test/updated" }, "test:config")),
+    )
+    expect(yield* FSUtil.use.readJson(path.join(test.directory, "opencode.jsonc"))).toMatchObject({
+      model: "test/updated",
+    })
+    expect(yield* FSUtil.use.readJson(path.join(test.directory, "opencode.json"))).toMatchObject({ model: "test/json" })
   }),
 )
 

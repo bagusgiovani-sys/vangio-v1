@@ -12,9 +12,16 @@ const bun = process.env.BUN_BINARY ?? path.join(os.homedir(), ".bun/bin/bun.exe"
 
 async function run(scenario) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), `gryphon-terminal-${scenario}-`))
+  const picker = scenario.startsWith("picker-")
+  const pickerRole = scenario === "picker-scout" ? "scout" : "warrior"
+  const pickerLabel = pickerRole[0].toUpperCase() + pickerRole.slice(1)
   const requests = []
-  const expected =
-    scenario === "persistent"
+  const responses = []
+  const expected = picker
+    ? scenario === "picker-busy"
+      ? ["primary"]
+      : []
+    : scenario === "persistent"
       ? ["primary", "primary", "primary", "backup"]
       : scenario === "manual"
         ? ["primary", "backup", "primary", "backup", "backup"]
@@ -36,6 +43,7 @@ async function run(scenario) {
       clearTimeout(timer)
       if (proc) proc.kill()
       fs.writeFileSync(path.join(artifacts, `gryphon-${scenario}-terminal.txt`), output)
+      console.log(`${scenario}: ${status}: ${detail}`)
       resolve({ scenario, status, detail, requests, directory })
     }
   })
@@ -63,7 +71,7 @@ async function run(scenario) {
       res.end(JSON.stringify({ error: { message: "Provider temporarily unavailable" } }))
       return
     }
-    if (!title && (body.model === "primary" || scenario === "exhaust")) {
+    if (!title && !picker && (body.model === "primary" || scenario === "exhaust")) {
       res.writeHead(429, { "content-type": "application/json" })
       res.end(JSON.stringify({ error: { type: "FreeUsageLimitError", message: "Free usage exceeded" } }))
       return
@@ -81,22 +89,26 @@ async function run(scenario) {
     send({
       content: title
         ? "Gryphon terminal fixture"
-        : scenario === "manual" && requests.length === 4
-          ? "GRYPHON_MANUAL_BACKUP"
-          : scenario === "manual" && requests.length === 5
-            ? "GRYPHON_MANUAL_RESUME_OK"
-            : followup
-              ? "GRYPHON_RESUME_OK"
-              : "GRYPHON_BACKUP_CONTINUED",
+        : scenario === "picker-busy"
+          ? "GRYPHON_BUSY_TASK"
+          : scenario === "manual" && requests.length === 4
+            ? "GRYPHON_MANUAL_BACKUP"
+            : scenario === "manual" && requests.length === 5
+              ? "GRYPHON_MANUAL_RESUME_OK"
+              : followup
+                ? "GRYPHON_RESUME_OK"
+                : "GRYPHON_BACKUP_CONTINUED",
     })
-    setTimeout(
-      () => {
-        if (!res.destroyed) {
-          send({}, "stop")
-          res.end("data: [DONE]\n\n")
-        }
-      },
-      title ? 0 : 1200,
+    responses.push(
+      setTimeout(
+        () => {
+          if (!res.destroyed) {
+            send({}, "stop")
+            res.end("data: [DONE]\n\n")
+          }
+        },
+        title ? 0 : scenario === "picker-busy" ? 30000 : 1200,
+      ),
     )
   })
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve))
@@ -148,6 +160,14 @@ async function run(scenario) {
       },
     }),
   }
+  if (picker) {
+    // Inline config has higher precedence than saved project bindings. Use an
+    // isolated base file so successful saves can actually become effective.
+    env.OPENCODE_CONFIG = path.join(directory, "fixture.json")
+    fs.writeFileSync(env.OPENCODE_CONFIG, env.OPENCODE_CONFIG_CONTENT)
+    delete env.OPENCODE_CONFIG_CONTENT
+    env.OPENCODE_DISABLE_PROJECT_CONFIG = "false"
+  }
   timer = setTimeout(() => finish("failed", `Timed out at ${stage}`), 45000)
   try {
     proc = pty.spawn(
@@ -169,12 +189,65 @@ async function run(scenario) {
         if (data.includes(query)) proc.write(response)
       const plain = output.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
       if (stage === "startup" && ["King:", "Warrior:", "Scout:"].every((value) => plain.includes(value))) {
-        stage = "prompt"
-        proc.write("Verify the Gryphon terminal fixture.")
+        stage = picker && scenario !== "picker-busy" ? "picker-role" : "prompt"
+        proc.write(stage === "picker-role" ? "/models" : "Verify the Gryphon terminal fixture.")
         setTimeout(() => {
           if (!ended) proc.write("\r")
         }, 350)
       }
+      if (scenario === "picker-busy" && stage === "prompt" && plain.includes("GRYPHON_BUSY_TASK")) {
+        stage = "picker-role"
+        proc.write("/models")
+        setTimeout(() => {
+          if (!ended) proc.write("\r")
+        }, 350)
+      }
+      if (picker && stage === "picker-role" && plain.includes("Switch model by role")) {
+        stage = "picker-model"
+        viewMark = output.length
+        setTimeout(() => {
+          if (ended) return
+          proc.write(pickerRole === "scout" ? "\x1b[B\x1b[B" : "\x1b[B")
+          setTimeout(() => {
+            if (!ended) proc.write("\r")
+          }, 350)
+        }, 250)
+      }
+      if (
+        picker &&
+        stage === "picker-model" &&
+        output
+          .slice(viewMark)
+          .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
+          .includes(`for ${pickerLabel}`)
+      ) {
+        stage = "picker-save"
+        // Fail only the scratch project's write, after startup config loading.
+        if (scenario === "picker-error") fs.mkdirSync(path.join(directory, "opencode.json"))
+        setTimeout(() => {
+          if (ended) return
+          proc.write("Backup Fixture")
+          setTimeout(() => {
+            if (!ended) proc.write("\r")
+          }, 350)
+        }, 250)
+      }
+      if (picker && stage === "picker-save") {
+        if (scenario === "picker-busy" && plain.replace(/\s/g, "").includes("Waitforrunningtaskstofinish")) {
+          if (fs.existsSync(path.join(directory, "opencode.json")))
+            finish("failed", "Busy picker wrote project config.")
+          else finish("passed", "Active work blocks role-model saves without writing project config.")
+        } else if (scenario === "picker-error" && plain.includes("Could not save role model")) {
+          stage = "picker-recover"
+          fs.rmdirSync(path.join(directory, "opencode.json"))
+          setTimeout(() => {
+            if (!ended) proc.write("\r")
+          }, 350)
+        } else if (plain.includes(`${pickerLabel} model saved`)) {
+          checkPickerSave()
+        }
+      }
+      if (picker && stage === "picker-recover" && plain.includes(`${pickerLabel} model saved`)) checkPickerSave()
       if (scenario === "resume" && stage === "prompt" && plain.includes("GRYPHON_BACKUP_CONTINUED")) {
         stage = "followup"
         setTimeout(() => {
@@ -271,14 +344,38 @@ async function run(scenario) {
     finish("failed", error.message)
   }
   const result = await done
+  responses.forEach(clearTimeout)
   server.closeAllConnections()
   await new Promise((resolve) => server.close(resolve))
   return result
+
+  function checkPickerSave() {
+    try {
+      const config = JSON.parse(fs.readFileSync(path.join(directory, "opencode.json"), "utf8"))
+      if (config.agent?.[pickerRole]?.model !== "gryphon-check/backup")
+        return finish("failed", "Selected role model was not persisted.")
+      if (Object.keys(config.agent).some((name) => name !== pickerRole))
+        return finish("failed", "Picker changed an unrelated role's project binding.")
+      if (requests.length) return finish("failed", "Idle picker unexpectedly called a provider.")
+      finish(
+        "passed",
+        scenario === "picker-error"
+          ? "Write failure is visible; retry saves and activates the selected role without changing other bindings."
+          : `${pickerLabel} picker saves and confirms the runtime binding without changing other project bindings.`,
+      )
+    } catch (error) {
+      finish("failed", error.message)
+    }
+  }
 }
 
 ;(async () => {
   const results = []
-  for (const scenario of ["resume", "exhaust", "manual", "persistent"]) results.push(await run(scenario))
+  const scenarios = process.argv.slice(3)
+  for (const scenario of scenarios.length
+    ? scenarios
+    : ["resume", "exhaust", "manual", "persistent", "picker-warrior", "picker-scout", "picker-busy", "picker-error"])
+    results.push(await run(scenario))
   const receipt = {
     results,
     scope:

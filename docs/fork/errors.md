@@ -2,6 +2,27 @@
 > Append-only. Never edit existing entries. Never delete.
 > Read this at the start of every coding session.
 
+## [2026-11-02] Project model saves targeted a file the loader never reads
+#[config] #[tui] #[fixed]
+**Context:** Extending native ConPTY acceptance from King to Worker/Scout selections.
+**Error:** `Config.update` wrote `config.json`, while project discovery reads
+`opencode.json` and `opencode.jsonc`. An actual change could persist without
+activating. The previous King fixture selected its already-configured primary,
+so its successful activation check did not expose the mismatch.
+**Fix:** Write the effective project configuration filename, preferring JSONC
+when it exists because it has higher loader precedence. Merge existing JSON
+settings; patch JSONC while retaining comments. Existing generic `config.json`
+files are left alone; they may belong to unrelated project tooling.
+**Prevention:** Picker acceptance must select a different model, check the saved
+binding and require runtime activation confirmation. Base fixture configuration
+must permit project overrides: `OPENCODE_CONFIG_CONTENT` overrides them by design.
+Unit coverage includes empty-shell preservation, new files, existing settings,
+JSONC comments and projects containing both formats. See the current Gryphon
+verification report for terminal receipts and remaining live-provider gates.
+**Files affected:** packages/opencode/src/config/config.ts,
+test/config/config.test.ts, packages/tui/script/verify-gryphon-fallback.cjs.
+---
+
 ## [2026-11-01] Legacy fallback exhaustion continued retries and misreported repeated errors as retirement
 #[fallback] #[retry] #[fixed]
 **Context:** User screenshot showed a Zhipu model swap followed by retry attempt 6.

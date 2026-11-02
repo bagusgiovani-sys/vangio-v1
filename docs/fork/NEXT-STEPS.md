@@ -4,7 +4,12 @@ Updated: 2026-10-29. Audience: the next coding agent, including Sol or Luna.
 Status: scoped and inspected; core delivery is NOT complete.
 
 > Latest continuation: [GRYPHON-VERIFICATION.md](GRYPHON-VERIFICATION.md),
-> 2026-11-01. Prompt presentation and retry-loop fixes are verified.
+> 2026-11-02. Project role-model saves now target the loader's actual config
+> filenames and preserve JSONC comments. Config suite: 99 pass; typecheck passes.
+> Eight local ConPTY scenarios pass across the final run and a focused busy-case
+> assertion correction, including Worker/Scout saves, busy refusal and save-error
+> recovery. Six live free bindings and installed acceptance remain open.
+> Prompt presentation and retry-loop fixes are verified.
 > Prompt metadata is now static and constrained to one line: removed the scrolling
 > description, provider text and model-name token-limit suffix. Narrow/wide ConPTY
 > checks pass; restart VanGio to load the change.

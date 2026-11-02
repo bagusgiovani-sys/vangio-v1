@@ -623,10 +623,17 @@ const layer = Layer.effect(
 
     const update = Effect.fn("Config.update")(function* (config: Info) {
       const dir = yield* InstanceState.directory
-      const file = path.join(dir, "config.json")
+      const json = path.join(dir, "opencode.json")
+      // JSONC overrides JSON when both exist; write the effective project file.
+      const file = (yield* fs.existsSafe(`${json}c`)) ? `${json}c` : json
       const existing = yield* loadFile(file)
       yield* fs
-        .writeFileString(file, JSON.stringify(mergeDeep(writable(existing), writable(config)), null, 2))
+        .writeFileString(
+          file,
+          file.endsWith(".jsonc")
+            ? patchJsonc((yield* readConfigFile(file)) ?? "{}", writable(config))
+            : JSON.stringify(mergeDeep(writable(existing), writable(config)), null, 2),
+        )
         .pipe(Effect.orDie)
     })
 
