@@ -1,6 +1,41 @@
 # Gryphon acceptance evidence
 
-Updated: 2026-11-02. Core acceptance remains incomplete.
+Updated: 2026-11-03. Core acceptance remains incomplete.
+
+## Host catalog checkpoint, 2026-11-03
+
+The owner's normal terminal successfully pushed `dev` and recorded 82 installed
+model identifiers in `verification/host-completion-result.json` on November 2.
+Its enriched receipt also contains eight OpenCode candidates with known zero
+catalog prices and declared tool support. This supersedes the earlier pending
+catalog and push gates; it does not establish live tool use or entitlement.
+
+Three candidates meet Warrior's existing `minOutput: 100000` requirement:
+`opencode/beam-free` (131072), `opencode/nemotron-3.5-lightning-free` (262144),
+and `opencode/nemotron-3.5-super-vl-free` (131072). The other five recorded
+candidates have smaller output limits. These are candidates, not selected or
+verified bindings. Shared provider quota independence remains unknown.
+
+An isolated source `models opencode` check on November 3 exited 1 with
+`TimeoutError` before listing models. XDG data/config/cache/state and test home
+were placed under `verification/live-2026-11-03`; project configuration and
+Claude discovery were disabled, and no installed configuration or credentials
+were copied. This does not diagnose the timeout or the reported Zhipu failure.
+No live model turn was completed and no model binding was changed.
+
+The host checker now records a restricted summary of installed role models,
+fallbacks and admission policy, but the existing receipt lacks that field.
+Next host command, from the workspace root in the owner's normal terminal:
+
+```cmd
+verification\finish-host-check.cmd
+```
+
+The checker records model identifiers/capability metadata and role bindings;
+it does not save raw configuration or credentials. Then verify three actual
+role-appropriate tool turns per candidate before selecting six bindings and
+installing the bounded pairs. Expanded provider error text is still needed
+to diagnose the user's Zhipu failure. Phone access remains gated.
 
 ## Current source checkpoint
 
