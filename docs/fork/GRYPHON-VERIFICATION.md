@@ -37,6 +37,19 @@ role-appropriate tool turns per candidate before selecting six bindings and
 installing the bounded pairs. Expanded provider error text is still needed
 to diagnose the user's Zhipu failure. Phone access remains gated.
 
+The repeatable per-candidate live check is now
+`packages/opencode/script/verify-gryphon-model.cjs`. From the repository root,
+run `node packages/opencode/script/verify-gryphon-model.cjs <role> <provider/model>`
+for each of three attempts (role is `king`, `warrior` or `scout`). It launches
+the source CLI with the installed user config against a disposable temporary
+workspace. King/Scout must complete a real read and report a random on-disk
+value; Warrior must use edit to change a fixture and report the change. A pass
+requires the expected completed tool call and its verifiable result each time.
+It prints only the role, model, pass count, tool names/statuses and timing; it
+does not persist prompts, responses, provider errors or configuration. Run it
+from the owner's normal terminal because the managed session cannot read the
+installed config or complete the provider request.
+
 ## Current source checkpoint
 
 November 2 fixes project role-model persistence and extends native terminal
