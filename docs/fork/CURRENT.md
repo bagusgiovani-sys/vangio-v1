@@ -1,5 +1,13 @@
 # VanGio Code — current handoff
 
+> Saved checkpoint, 2026-11-04: source commit `30a382bdf4` fixes candidate
+> verification and adds six-slot batch receipts. Thirteen runner/source-CLI
+> checks and the OpenCode typecheck pass. Read the November 4 section in
+> [GRYPHON-VERIFICATION.md](GRYPHON-VERIFICATION.md) and the latest RESUME HERE
+> in [build-progress.md](build-progress.md) before the historical text below.
+> Next: establish six live free bindings, then verify installed switching.
+> No live provider, installed configuration or shipped binding changed here.
+
 > Priority update, 2026-10-29: read [NEXT-STEPS.md](NEXT-STEPS.md) before acting on the historical
 > handoff below. Only Gryphon's six verified primary/backup model bindings and automatic Paradigm
 > Shift are current feature work. Phone/Tailscale is next; custom schemata are Coming soon;

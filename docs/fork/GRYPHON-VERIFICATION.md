@@ -59,6 +59,12 @@ but failed because the managed identity cannot read the owner's SSH
 `known_hosts` file. No SSH trust settings were changed. From the owner's normal
 terminal in `vangio-v1`, run `git push origin dev` to publish the checkpoint.
 
+Save follow-up, November 4: implementation commit `30a382bdf4` is now aligned
+with the local cached `origin/dev` ref. No fresh remote query succeeded in the
+managed session. Resume notes have been synchronized in `CURRENT.md`,
+`NEXT-STEPS.md` and the latest `build-progress.md` RESUME HERE. This documentation
+save is a separate checkpoint; check for unpushed commits before continuing.
+
 ## Host catalog checkpoint, 2026-11-03
 
 The owner's normal terminal successfully pushed `dev` and recorded 82 installed

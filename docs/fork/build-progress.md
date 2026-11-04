@@ -2975,3 +2975,62 @@ turn-start, before any tool ran. On a session with 5-10 `read` tool calls, each 
 should compound into the 50-70 KB-per-turn number the spec estimated. The 108,535-input-token
 turn mentioned in the 08-29 block was the kind of session this plan targets. Measurement will
 confirm or refute; the mechanism is now in place either way.
+
+## RESUME HERE (2026-11-04) — candidate verification saved; live Gryphon acceptance next
+
+This supersedes the October 1 queue above. Follow `FOCUS.md` and
+`NEXT-STEPS.md`: Gryphon's six working free primary/backup bindings and automatic
+Paradigm Shift come first; phone/Tailscale follows core acceptance. Custom
+schemata are Coming soon. Compression, desktop and other feature work stay
+postponed.
+
+### Saved implementation
+
+`30a382bdf4 fix(verification): prevent false Gryphon candidate passes` adds a
+corrected per-candidate runner and a six-slot batch runner. Warrior/Scout no
+longer silently fall back to Build; a dedicated primary fixture agent carries
+the role description/needs and restricted permissions. Model fallback is
+disabled. A replacement model, emitted session error or wrong-file read cannot
+earn a pass. Warrior must read/edit/read back the fixture. Failed candidates
+stop after their first failure; acceptance still requires three passes.
+
+### Evidence
+
+From `packages/opencode`:
+
+- `node --test test/script/verify-gryphon-model.test.cjs test/script/verify-gryphon-source.test.cjs`:
+  **13 pass, 0 fail**, including real source CLI executions for all three roles
+  against an isolated localhost HTTP provider.
+- `bun typecheck`: **pass**.
+
+Full commands, batch-plan shape and limitations are in the November 4 section
+of `GRYPHON-VERIFICATION.md`. Local fixture acceptance is not live-provider
+acceptance or proof of complete King/Warrior role reliability.
+
+### Environment left behind
+
+- No installed user configuration, credentials, plugin snapshots, active marker
+  or shipped model bindings changed. No live provider was called.
+- Source commit `30a382bdf4` matches the cached `origin/dev` ref at this save.
+  This does not establish a fresh remote query. The managed push attempt failed
+  reading the owner's SSH known_hosts; trust settings were not changed.
+- The resume-documentation save is a separate commit; inspect
+  `git log origin/dev..dev` and push from the owner's terminal if needed.
+- Preserve untracked `.claude/settings.local.json`; it was not read or staged.
+- Installed config remains inaccessible to the managed session. The existing
+  outer `verification/host-completion-result.json` has 82 model identifiers and
+  eight enriched candidates. Treat it as dated catalog evidence.
+
+### Exact next work
+
+1. Establish six distinct candidate bindings using the existing host receipt
+   and current entitlement/capability evidence. Preserve Warrior's
+   `minOutput: 100000`; do not install guessed pairs.
+2. Run the corrected candidate checks with host credentials. The batch command
+   from the repository root is
+   `node packages/opencode/script/verify-gryphon-matrix.cjs candidate-plan.json candidate-receipt.json`.
+   Record three real tool turns per candidate and investigate failures.
+3. Complete realistic role-task evidence, pair continuation, quota independence
+   and installed switching acceptance before declaring core delivery complete.
+   Expanded Zhipu provider error text is still needed for that separate diagnosis.
+4. Only after the core gate passes, resume phone/Tailscale acceptance.

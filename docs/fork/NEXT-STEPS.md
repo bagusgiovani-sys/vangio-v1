@@ -1,10 +1,14 @@
 # VanGio implementation handoff and progress
 
-Updated: 2026-10-29. Audience: the next coding agent, including Sol or Luna.
-Status: scoped and inspected; core delivery is NOT complete.
+Updated: 2026-11-04. Audience: the next coding agent, including Sol or Luna.
+Status: source verification tools pass; live core delivery is NOT complete.
 
-> Latest continuation, November 4: the candidate verifier now uses a dedicated
-> primary test agent instead of letting Warrior/Scout fall back to Build, and
+> Latest continuation, November 4. Source checkpoint: `30a382bdf4`;
+> the latest RESUME HERE in `build-progress.md`
+> records the saved state and exact next work.
+>
+> The candidate verifier now uses a dedicated primary test agent instead of
+> letting Warrior/Scout fall back to Build, and
 > disables model fallback so another model cannot earn the candidate's pass.
 > Six-slot batch receipts are available. Thirteen runner/source-CLI tests and
 > the OpenCode typecheck pass. No live model binding or installed config changed;
