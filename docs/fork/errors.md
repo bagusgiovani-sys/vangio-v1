@@ -2,6 +2,28 @@
 > Append-only. Never edit existing entries. Never delete.
 > Read this at the start of every coding session.
 
+## [2026-11-04] Candidate verification could run the default agent or a replacement model
+#[verification] #[cli] #[fixed]
+**Context:** Reviewing the per-candidate Gryphon live-model checker before
+running the six-slot acceptance matrix.
+**Error:** `run --agent warrior/scout` rejects subagents and falls back to the
+default primary. Inherited model fallback could also credit another model's
+successful tools to the requested candidate. A zero exit code did not rule out
+an emitted session error. No previous live-model acceptance is asserted.
+**Fix:** Use an explicit primary fixture agent carrying the bundled role's
+description/needs and limited tool permissions. Disable model fallback, enable
+free-only admission, reject CLI agent fallback and session errors, and require
+exact-file tool results. Warrior must read/edit/read back its fixture. Keep
+inline provider configuration; clean temporary workspaces in `finally`.
+**Prevention:** Verify the entry point's agent restrictions and fallback behavior
+before treating a candidate label as evidence of which role/model did the work.
+Thirteen tests pass, including actual source CLI tool execution for all three
+roles against an isolated local HTTP fixture. Package typecheck passes.
+**Limit:** These checks do not prove full role reliability or live entitlement.
+**Files affected:** packages/opencode/script/verify-gryphon-model.cjs,
+script/verify-gryphon-matrix.cjs, test/script/verify-gryphon-*.test.cjs.
+---
+
 ## [2026-11-02] Project model saves targeted a file the loader never reads
 #[config] #[tui] #[fixed]
 **Context:** Extending native ConPTY acceptance from King to Worker/Scout selections.

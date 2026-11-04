@@ -3,7 +3,15 @@
 Updated: 2026-10-29. Audience: the next coding agent, including Sol or Luna.
 Status: scoped and inspected; core delivery is NOT complete.
 
-> Latest continuation: [GRYPHON-VERIFICATION.md](GRYPHON-VERIFICATION.md),
+> Latest continuation, November 4: the candidate verifier now uses a dedicated
+> primary test agent instead of letting Warrior/Scout fall back to Build, and
+> disables model fallback so another model cannot earn the candidate's pass.
+> Six-slot batch receipts are available. Thirteen runner/source-CLI tests and
+> the OpenCode typecheck pass. No live model binding or installed config changed;
+> live entitlement and installed switching remain open. See
+> [GRYPHON-VERIFICATION.md](GRYPHON-VERIFICATION.md) for commands and scope.
+>
+> Earlier continuation: [GRYPHON-VERIFICATION.md](GRYPHON-VERIFICATION.md),
 > 2026-11-02. Project role-model saves now target the loader's actual config
 > filenames and preserve JSONC comments. Config suite: 99 pass; typecheck passes.
 > Eight local ConPTY scenarios pass across the final run and a focused busy-case

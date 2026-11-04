@@ -1,6 +1,63 @@
 # Gryphon acceptance evidence
 
-Updated: 2026-11-03. Core acceptance remains incomplete.
+Updated: 2026-11-04. Core acceptance remains incomplete.
+
+## Candidate runner correctness and batch receipts, 2026-11-04
+
+The previous runner passed Warrior/Scout to `run --agent`, but the CLI rejects
+subagents and falls back to its default primary. It also inherited automatic
+fallback, so a replacement model could satisfy a candidate's fixture. No prior
+live-model acceptance is claimed from that runner.
+
+The runner now overlays a dedicated primary test agent in memory, using the
+bundled role description and needs. Its fallback chain is empty, automatic
+swapping is disabled and free-only admission is enabled. The temporary agent
+denies tools by default, allows reads/searches, and permits edits only for
+Warrior. Existing inline provider configuration, including JSONC, survives.
+Installed configuration files and role bindings are not edited.
+
+Acceptance requires a completed read of the exact fixture. Warrior must read,
+edit and read back its file, with the expected final disk content. King/Scout
+must report a random value absent from their prompt and leave both fixtures
+unchanged. Session errors and default-agent fallback cannot pass, even if the
+process exits zero. Each candidate stops after its first failed attempt; a pass
+still requires all three attempts. Cleanup runs even when the launcher throws.
+
+`verify-gryphon-matrix.cjs` takes an explicit six-slot candidate plan and saves
+summary receipts after each attempt. Models must be distinct; no candidate is
+selected, installed or recommended automatically. From the repository root:
+
+```powershell
+node packages/opencode/script/verify-gryphon-matrix.cjs candidate-plan.json candidate-receipt.json
+```
+
+The plan's shape is `{ "king": { "primary": "provider/model", "backup":
+"provider/other-model" }, "warrior": { "primary": "...", "backup": "..." },
+"scout": { "primary": "...", "backup": "..." } }`. Replace all placeholders
+with six explicit candidates. The runner tries up to three turns per slot,
+records failures without raw provider errors and continues through all slots.
+
+Validation from `packages/opencode`:
+
+- `node --test test/script/verify-gryphon-model.test.cjs test/script/verify-gryphon-source.test.cjs`:
+  **13 pass, 0 fail**. Twelve runner regressions plus one integration test
+  launching the real source CLI separately for King, Warrior and Scout against
+  an isolated localhost HTTP provider. The real Warrior run executes
+  read/edit/read-back; real King/Scout runs read and report the on-disk value.
+- `bun typecheck`: **pass**.
+
+These are candidate tool-use checks, not the full role acceptance gate. They do
+not prove King delegation, realistic multi-file Warrior reliability, installed
+subagent behavior, free entitlement, quota independence or automatic switching
+on live providers. No live provider was called and no shipped model was changed.
+Next: run the corrected candidate checks with host credentials, establish the
+six-slot entitlement and capability evidence, then verify installed switching.
+
+Git checkpoint: committed on `dev` as
+`fix(verification): prevent false Gryphon candidate passes`. Push was attempted
+but failed because the managed identity cannot read the owner's SSH
+`known_hosts` file. No SSH trust settings were changed. From the owner's normal
+terminal in `vangio-v1`, run `git push origin dev` to publish the checkpoint.
 
 ## Host catalog checkpoint, 2026-11-03
 
@@ -40,10 +97,10 @@ to diagnose the user's Zhipu failure. Phone access remains gated.
 The repeatable per-candidate live check is now
 `packages/opencode/script/verify-gryphon-model.cjs`. From the repository root,
 run `node packages/opencode/script/verify-gryphon-model.cjs <role> <provider/model>`
-for each of three attempts (role is `king`, `warrior` or `scout`). It launches
+once per candidate (three attempts by default; role is `king`, `warrior` or `scout`). It launches
 the source CLI with the installed user config against a disposable temporary
 workspace. King/Scout must complete a real read and report a random on-disk
-value; Warrior must use edit to change a fixture and report the change. A pass
+value; Warrior must read, edit and read back a fixture and report the change. A pass
 requires the expected completed tool call and its verifiable result each time.
 It prints only the role, model, pass count, tool names/statuses and timing; it
 does not persist prompts, responses, provider errors or configuration. Run it
