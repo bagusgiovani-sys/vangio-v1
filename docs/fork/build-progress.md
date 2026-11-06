@@ -2976,7 +2976,7 @@ should compound into the 50-70 KB-per-turn number the spec estimated. The 108,53
 turn mentioned in the 08-29 block was the kind of session this plan targets. Measurement will
 confirm or refute; the mechanism is now in place either way.
 
-## RESUME HERE (2026-11-04) — candidate verification saved; live Gryphon acceptance next
+## Session state — RESUME HERE (2026-11-04) — candidate verification saved; live Gryphon acceptance next
 
 This supersedes the October 1 queue above. Follow `FOCUS.md` and
 `NEXT-STEPS.md`: Gryphon's six working free primary/backup bindings and automatic
@@ -3035,7 +3035,7 @@ acceptance or proof of complete King/Warrior role reliability.
    Expanded Zhipu provider error text is still needed for that separate diagnosis.
 4. Only after the core gate passes, resume phone/Tailscale acceptance.
 
-## RESUME HERE (2026-11-06) - live catalog accessible; Warrior candidate quota-blocked
+## Session state — RESUME HERE (2026-11-06) - live catalog accessible; Warrior candidate quota-blocked
 
 This supersedes the November 4 resume queue. Read the November 6 section in
 GRYPHON-VERIFICATION.md for exact commands and outcomes. Source implementation
@@ -3087,3 +3087,35 @@ successful controls after normal quota recovery, then compare models when one
 naturally becomes limited. Do not burn quota deliberately. Full evidence and
 limitations are in GRYPHON-VERIFICATION.md. Paradigm suite: 249 pass, 0 fail;
 package typecheck passes. User will commit and push these scoped changes.
+
+## RESUME HERE (2026-11-06) - distinct King committed and pushed; live acceptance pending
+
+### Saved checkpoint and verification
+
+- `2f9eb8535b fix(gryphon): assign distinct DeepSeek King and record quota probes`
+  is pushed to `origin/dev`, together with prior documentation commit `08ab1879d0`.
+- Re-ran `bun test` from `packages/paradigm`: **249 pass, 0 fail, 657 assertions**
+  with approved host execution after sandbox EPERM. Package `bun typecheck`
+  passes. The push hook also passed all 32 workspace typecheck tasks.
+- No new live provider calls or TUI acceptance were performed during this save.
+  Prior quota failures remain failures; shared quota architecture is inconclusive.
+
+### Exact next work
+
+1. After normal quota recovery, establish successful cross-model controls before
+   comparing limits. Do not retry unchanged blocked conditions or exhaust quota deliberately.
+2. Establish six distinct primary/backup candidates with current capability and
+   entitlement evidence; preserve Warrior's `minOutput: 100000`. King backup is
+   still pending and Scout's historical `hy3-free` needs replacement evidence.
+3. Run the corrected six-slot matrix, realistic role tasks, pair continuation
+   and installed switching acceptance. Restart and use a new session for King.
+4. Keep phone/Tailscale postponed until core acceptance passes.
+
+### Environment left behind
+
+- This save changed repository documentation only; installed configuration,
+  credentials, plugins and active marker were not touched. The earlier distinct
+  King assignment and timestamped backups above remain the recorded installed state.
+- No server was started. Tracked files were clean before this handoff update.
+- Preserve untracked `.claude/settings.local.json`; it was not read or staged.
+- This handoff is committed separately and pushed after the source checkpoint.
