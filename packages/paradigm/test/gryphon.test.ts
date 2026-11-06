@@ -26,6 +26,16 @@ describe("shipped paradigms", () => {
     expect(gryphon.heads["scout"]!.permission).toEqual({ edit: "deny" })
   })
 
+  test("King uses DeepSeek in both modes and cannot derive Warrior as its fallback", async () => {
+    const compiled = compileParadigm(await load("gryphon"))
+    for (const mode of ["build", "plan"]) {
+      expect(compiled[mode]!.model).toBe("opencode/deepseek-v4.1-flash-free")
+      expect(compiled[mode]!.model).not.toBe(compiled["warrior"]!.model)
+      expect(compiled[mode]!.options).toMatchObject({ fallbackPolicy: "declared-only", freeOnly: true })
+      expect(compiled[mode]!.options?.fallback ?? []).toEqual([])
+    }
+  })
+
   test("gryphon does not occupy a Tab slot", async () => {
     const compiled = compileParadigm(await load("gryphon"))
     expect(compiled["gryphon"]).toBeUndefined()

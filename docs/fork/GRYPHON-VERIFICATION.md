@@ -1,6 +1,94 @@
 # Gryphon acceptance evidence
 
-Updated: 2026-11-04. Core acceptance remains incomplete.
+Updated: 2026-11-06. Core acceptance remains incomplete.
+
+## Distinct King binding and cross-model quota comparison, 2026-11-06
+
+User explicitly requested assigning the strongest OpenCode King candidate and
+testing shared versus independent free quotas. Selected
+`opencode/deepseek-v4.1-flash-free`: its published agentic/reasoning comparisons
+favor it over Beam on several tasks, not every benchmark. Stealth Crouton/Pulse
+have no disclosed identity or comparable evidence here. Sources:
+[Reflection comparison](https://reflection.ai/blog/introducing-beam),
+[OpenCode free offerings](https://opencode.ai/v2/docs/console/models/).
+This is a candidate choice, not a claim of universal superiority or live acceptance.
+
+The old installed King used `nemotron-3-ultra-free`, absent from today's resolved
+catalog. The fallback resolver could derive Lightning, also Warrior's binding;
+this explains a possible convergence, not a verified trace of the user's session.
+Bundled King now uses DeepSeek with `fallbackPolicy: declared-only` and
+`freeOnly: true`, with no designated backup yet. It stops rather than borrowing
+Warrior's model. User-authorized installed changes apply the same choice to
+global `model`, `agent.build` and `agent.plan`, and installed Gryphon King.
+Installed Build/Plan explicitly clear fallback arrays. Warrior and Scout stay
+unchanged. An already-running session may retain its prior model; restart and
+use a new session to test the new binding. Scout still names historical `hy3-free`,
+which is absent from today's catalog; no Scout reliability is asserted.
+
+Sequential source CLI candidate probes, with fallback disabled:
+
+| Model | Role | Attempt duration | Completed tools | Outcome |
+| --- | --- | --- | --- | --- |
+| beam-free | King | 5525 ms | 0 | process exit 1 |
+| deepseek-v4.1-flash-free | King | 9489 ms | 0 | free-tier-limit terminal message |
+| glm-5.3-flash-free | King | 5331 ms | 0 | free-tier-limit terminal message |
+| nemotron-3.5-lightning-free | King control | 5407 ms | 0 | free-tier-limit terminal message |
+
+Beam's runner receipt has no expanded error; its quota classification is not
+independently captured. DeepSeek, GLM and Lightning emitted the same CLI
+`UnknownError` free-tier-limit explanation. Each requested three-attempt probe
+stopped after its first failure. This suggests a shared restriction but does
+NOT establish the quota architecture: separate exhausted pools, account/IP
+restrictions or common gateway policy can produce the same observation.
+No successful cross-model control exists and no quota was intentionally exhausted.
+No reset time, raw HTTP quota headers or bucket identifier was captured. A fetch
+preload diagnostic did not emit an HTTP receipt, so it supplies no extra evidence.
+
+Validation: Paradigm suite **249 pass, 0 fail, 657 assertions**; package
+`bun typecheck` passes. Regression checks both King modes carry DeepSeek,
+free-only and declared-only, distinct from Warrior. Initial sandbox test run
+hit EPERM; the successful suite used approved host execution.
+Effective source `debug agent` checks also confirm Build and Plan use DeepSeek
+with declared-only, empty fallback arrays and free-only, while Warrior still
+uses Lightning. This checks loaded runtime bindings, not an actual TUI launch.
+
+Backups before installed edits:
+`~/.config/vangio/opencode.json.bak-2026-11-06T16-25-28-677Z-distinct-king`
+and `~/.config/vangio/paradigms/gryphon.json.bak-2026-11-06T16-25-28-677Z-distinct-king`.
+Credentials, plugin bundles and active marker unchanged. Live entitlement,
+realistic role work, six-slot backups and installed TUI acceptance remain open.
+Next quota test: after normal recovery, establish successful controls first;
+when one model naturally hits its limit, immediately test another and recheck
+the first. Do not call all-failure observations proof of quota independence.
+
+## Live catalog and Warrior quota failure, 2026-11-06
+
+From `packages/opencode`, `bun run src/index.ts models` exits 0 with explicitly
+approved execution outside the sandbox. Sandboxed startup still fails loading
+the Solid preload with EPERM. The resolved catalog includes ten OpenCode
+candidates: beam-free, big-pickle, crouton-alpha-free, deepseek-v4.1-flash-free,
+flint-40b-free, glm-5.3-flash-free, mimo-v2.6-flash-free,
+nemotron-3.5-lightning-free, nemotron-3.5-super-vl-free and pulse-alpha-free.
+Catalog presence establishes bindability, not successful tool use or entitlement.
+
+With approved host access, ran
+`node script/verify-gryphon-model.cjs warrior opencode/nemotron-3.5-lightning-free 3`.
+The runner stopped after attempt 1: **0 passes, 0 completed tool calls,
+0 completed provider steps**, exit 1, `process_exit`, elapsed 7616 ms.
+Two additional single-attempt diagnostic executions also exited 1 without
+completed tools. The final diagnostic captured CLI JSON `UnknownError` reporting
+that `gryphon-verification hit its free-tier limit` and auto-swap was off.
+This establishes the runtime's terminal quota classification, not the raw
+provider response or reset time. These are three failed executions, not three
+passing tool turns. Do not retry without changed access/quota or new diagnostics.
+No other model rescued the candidate. Other models' quota pools remain untested.
+
+No installed config, credentials, plugin snapshots, active marker or shipped
+bindings changed. Warrior's `minOutput: 100000` remains intact. The six-slot
+matrix, realistic role tasks and installed switching remain pending. Next:
+investigate the provider quota response without exposing credentials, establish
+current capability/entitlement evidence for six distinct candidates and run the
+matrix. Phone/Tailscale remains gated on core acceptance.
 
 ## Candidate runner correctness and batch receipts, 2026-11-04
 

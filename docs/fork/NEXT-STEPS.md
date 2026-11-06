@@ -1,7 +1,16 @@
 # VanGio implementation handoff and progress
 
-Updated: 2026-11-04. Audience: the next coding agent, including Sol or Luna.
+Updated: 2026-11-06. Audience: the next coding agent, including Sol or Luna.
 Status: source verification tools pass; live core delivery is NOT complete.
+
+> November 6 user-directed update: King is now DeepSeek V4.1 Flash Free in the
+> bundled preset and installed global/Build/Plan bindings. Declared-only,
+> free-only policy prevents King deriving Warrior's Lightning as a replacement;
+> a designated King backup is still pending. Timestamped installed backups and
+> quota comparison evidence are in GRYPHON-VERIFICATION.md. DeepSeek, GLM Flash
+> and Lightning all hit the terminal free-tier classification without tools;
+> shared quota architecture remains inconclusive. Scout's historical `hy3-free`
+> is absent from the current catalog. Paradigm tests: 249 pass; typecheck passes.
 
 > Latest continuation, November 4. Source checkpoint: `30a382bdf4`;
 > the latest RESUME HERE in `build-progress.md`

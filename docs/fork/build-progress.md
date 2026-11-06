@@ -3034,3 +3034,56 @@ acceptance or proof of complete King/Warrior role reliability.
    and installed switching acceptance before declaring core delivery complete.
    Expanded Zhipu provider error text is still needed for that separate diagnosis.
 4. Only after the core gate passes, resume phone/Tailscale acceptance.
+
+## RESUME HERE (2026-11-06) - live catalog accessible; Warrior candidate quota-blocked
+
+This supersedes the November 4 resume queue. Read the November 6 section in
+GRYPHON-VERIFICATION.md for exact commands and outcomes. Source implementation
+was not changed in this session.
+
+### Evidence and next work
+
+- Source `models` exits 0 with approved execution outside the sandbox; sandboxed
+  Bun startup still fails with Solid preload EPERM. Current catalog is readable.
+- Live Warrior check on `opencode/nemotron-3.5-lightning-free` stopped on its
+  first attempt, 0 passes, 0 tools, 0 completed steps, 7616 ms. Two single-attempt
+  diagnostic executions also failed. CLI reports free-tier limit, auto-swap off.
+  Raw provider cause/reset time is unproven. Do not retry unchanged conditions.
+- Establish current capabilities and free entitlement for six distinct models;
+  investigate quota details securely, then run the corrected six-slot matrix.
+  Preserve `minOutput: 100000`. Other models' quota pools remain untested.
+- Realistic role tasks, pair continuation and installed switching remain open.
+  Phone/Tailscale stays postponed until core acceptance passes.
+
+### Environment left behind
+
+- Installed configuration, credentials, plugin snapshots, marker and model
+  bindings unchanged. No preset installed. Diagnostic scratch script is
+  `%TEMP%/vangio-diagnose.cjs`; it contains no credentials.
+- At session start dev was ahead of cached origin/dev by documentation commit
+  `08ab1879d0`. No fresh remote comparison was made. User will commit/push;
+  this session leaves documentation changes uncommitted by explicit request.
+- No server was started. No new package tests were needed for documentation-only
+  changes. Live candidate failures are not an acceptance pass.
+
+### Later November 6 update - user-requested distinct King assignment
+
+This updates the unchanged-environment bullets above. King is now
+`opencode/deepseek-v4.1-flash-free` in source Gryphon, installed Gryphon,
+global default and Build/Plan. Declared-only, free-only policy prevents King
+silently deriving Warrior's Lightning; designated King backup remains pending.
+Warrior/Scout are unchanged. Scout's historical hy3-free is absent from the
+current catalog. No live role acceptance is claimed.
+
+Installed backups: `opencode.json.bak-2026-11-06T16-25-28-677Z-distinct-king`
+in ~/.config/vangio, and `gryphon.json.bak-2026-11-06T16-25-28-677Z-distinct-king`
+in its paradigms subdirectory. Credentials, plugin bundles and active marker
+unchanged. Restart and use a new session to test the changed King.
+
+Cross-model quota probes: Beam exited 1; DeepSeek, GLM Flash and Lightning
+emitted the same terminal free-tier-limit message, all with zero completed tools.
+Shared restriction is plausible; a shared quota pool is NOT proved. Establish
+successful controls after normal quota recovery, then compare models when one
+naturally becomes limited. Do not burn quota deliberately. Full evidence and
+limitations are in GRYPHON-VERIFICATION.md. Paradigm suite: 249 pass, 0 fail;
+package typecheck passes. User will commit and push these scoped changes.

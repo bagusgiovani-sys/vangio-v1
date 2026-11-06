@@ -4,7 +4,9 @@
   "king": "king",
   "heads": {
     "king": {
-      "model": "opencode/nemotron-3-ultra-free",
+      "model": "opencode/deepseek-v4.1-flash-free",
+      "fallbackPolicy": "declared-only",
+      "freeOnly": true,
       "role": "plan, decide, implement carefully, review critically",
       "needs": {
         "tools": true
